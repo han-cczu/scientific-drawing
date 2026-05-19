@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 按 ROI 修复当前代码里的状态冗余、重复路由、写盘前协议缺口、分析性能、评估体系和工程治理债。
+**Goal:** 按 ROI 修复当前代码里的状态冗余、重复路由、写盘前协议缺口、分析性能、AI 提供方配置、评估体系和工程治理债。
 
-**Architecture:** 第一批只做低风险工程修正，保持行为不变并补回归测试。第二批建立固定评估集和可比较指标，再扩展 AI 链路评估。第三批做结构治理，拆提示词、路径别名、日志策略、Canvas 拆分和 CI。
+**Architecture:** 第一批只做低风险工程修正，保持行为不变并补回归测试。AI 重建先统一成 OpenAI 兼容配置层，由后端代理模型列表并保护 API Key。第二批建立固定评估集和可比较指标，再扩展 AI 链路评估。第三批做结构治理，拆提示词、路径别名、日志策略、Canvas 拆分和 CI。
 
 **Tech Stack:** React 19, Vite 7, TypeScript, Express 5, sharp, pptxgenjs, node:test, tsx.
 
@@ -14,7 +14,7 @@
 
 本计划按三批执行：
 
-1. 高价值低成本：去冗余状态、抽 reset、analyze 写盘前修复校验、sharp 并行、export 表驱动、键盘快捷键。
+1. 高价值低成本：去冗余状态、抽 reset、analyze 写盘前修复校验、sharp 并行、export 表驱动、键盘快捷键、OpenAI 兼容 API 模型发现。
 2. 研究评估：固定评估集、归一化视觉指标、baseline 对比、AI 链路评估。
 3. 工程治理：提示词共享、path alias、日志策略、Canvas 拆分、CI 和 Node engines。
 
@@ -28,12 +28,18 @@ Modify:
   - 删除 `selectedId` state，改为从 `selectedIds[0]` 派生。
   - 抽 `resetEditorState`，统一上传、AI 重建、导入后的状态复位。
   - 增加 `Escape`、`Delete`、`Ctrl+D` 快捷键。
+  - 展示后端返回的可选 AI 模型列表，并把当前模型随重建请求提交。
 - `src/editor/Canvas.tsx`
   - `selectedId` 由调用方传入派生值，Task 14 拆分时保留编排职责。
 - `server/src/routes/api.ts`
   - 新增 scene 写盘前修复/校验 helper。
   - `/analyze` 和 `/reconstruct` 写盘前共用 helper。
+  - `/config` 返回 OpenAI 兼容提供方配置和模型列表。
   - `/export/:kind` 表驱动替代三个重复路由。
+- `server/src/scene/aiProviderConfig.ts`
+  - 统一解析 OpenAI 兼容 baseUrl、modelsUrl、responsesUrl、API Key 可用性和模型列表。
+- `server/src/scene/reconstructWithOpenAI.ts`
+  - 从统一配置读取 Responses URL、API Key 和请求模型。
 - `server/src/scene/analyzeImage.ts`
   - sharp 灰度和彩色 raw buffer 并行。
 - `server/src/evaluate.ts`
@@ -50,7 +56,7 @@ Modify:
 - `package.json`
   - Task 15 增加 Node engines 和 CI 相关脚本。
 - `README.md`
-  - 更新评估集、指标、快捷键、CI、配置说明。
+  - 更新 AI API 配置、模型发现、评估集、指标、快捷键、CI 说明。
 
 Create:
 
@@ -62,6 +68,8 @@ Create:
   - 把键盘事件判定拆成纯函数，避免 `App.tsx` 里直接堆分支。
 - `tests/keyboardShortcuts.test.ts`
   - 测键盘快捷键对应的纯动作 helper。
+- `tests/aiProviderConfig.test.ts`
+  - 测 OpenAI 兼容 API 地址解析、模型列表归一化和安全配置输出。
 - `data/eval-suite/README.md`
   - 说明固定评估集目录和样本要求。
 - `data/eval-suite/manifest.json`
@@ -922,7 +930,563 @@ git commit -m "添加编辑器快捷键"
 
 ---
 
-### Task 7: Create Fixed Evaluation Suite
+### Task 7: Add OpenAI-Compatible Model Discovery
+
+**Files:**
+
+- Create: `server/src/scene/aiProviderConfig.ts`
+- Create: `tests/aiProviderConfig.test.ts`
+- Modify: `server/src/scene/reconstructWithOpenAI.ts`
+- Modify: `server/src/routes/api.ts`
+- Modify: `src/lib/api.ts`
+- Modify: `src/App.tsx`
+- Modify: `src/editor/Toolbar.tsx`
+- Modify: `README.md`
+
+- [ ] **Step 1: Write provider config tests**
+
+Create `tests/aiProviderConfig.test.ts`:
+
+```ts
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import {
+  buildSafeAiProviderConfig,
+  normalizeModelListPayload,
+  resolveOpenAiCompatibleUrls
+} from "../server/src/scene/aiProviderConfig";
+
+describe("OpenAI-compatible AI provider config", () => {
+  it("resolves base, responses, and models URLs", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 OpenAI 兼容地址解析
+     * ========================================================================
+     * 目标：
+     *   1) baseUrl 允许写根地址或 /v1 地址
+     *   2) responses 和 models 路径保持稳定
+     */
+
+    // 1.1 校验根地址
+    assert.deepEqual(resolveOpenAiCompatibleUrls("https://gateway.example.com"), {
+      apiRoot: "https://gateway.example.com/v1",
+      responsesUrl: "https://gateway.example.com/v1/responses",
+      modelsUrl: "https://gateway.example.com/v1/models"
+    });
+
+    // 1.2 校验 /v1 地址
+    assert.deepEqual(resolveOpenAiCompatibleUrls("https://gateway.example.com/v1/"), {
+      apiRoot: "https://gateway.example.com/v1",
+      responsesUrl: "https://gateway.example.com/v1/responses",
+      modelsUrl: "https://gateway.example.com/v1/models"
+    });
+  });
+
+  it("normalizes /v1/models payloads", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证模型列表归一化
+     * ========================================================================
+     * 目标：
+     *   1) 兼容 OpenAI 标准 data 数组
+     *   2) 丢弃没有 id 的异常项
+     */
+
+    // 1.1 归一化模型列表
+    const models = normalizeModelListPayload({
+      data: [
+        { id: "gpt-4o" },
+        { id: "gpt-4o-mini" },
+        { name: "bad" }
+      ]
+    });
+
+    // 1.2 校验模型名称
+    assert.deepEqual(models, ["gpt-4o", "gpt-4o-mini"]);
+  });
+
+  it("returns safe config without exposing api key", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端安全配置
+     * ========================================================================
+     * 目标：
+     *   1) 前端只知道能力、baseUrl 和模型名
+     *   2) API Key 不进入响应体
+     */
+
+    // 1.1 构建安全配置
+    const config = buildSafeAiProviderConfig({
+      apiKey: "secret",
+      baseUrl: "https://api.openai.com/v1",
+      defaultModel: "gpt-4o",
+      models: ["gpt-4o", "gpt-4o-mini"]
+    });
+
+    // 1.2 校验安全字段
+    assert.equal(config.aiReconstructionAvailable, true);
+    assert.equal(config.reconstructModel, "gpt-4o");
+    assert.deepEqual(config.reconstructModels, ["gpt-4o", "gpt-4o-mini"]);
+    assert.equal(Object.hasOwn(config, "apiKey"), false);
+  });
+});
+```
+
+- [ ] **Step 2: Run failing test**
+
+Run:
+
+```powershell
+npm test -- tests/aiProviderConfig.test.ts
+```
+
+Expected: FAIL because `server/src/scene/aiProviderConfig.ts` does not exist.
+
+- [ ] **Step 3: Create AI provider config module**
+
+Create `server/src/scene/aiProviderConfig.ts`:
+
+```ts
+import { logger } from "../logger";
+
+export type SafeAiProviderConfig = {
+  aiReconstructionAvailable: boolean;
+  provider: "openai-compatible";
+  baseUrl: string;
+  reconstructModel: string;
+  reconstructModels: string[];
+  modelListAvailable: boolean;
+  modelListError: string | null;
+};
+
+export type AiRuntimeConfig = {
+  apiKey: string;
+  baseUrl: string;
+  defaultModel: string;
+};
+
+export function resolveOpenAiCompatibleUrls(baseUrl = "https://api.openai.com/v1") {
+  /*
+   * ========================================================================
+   * 步骤1：解析 OpenAI 兼容接口地址
+   * ========================================================================
+   * 目标：
+   *   1) 允许用户配置网关根地址
+   *   2) 统一生成 responses 和 models 地址
+   */
+  logger.info("开始解析 OpenAI 兼容接口地址...", { baseUrl });
+
+  // 1.1 清理尾部斜杠
+  const trimmed = baseUrl.replace(/\/+$/, "");
+
+  // 1.2 补齐 /v1
+  const apiRoot = trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+
+  // 1.3 生成端点地址
+  const urls = {
+    apiRoot,
+    responsesUrl: `${apiRoot}/responses`,
+    modelsUrl: `${apiRoot}/models`
+  };
+
+  logger.info("解析 OpenAI 兼容接口地址完成", urls);
+  return urls;
+}
+
+export function readAiRuntimeConfig(env: NodeJS.ProcessEnv = process.env): AiRuntimeConfig {
+  /*
+   * ========================================================================
+   * 步骤1：读取 AI 运行配置
+   * ========================================================================
+   * 目标：
+   *   1) 从环境变量读取 API Key、baseUrl 和默认模型
+   *   2) 给重建接口和配置接口共用
+   */
+  logger.info("开始读取 AI 运行配置...");
+
+  // 1.1 读取环境变量
+  const config = {
+    apiKey: env.OPENAI_API_KEY ?? "",
+    baseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+    defaultModel: env.OPENAI_RECONSTRUCT_MODEL ?? "gpt-4o"
+  };
+
+  logger.info("读取 AI 运行配置完成", {
+    hasApiKey: Boolean(config.apiKey),
+    baseUrl: config.baseUrl,
+    defaultModel: config.defaultModel
+  });
+  return config;
+}
+
+export function normalizeModelListPayload(payload: unknown) {
+  /*
+   * ========================================================================
+   * 步骤1：归一化模型列表
+   * ========================================================================
+   * 目标：
+   *   1) 读取 OpenAI 兼容 /v1/models 响应
+   *   2) 输出前端可直接展示的模型 id 数组
+   */
+  logger.info("开始归一化模型列表...");
+
+  // 1.1 读取 data 数组
+  const data = isRecord(payload) && Array.isArray(payload.data) ? payload.data : [];
+
+  // 1.2 提取模型 id
+  const models = data
+    .map((item) => (isRecord(item) && typeof item.id === "string" ? item.id : ""))
+    .filter((id) => id.length > 0)
+    .sort((left, right) => left.localeCompare(right));
+
+  logger.info("归一化模型列表完成", { count: models.length });
+  return models;
+}
+
+export async function fetchOpenAiCompatibleModels(config = readAiRuntimeConfig()) {
+  /*
+   * ========================================================================
+   * 步骤1：获取 OpenAI 兼容模型列表
+   * ========================================================================
+   * 目标：
+   *   1) 从后端代理调用 /v1/models
+   *   2) 不向前端暴露 API Key
+   */
+  logger.info("开始获取 OpenAI 兼容模型列表...");
+
+  // 1.1 缺少 API Key 时返回空列表
+  if (!config.apiKey) {
+    logger.warn("获取模型列表失败，缺少 API Key");
+    return { models: [] as string[], error: "OPENAI_API_KEY is not set." };
+  }
+
+  // 1.2 请求模型列表
+  const { modelsUrl } = resolveOpenAiCompatibleUrls(config.baseUrl);
+  const response = await fetch(modelsUrl, {
+    headers: {
+      "Authorization": `Bearer ${config.apiKey}`
+    }
+  });
+
+  // 1.3 解析响应
+  const payload = await response.json() as unknown;
+  if (!response.ok) {
+    const error = JSON.stringify(payload);
+    logger.warn("获取模型列表失败", { error });
+    return { models: [] as string[], error };
+  }
+
+  const models = normalizeModelListPayload(payload);
+  logger.info("获取 OpenAI 兼容模型列表完成", { count: models.length });
+  return { models, error: null };
+}
+
+export function buildSafeAiProviderConfig(input: {
+  apiKey: string;
+  baseUrl: string;
+  defaultModel: string;
+  models: string[];
+  modelListError?: string | null;
+}): SafeAiProviderConfig {
+  /*
+   * ========================================================================
+   * 步骤1：构建前端安全 AI 配置
+   * ========================================================================
+   * 目标：
+   *   1) 返回模型选择所需信息
+   *   2) 禁止返回 API Key
+   */
+  logger.info("开始构建前端安全 AI 配置...");
+
+  // 1.1 合并默认模型和远程模型
+  const reconstructModels = [...new Set([input.defaultModel, ...input.models].filter(Boolean))];
+
+  // 1.2 返回安全配置
+  const config: SafeAiProviderConfig = {
+    aiReconstructionAvailable: Boolean(input.apiKey),
+    provider: "openai-compatible",
+    baseUrl: input.baseUrl,
+    reconstructModel: input.defaultModel,
+    reconstructModels,
+    modelListAvailable: input.models.length > 0,
+    modelListError: input.modelListError ?? null
+  };
+
+  logger.info("构建前端安全 AI 配置完成", {
+    aiReconstructionAvailable: config.aiReconstructionAvailable,
+    modelCount: config.reconstructModels.length
+  });
+  return config;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+```
+
+- [ ] **Step 4: Use selected model in reconstruction request**
+
+In `server/src/scene/reconstructWithOpenAI.ts`, update input type:
+
+```ts
+type ReconstructInput = {
+  imagePath: string;
+  mimeType: string;
+  mode: ReconstructionMode;
+  model?: string;
+};
+```
+
+Import:
+
+```ts
+import { readAiRuntimeConfig, resolveOpenAiCompatibleUrls } from "./aiProviderConfig";
+```
+
+Replace API Key and URL reads:
+
+```ts
+const runtimeConfig = readAiRuntimeConfig();
+if (!runtimeConfig.apiKey) {
+  throw new Error("OPENAI_API_KEY is not set.");
+}
+const { responsesUrl } = resolveOpenAiCompatibleUrls(runtimeConfig.baseUrl);
+const model = input.model || runtimeConfig.defaultModel;
+```
+
+Replace request header and body model:
+
+```ts
+"Authorization": `Bearer ${runtimeConfig.apiKey}`,
+```
+
+```ts
+model,
+```
+
+Remove local `resolveResponsesUrl()`.
+
+- [ ] **Step 5: Return model list from `/api/config`**
+
+In `server/src/routes/api.ts`, import:
+
+```ts
+import { buildSafeAiProviderConfig, fetchOpenAiCompatibleModels, readAiRuntimeConfig } from "../scene/aiProviderConfig";
+```
+
+Change `/config` to async:
+
+```ts
+apiRouter.get("/config", async (_req, res) => {
+  /*
+   * ========================================================================
+   * 步骤1：返回前端运行配置
+   * ========================================================================
+   * 目标：
+   *   1) 暴露 AI 重建是否可用
+   *   2) 返回 OpenAI 兼容模型列表
+   */
+  logger.info("开始返回前端运行配置...");
+
+  // 1.1 读取服务端 AI 配置
+  const runtimeConfig = readAiRuntimeConfig();
+
+  // 1.2 获取模型列表
+  const modelList = await fetchOpenAiCompatibleModels(runtimeConfig);
+
+  // 1.3 返回安全配置
+  const config = buildSafeAiProviderConfig({
+    apiKey: runtimeConfig.apiKey,
+    baseUrl: runtimeConfig.baseUrl,
+    defaultModel: runtimeConfig.defaultModel,
+    models: modelList.models,
+    modelListError: modelList.error
+  });
+  logger.info("返回前端运行配置完成", {
+    aiReconstructionAvailable: config.aiReconstructionAvailable,
+    modelCount: config.reconstructModels.length
+  });
+  res.json(config);
+});
+```
+
+In `/reconstruct`, read selected model:
+
+```ts
+const model = reconstructModelValue(req.body?.model);
+```
+
+Pass it:
+
+```ts
+const rawScene = await reconstructWithOpenAI({
+  imagePath,
+  mimeType: req.file.mimetype,
+  mode,
+  model
+});
+```
+
+Add helper:
+
+```ts
+function reconstructModelValue(value: unknown) {
+  /*
+   * ========================================================================
+   * 步骤1：读取重建模型名
+   * ========================================================================
+   * 目标：
+   *   1) 允许前端从模型列表选择模型
+   *   2) 限制异常输入长度和类型
+   */
+  logger.info("开始读取重建模型名...", { value });
+
+  // 1.1 校验模型名
+  const model = typeof value === "string" && value.trim().length > 0 && value.length <= 120
+    ? value.trim()
+    : undefined;
+
+  logger.info("读取重建模型名完成", { model });
+  return model;
+}
+```
+
+- [ ] **Step 6: Send model from frontend API client**
+
+In `src/lib/api.ts`, update types:
+
+```ts
+export type AppConfig = {
+  aiReconstructionAvailable: boolean;
+  provider: "openai-compatible";
+  baseUrl: string;
+  reconstructModel: string;
+  reconstructModels: string[];
+  modelListAvailable: boolean;
+  modelListError: string | null;
+};
+```
+
+Change function signature:
+
+```ts
+export async function reconstructImage(file: File, mode: ReconstructionMode, model: string): Promise<AnalyzeResponse>
+```
+
+Add form field:
+
+```ts
+form.append("model", model);
+```
+
+- [ ] **Step 7: Add model selector to App and Toolbar**
+
+In `src/App.tsx`, add state:
+
+```ts
+const [reconstructionModel, setReconstructionModel] = useState("");
+const [reconstructionModels, setReconstructionModels] = useState<string[]>([]);
+```
+
+In config load success:
+
+```ts
+setReconstructionModel(config.reconstructModel);
+setReconstructionModels(config.reconstructModels);
+if (config.modelListError) {
+  logger.warn("读取模型列表失败", { error: config.modelListError });
+}
+```
+
+Change reconstruct call:
+
+```ts
+const payload = await reconstructImage(file, reconstructionMode, reconstructionModel);
+```
+
+Pass props to `Toolbar`:
+
+```tsx
+reconstructionModel={reconstructionModel}
+reconstructionModels={reconstructionModels}
+onModelChange={setReconstructionModel}
+```
+
+In `src/editor/Toolbar.tsx`, extend props:
+
+```ts
+reconstructionModel: string;
+reconstructionModels: string[];
+onModelChange: (model: string) => void;
+```
+
+Render a compact selector near mode buttons:
+
+```tsx
+<select
+  className="model-select"
+  title="AI模型"
+  value={reconstructionModel}
+  onChange={(event) => onModelChange(event.target.value)}
+  disabled={busy || !aiReconstructionAvailable}
+>
+  {reconstructionModels.map((model) => (
+    <option key={model} value={model}>{model}</option>
+  ))}
+</select>
+```
+
+Add CSS only if existing styles need it:
+
+```css
+.model-select {
+  width: 112px;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+```
+
+- [ ] **Step 8: Update README AI config section**
+
+Update env docs:
+
+```text
+OPENAI_API_KEY             必填。OpenAI 或兼容网关的 API Key。
+OPENAI_BASE_URL            可选。默认 https://api.openai.com/v1，兼容网关可填根地址或 /v1 地址。
+OPENAI_RECONSTRUCT_MODEL   可选。默认 gpt-4o，也是模型列表获取失败时的兜底模型。
+```
+
+Add API note:
+
+```text
+GET /api/config 会由后端携带 API Key 请求 /v1/models，只把模型 id 列表返回给前端。
+前端不会接触 OPENAI_API_KEY。
+```
+
+- [ ] **Step 9: Run verification and commit**
+
+Run:
+
+```powershell
+npm test -- tests/aiProviderConfig.test.ts
+npm test
+npm run typecheck
+npm run build
+```
+
+Commit:
+
+```powershell
+git add server/src/scene/aiProviderConfig.ts tests/aiProviderConfig.test.ts server/src/scene/reconstructWithOpenAI.ts server/src/routes/api.ts src/lib/api.ts src/App.tsx src/editor/Toolbar.tsx src/styles.css README.md
+git commit -m "支持 OpenAI 兼容模型发现"
+```
+
+---
+
+### Task 8: Create Fixed Evaluation Suite
 
 **Files:**
 
@@ -986,7 +1550,7 @@ git commit -m "添加固定评估集入口"
 
 ---
 
-### Task 8: Add Normalized Visual Metrics
+### Task 9: Add Normalized Visual Metrics
 
 **Files:**
 
@@ -1134,7 +1698,7 @@ git commit -m "增加归一化视觉评估指标"
 
 ---
 
-### Task 9: Add Evaluation Baseline Comparison
+### Task 10: Add Evaluation Baseline Comparison
 
 **Files:**
 
@@ -1214,7 +1778,7 @@ git commit -m "添加评估基线对比"
 
 ---
 
-### Task 10: Add Optional AI Evaluation Path
+### Task 11: Add Optional AI Evaluation Path
 
 **Files:**
 
@@ -1314,7 +1878,7 @@ git commit -m "添加可选 AI 评估链路"
 
 ---
 
-### Task 11: Share Reconstruction Prompt Base
+### Task 12: Share Reconstruction Prompt Base
 
 **Files:**
 
@@ -1370,7 +1934,7 @@ git commit -m "统一重建提示词协议说明"
 
 ---
 
-### Task 12: Add Shared Path Alias
+### Task 13: Add Shared Path Alias
 
 **Files:**
 
@@ -1435,7 +1999,7 @@ git commit -m "添加共享模块路径别名"
 
 ---
 
-### Task 13: Tune Logger Info Fast Path
+### Task 14: Tune Logger Info Fast Path
 
 **Files:**
 
@@ -1492,7 +2056,7 @@ git commit -m "优化 info 日志短路"
 
 ---
 
-### Task 14: Split Canvas Responsibilities
+### Task 15: Split Canvas Responsibilities
 
 **Files:**
 
@@ -1547,7 +2111,7 @@ git commit -m "拆分画布渲染和手柄模块"
 
 ---
 
-### Task 15: Add CI And Node Engine Metadata
+### Task 16: Add CI And Node Engine Metadata
 
 **Files:**
 
@@ -1630,15 +2194,16 @@ git commit -m "添加 CI 和 Node 版本约束"
 │ 4    │ Parallelize Sharp Buffers    │
 │ 5    │ Table-Drive Export Routes    │
 │ 6    │ Keyboard Shortcuts           │
-│ 7    │ Fixed Evaluation Suite       │
-│ 8    │ Normalized Visual Metrics    │
-│ 9    │ Evaluation Baseline          │
-│ 10   │ Optional AI Evaluation       │
-│ 11   │ Shared Prompt Base           │
-│ 12   │ Shared Path Alias            │
-│ 13   │ Logger Fast Path             │
-│ 14   │ Canvas Split                 │
-│ 15   │ CI And Engines               │
+│ 7    │ OpenAI-Compatible Models     │
+│ 8    │ Fixed Evaluation Suite       │
+│ 9    │ Normalized Visual Metrics    │
+│ 10   │ Evaluation Baseline          │
+│ 11   │ Optional AI Evaluation       │
+│ 12   │ Shared Prompt Base           │
+│ 13   │ Shared Path Alias            │
+│ 14   │ Logger Fast Path             │
+│ 15   │ Canvas Split                 │
+│ 16   │ CI And Engines               │
 └──────┴──────────────────────────────┘
 ```
 
@@ -1646,6 +2211,7 @@ Reason:
 
 - App state and reset are prerequisites for shortcuts.
 - Persistence helper should land before export route refactor, so API validity has one clear boundary.
+- OpenAI-compatible model discovery must land before AI evaluation, so evaluation reuses the same provider config.
 - Evaluation suite must exist before baseline and AI comparisons.
 - Prompt sharing and aliases should happen before larger file splits.
 - Canvas split is last among code refactors because it touches the largest surface.
@@ -1674,15 +2240,16 @@ Spec coverage:
 - #4 covered by Task 5.
 - #5 covered by Task 4.
 - #6 intentionally excluded from implementation because official OpenAI model docs currently list `gpt-5.4`; keep environment override and improve error messaging only if real runtime failures appear.
-- #7 covered by Task 10.
-- #8 covered by Task 8.
-- #9 covered by Task 9.
-- #10 covered by Task 7.
-- #11 covered by Task 13.
-- #12 covered by Task 14.
-- #13 covered by Task 12.
-- #14 covered by Task 11.
+- User request for OpenAI-compatible API model discovery covered by Task 7.
+- #7 covered by Task 11.
+- #8 covered by Task 9.
+- #9 covered by Task 10.
+- #10 covered by Task 8.
+- #11 covered by Task 14.
+- #12 covered by Task 15.
+- #13 covered by Task 13.
+- #14 covered by Task 12.
 - #15 covered by Task 6.
-- #16 covered by Task 15.
+- #16 covered by Task 16.
 
 未发现空占位任务或缺少执行细节的任务。
