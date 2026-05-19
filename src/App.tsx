@@ -3,6 +3,7 @@ import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
 import { Toolbar, type Tool } from "./editor/Toolbar";
 import { resetEditorState, selectedIdFromIds } from "./editor/appState";
+import { getEditorShortcutAction, isEditableKeyboardTarget } from "./editor/keyboardShortcuts";
 import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, updateNode, updateNodeStyle, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
 import { clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
@@ -290,6 +291,48 @@ export default function App() {
     handleSelect(copies.map((node) => node.id));
   };
   logger.info("绑定业务动作完成");
+
+  useEffect(() => {
+    /*
+     * ========================================================================
+     * 步骤1：绑定编辑器快捷键
+     * ========================================================================
+     * 目标：
+     *   1) Delete 删除选中对象
+     *   2) Ctrl+D 复制选中对象
+     *   3) Escape 取消语义连线中间态并回到选择工具
+     */
+    logger.info("开始绑定编辑器快捷键...");
+
+    // 1.1 处理键盘事件
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const action = getEditorShortcutAction({
+        key: event.key,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        editable: isEditableKeyboardTarget(event.target)
+      });
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      if (action === "delete") {
+        handleDelete();
+      }
+      if (action === "duplicate") {
+        handleDuplicate();
+      }
+      if (action === "cancel") {
+        setPendingEdgeFromId(null);
+        setTool("select");
+        setMessage("已取消当前操作。");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    logger.info("绑定编辑器快捷键完成");
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIds, scene, pendingEdgeFromId]);
 
   return (
     <div className="app-shell">

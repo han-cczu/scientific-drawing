@@ -302,6 +302,9 @@ raw ──▶ normalizeImportedScene ──▶ repairScene ──▶ validateSce
 | 视图缩放 | `Ctrl` + 滚轮（0.25× ~ 4×） |
 | 视图平移 | 中键拖拽，或 `空格` + 左键拖拽 |
 | 重置视图 | 工具栏重置按钮 |
+| 删除 | `Delete` / `Backspace` |
+| 复制 | `Ctrl+D` / `Cmd+D` |
+| 取消 | `Escape` |
 
 锁定的源图底图不会被框选误选中。
 
