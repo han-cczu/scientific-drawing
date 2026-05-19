@@ -408,7 +408,15 @@ AI 重建。同 `analyze`，额外可选 `mode = color | mono`（默认 `color`�
 
 ## 7. 评估体系
 
-`npm run evaluate` 扫描 `data/uploads` 中的 PNG/JPEG/WebP，调用**普通分析**重新生成 scene 与 SVG，再把原图与导出 SVG 渲染到相同尺寸做像素差对比，同时统计 scene 的结构质量。
+`npm run evaluate` 优先读取 `data/eval-suite/manifest.json` 中登记的固定样本。清单为空时，回退扫描 `data/uploads` 中的 PNG/JPEG/WebP。评估会调用**普通分析**重新生成 scene 与 SVG，再把原图与导出 SVG 渲染到相同尺寸做像素差对比，同时统计 scene 的结构质量。
+
+固定样本目录：
+
+```text
+data/eval-suite/
+├─ manifest.json   # 固定样本清单
+└─ README.md       # 样本字段说明
+```
 
 输出写入 `data/evaluation/summary.json`：
 

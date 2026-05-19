@@ -31,6 +31,16 @@ export type SceneComplexity = {
   edgeEndpointIssues: number;
 };
 
+type EvaluationManifest = {
+  version: number;
+  samples: Array<{
+    file: string;
+    category?: string;
+    expectedNodes?: number;
+    expectedEdges?: number;
+  }>;
+};
+
 const SAMPLE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const MAX_EVAL_WIDTH = 900;
 
@@ -49,11 +59,12 @@ export async function runEvaluation() {
   // 1.1 解析样例目录和输出目录
   const rootDir = process.cwd();
   const uploadDir = path.join(rootDir, "data", "uploads");
+  const suiteDir = path.join(rootDir, "data", "eval-suite");
   const reportDir = path.join(rootDir, "data", "evaluation");
   await fs.mkdir(reportDir, { recursive: true });
 
   // 1.2 执行样例评估
-  const samples = await listSamples(uploadDir);
+  const samples = await listEvaluationSamples(rootDir, { suiteDir, fallbackDir: uploadDir });
   const results: SampleResult[] = [];
   for (const sample of samples) {
     results.push(await evaluateSample(sample, reportDir));
@@ -64,6 +75,67 @@ export async function runEvaluation() {
   await fs.writeFile(reportPath, JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 2), "utf-8");
   logger.info("运行实验评估完成", { samples: results.length, reportPath });
   printSummary(results);
+}
+
+export async function listEvaluationSamples(rootDir: string, options?: { suiteDir?: string; fallbackDir?: string }) {
+  /*
+   * ========================================================================
+   * 步骤1：读取评估样本入口
+   * ========================================================================
+   * 目标：
+   *   1) 优先使用 data/eval-suite/manifest.json
+   *   2) manifest 为空时兼容旧的 data/uploads 评估方式
+   */
+  logger.info("开始读取评估样本入口...", { rootDir });
+
+  // 1.1 解析目录
+  const suiteDir = options?.suiteDir ?? path.join(rootDir, "data", "eval-suite");
+  const fallbackDir = options?.fallbackDir ?? path.join(rootDir, "data", "uploads");
+  const manifestPath = path.join(suiteDir, "manifest.json");
+
+  // 1.2 读取 manifest 样本
+  const manifest = await readEvaluationManifest(manifestPath);
+  if (manifest.samples.length > 0) {
+    const samples = manifest.samples
+      .map((sample) => path.join(suiteDir, sample.file))
+      .sort((a, b) => a.localeCompare(b));
+    logger.info("读取评估样本入口完成", { source: "eval-suite", samples: samples.length });
+    return samples;
+  }
+
+  // 1.3 回退运行上传目录
+  const samples = await listSamples(fallbackDir);
+  logger.info("读取评估样本入口完成", { source: "uploads", samples: samples.length });
+  return samples;
+}
+
+async function readEvaluationManifest(manifestPath: string): Promise<EvaluationManifest> {
+  /*
+   * ========================================================================
+   * 步骤1：读取评估清单
+   * ========================================================================
+   * 目标：
+   *   1) 支持缺失 manifest 时平滑回退
+   *   2) 只接受 file 为字符串的样本
+   */
+  logger.info("开始读取评估清单...", { manifestPath });
+
+  try {
+    // 1.1 读取并解析 JSON
+    const content = await fs.readFile(manifestPath, "utf-8");
+    const payload = JSON.parse(content) as Partial<EvaluationManifest>;
+
+    // 1.2 归一化样本列表
+    const samples = Array.isArray(payload.samples)
+      ? payload.samples.filter((sample): sample is EvaluationManifest["samples"][number] => typeof sample?.file === "string" && sample.file.length > 0)
+      : [];
+
+    logger.info("读取评估清单完成", { samples: samples.length });
+    return { version: 1, samples };
+  } catch (error) {
+    logger.warn("读取评估清单失败，使用上传目录回退", { error: String(error) });
+    return { version: 1, samples: [] };
+  }
 }
 
 export async function listSamples(directory: string) {
