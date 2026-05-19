@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
+import { endpointReferencesNode } from "../shared/geometry";
 import type { Scene, SceneNode, SceneNodeType } from "../shared/scene";
 
 export function createBlankScene(): Scene {
@@ -141,31 +142,12 @@ export function removeNode(scene: Scene, nodeId: string): Scene {
   const nodes = scene.nodes.filter((node) => node.id !== nodeId);
 
   // 1.2 清理悬空连线
-  const edges = scene.edges.filter((edge) => !edgeReferencesNode(edge.from, nodeId) && !edgeReferencesNode(edge.to, nodeId));
+  const edges = scene.edges.filter((edge) => !endpointReferencesNode(edge.from, nodeId) && !endpointReferencesNode(edge.to, nodeId));
 
   // 1.3 返回新场景
   const next = { ...scene, nodes, edges };
   logger.info("删除节点完成", { nodeId, removedEdges: scene.edges.length - edges.length });
   return next;
-}
-
-function edgeReferencesNode(endpoint: string | undefined, nodeId: string) {
-  /*
-   * ========================================================================
-   * 步骤1：判断连线端点归属
-   * ========================================================================
-   * 目标：
-   *   1) 支持 node:right@0.5 端点写法
-   *   2) 删除节点时同步清理依赖它的边
-   */
-  logger.info("开始判断连线端点归属...", { endpoint, nodeId });
-
-  // 1.1 拆解端点节点 id
-  const result = endpoint?.split(":")[0] === nodeId;
-
-  // 1.2 返回判断结果
-  logger.info("判断连线端点归属完成", { result });
-  return result;
 }
 
 export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {

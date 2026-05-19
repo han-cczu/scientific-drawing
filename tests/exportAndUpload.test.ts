@@ -7,6 +7,7 @@ import { ensureReplicaBaseLayer, isAllowedImageMime, sanitizeFileBase, validateS
 import { sceneToPptx } from "../server/src/scene/pptx";
 import { sceneToSvg } from "../server/src/scene/svg";
 import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
+import { shadeColor } from "../src/shared/geometry";
 import type { Scene } from "../src/shared/scene";
 
 function sampleScene(): Scene {
@@ -209,6 +210,28 @@ describe("scene export", () => {
     assert.match(svg, /fill="#FCA5A5"/);
     assert.match(svg, />1<\/text>/);
     assert.match(svg, />4<\/text>/);
+  });
+
+  it("uses shared endpoint and color rules in SVG export", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 SVG 导出共享规则
+     * ========================================================================
+     * 目标：
+     *   1) 端点坐标和共享几何规则一致
+     *   2) 网格阴影色和共享颜色规则一致
+     */
+
+    // 1.1 准备带端点连线的 scene
+    const scene = sampleScene();
+    scene.edges = [
+      { id: "semantic-edge", type: "arrow", from: "box:right@0.5", to: "grid:left@0.5", style: { stroke: "#111111", strokeWidth: 1 } }
+    ];
+
+    // 1.2 导出并校验坐标和颜色
+    const svg = await sceneToSvg(scene);
+    assert.match(svg, /id="semantic-edge" points="98,73 132,72"/);
+    assert.match(svg, new RegExp(`fill="${shadeColor("#FCA5A5", 0.25)}"`));
   });
 
   it("writes a PPTX file for grid, bracket, and segmented lines", async () => {

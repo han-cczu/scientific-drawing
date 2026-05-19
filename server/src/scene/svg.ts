@@ -1,4 +1,5 @@
 import { logger } from "../logger";
+import { resolveEndpoint, shadeColor } from "../../../src/shared/geometry";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
 export async function sceneToSvg(scene: Scene): Promise<string> {
@@ -271,75 +272,6 @@ function bracketToSvg(node: SceneNode): string {
     ticks.forEach((tick) => segments.push([{ x: node.x, y: node.y + node.h * tick }, { x, y: node.y + node.h * tick }]));
   }
   return segments.map(([start, end], index) => `<line id="${escapeAttr(node.id)}-${index}" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}" stroke="${escapeAttr(node.style.stroke ?? "#111111")}" stroke-width="${node.style.strokeWidth ?? 1}" />`).join("\n");
-}
-
-function resolveEndpoint(endpoint: string, nodes: SceneNode[]) {
-  const [id, rawSide] = endpoint.split(":");
-  const node = nodes.find((item) => item.id === id);
-  if (!node) {
-    return undefined;
-  }
-  const [side, rawRatio] = (rawSide ?? "center").split("@");
-  const ratio = rawRatio === undefined ? 0.5 : Number(rawRatio);
-  if (side === "left") {
-    return { x: node.x, y: node.y + node.h * ratio };
-  }
-  if (side === "right") {
-    return { x: node.x + node.w, y: node.y + node.h * ratio };
-  }
-  if (side === "top") {
-    return { x: node.x + node.w * ratio, y: node.y };
-  }
-  if (side === "bottom") {
-    return { x: node.x + node.w * ratio, y: node.y + node.h };
-  }
-  return { x: node.x + node.w / 2, y: node.y + node.h / 2 };
-}
-
-function shadeColor(color: string, amount: number) {
-  /*
-   * ========================================================================
-   * 步骤1：计算 SVG 网格阴影色
-   * ========================================================================
-   * 目标：
-   *   1) 把基础颜色按比例混合到黑色
-   *   2) 统一输出大写十六进制颜色
-   */
-  logger.info("开始计算 SVG 网格阴影色...", { color, amount });
-
-  // 1.1 校验颜色格式
-  const normalized = color.startsWith("#") ? color.slice(1) : color;
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
-    logger.warn("计算 SVG 网格阴影色跳过，颜色格式非法", { color });
-    return color;
-  }
-
-  // 1.2 计算阴影颜色
-  const factor = Math.max(0, Math.min(1, amount));
-  const red = Math.round(parseInt(normalized.slice(0, 2), 16) * (1 - factor));
-  const green = Math.round(parseInt(normalized.slice(2, 4), 16) * (1 - factor));
-  const blue = Math.round(parseInt(normalized.slice(4, 6), 16) * (1 - factor));
-  const result = `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
-
-  logger.info("计算 SVG 网格阴影色完成", { result });
-  return result;
-}
-
-function toHex(value: number) {
-  /*
-   * ========================================================================
-   * 步骤1：转换十六进制通道
-   * ========================================================================
-   * 目标：
-   *   1) 限制颜色通道范围
-   *   2) 输出两位大写十六进制
-   */
-
-  // 1.1 限制通道值
-  const channel = Math.max(0, Math.min(255, value));
-
-  // 1.2 返回十六进制文本
-  return channel.toString(16).padStart(2, "0").toUpperCase();
 }
 
 function escapeAttr(value: string) {

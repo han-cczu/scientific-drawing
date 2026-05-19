@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { logger } from "../lib/logger";
+import { resolveEndpoint, shadeColor } from "../shared/geometry";
 import type { Scene, SceneEdge, SceneNode } from "../shared/scene";
 
 type CanvasProps = {
@@ -418,61 +419,4 @@ function BracketNode({ node }: { node: SceneNode }) {
       ))}
     </>
   );
-}
-
-function resolveEndpoint(endpoint: string, nodes: SceneNode[]) {
-  /*
-   * ========================================================================
-   * 步骤1：解析连线端点
-   * ========================================================================
-   * 目标：
-   *   1) 支持 node:right@0.5 这类端点写法
-   *   2) 返回当前节点坐标，拖动节点后连线自动跟随
-   */
-  // 1.1 拆解端点引用
-  const [id, rawSide] = endpoint.split(":");
-  const node = nodes.find((item) => item.id === id);
-  if (!node) {
-    return undefined;
-  }
-
-  // 1.2 计算端点坐标
-  const [side, rawRatio] = (rawSide ?? "center").split("@");
-  const ratio = rawRatio === undefined ? 0.5 : Number(rawRatio);
-  if (side === "left") {
-    return { x: node.x, y: node.y + node.h * ratio };
-  }
-  if (side === "right") {
-    return { x: node.x + node.w, y: node.y + node.h * ratio };
-  }
-  if (side === "top") {
-    return { x: node.x + node.w * ratio, y: node.y };
-  }
-  if (side === "bottom") {
-    return { x: node.x + node.w * ratio, y: node.y + node.h };
-  }
-  return { x: node.x + node.w / 2, y: node.y + node.h / 2 };
-}
-
-function shadeColor(color: string, amount: number) {
-  /*
-   * ========================================================================
-   * 步骤1：计算列阴影色
-   * ========================================================================
-   * 目标：
-   *   1) 把基础颜色向黑色混合
-   *   2) 支持 feature_map_grid 的 columnShades
-   */
-  // 1.1 解析十六进制颜色
-  const normalized = color.startsWith("#") ? color.slice(1) : color;
-  if (normalized.length !== 6) {
-    return color;
-  }
-
-  // 1.2 混合到黑色
-  const factor = Math.max(0, Math.min(1, amount));
-  const red = Math.round(parseInt(normalized.slice(0, 2), 16) * (1 - factor));
-  const green = Math.round(parseInt(normalized.slice(2, 4), 16) * (1 - factor));
-  const blue = Math.round(parseInt(normalized.slice(4, 6), 16) * (1 - factor));
-  return `#${red.toString(16).padStart(2, "0")}${green.toString(16).padStart(2, "0")}${blue.toString(16).padStart(2, "0")}`;
 }

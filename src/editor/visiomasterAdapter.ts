@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
+import { resolveEndpoint } from "../shared/geometry";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "../shared/scene";
 
 type AnyRecord = Record<string, unknown>;
@@ -232,29 +233,6 @@ function mapStyle(style: AnyRecord): SceneStyle {
     opacity: numberOptional(style.opacity),
     dash: style.line_dash === "dash" ? "7 5" : undefined
   };
-}
-
-function resolveEndpoint(endpoint: string, nodes: SceneNode[]) {
-  const [id, rawSide] = endpoint.split(":");
-  const node = nodes.find((item) => item.id === id);
-  if (!node) {
-    return undefined;
-  }
-  const [side, rawRatio] = (rawSide ?? "center").split("@");
-  const ratio = rawRatio === undefined ? 0.5 : Number(rawRatio);
-  if (side === "left") {
-    return { x: node.x, y: node.y + node.h * ratio };
-  }
-  if (side === "right") {
-    return { x: node.x + node.w, y: node.y + node.h * ratio };
-  }
-  if (side === "top") {
-    return { x: node.x + node.w * ratio, y: node.y };
-  }
-  if (side === "bottom") {
-    return { x: node.x + node.w * ratio, y: node.y + node.h };
-  }
-  return { x: node.x + node.w / 2, y: node.y + node.h / 2 };
 }
 
 function hasScientificShape(input: AnyRecord) {

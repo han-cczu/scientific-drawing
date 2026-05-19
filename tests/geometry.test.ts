@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { endpointReferencesNode, normalizeHexColor, resolveEndpoint, shadeColor } from "../src/shared/geometry";
 import type { SceneNode } from "../src/shared/scene";
 
@@ -66,4 +68,67 @@ describe("shared geometry", () => {
     assert.equal(shadeColor("#808080", 0.5), "#404040");
     assert.equal(shadeColor("none", 0.5), "none");
   });
+
+  it("keeps endpoint and color helpers centralized", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证共享工具集中化
+     * ========================================================================
+     * 目标：
+     *   1) 防止 Canvas/SVG/PPTX 各自复制端点解析
+     *   2) 防止网格阴影算法分叉
+     */
+
+    // 1.1 扫描源码文件
+    const files = await listSourceFiles(["src", "server"]);
+    const duplicated: string[] = [];
+
+    // 1.2 查找重复函数定义
+    for (const file of files) {
+      if (file.replaceAll("\\", "/").endsWith("src/shared/geometry.ts")) {
+        continue;
+      }
+      const content = await readFile(file, "utf-8");
+      if (/function resolveEndpoint|function shadeColor/.test(content)) {
+        duplicated.push(file);
+      }
+    }
+
+    assert.deepEqual(duplicated, []);
+  });
 });
+
+async function listSourceFiles(roots: string[]) {
+  /*
+   * ========================================================================
+   * 步骤1：收集源码文件
+   * ========================================================================
+   * 目标：
+   *   1) 遍历 src 和 server 目录
+   *   2) 只返回 TypeScript 源码
+   */
+
+  // 1.1 递归读取目录
+  const result: string[] = [];
+  for (const root of roots) {
+    const absolute = path.join(process.cwd(), root);
+    await walk(absolute, result);
+  }
+
+  // 1.2 返回源码列表
+  return result;
+}
+
+async function walk(directory: string, result: string[]) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await walk(fullPath, result);
+      continue;
+    }
+    if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+      result.push(fullPath);
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import pptxgenjs from "pptxgenjs";
 import { logger } from "../logger";
+import { resolveEndpoint, shadeColor } from "../../../src/shared/geometry";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
 const TARGET_WIDTH_IN = 13.333;
@@ -377,58 +378,6 @@ function localPathFromUrl(url: string) {
     return url;
   }
   return `data/uploads/${normalized.slice(index + marker.length)}`;
-}
-
-function resolveEndpoint(endpoint: string, nodes: SceneNode[]) {
-  const [id, rawSide] = endpoint.split(":");
-  const node = nodes.find((item) => item.id === id);
-  if (!node) {
-    return undefined;
-  }
-  const [side, rawRatio] = (rawSide ?? "center").split("@");
-  const ratio = rawRatio === undefined ? 0.5 : Number(rawRatio);
-  if (side === "left") {
-    return { x: node.x, y: node.y + node.h * ratio };
-  }
-  if (side === "right") {
-    return { x: node.x + node.w, y: node.y + node.h * ratio };
-  }
-  if (side === "top") {
-    return { x: node.x + node.w * ratio, y: node.y };
-  }
-  if (side === "bottom") {
-    return { x: node.x + node.w * ratio, y: node.y + node.h };
-  }
-  return { x: node.x + node.w / 2, y: node.y + node.h / 2 };
-}
-
-function shadeColor(color: string, amount: number) {
-  /*
-   * ========================================================================
-   * 步骤1：计算网格阴影色
-   * ========================================================================
-   * 目标：
-   *   1) 复用 SVG/Canvas 的列阴影规则
-   *   2) 让 PPTX 导出视觉一致
-   */
-  logger.info("开始计算网格阴影色...", { color, amount });
-
-  // 1.1 校验颜色格式
-  const normalized = color.startsWith("#") ? color.slice(1) : color;
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
-    logger.warn("计算网格阴影色跳过，颜色格式非法", { color });
-    return color;
-  }
-
-  // 1.2 混合到黑色
-  const factor = Math.max(0, Math.min(1, amount));
-  const red = Math.round(parseInt(normalized.slice(0, 2), 16) * (1 - factor));
-  const green = Math.round(parseInt(normalized.slice(2, 4), 16) * (1 - factor));
-  const blue = Math.round(parseInt(normalized.slice(4, 6), 16) * (1 - factor));
-  const result = `#${red.toString(16).padStart(2, "0")}${green.toString(16).padStart(2, "0")}${blue.toString(16).padStart(2, "0")}`;
-
-  logger.info("计算网格阴影色完成", { result });
-  return result;
 }
 
 function resolvePptxConstructor() {
