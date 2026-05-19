@@ -3,12 +3,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import express from "express";
 import multer from "multer";
+import sharp from "sharp";
 import { logger } from "../logger";
 import { exportDir, sceneDir, uploadDir } from "../paths";
 import { analyzeImage } from "../scene/analyzeImage";
 import { buildSafeAiProviderConfig, fetchOpenAiCompatibleModels, readAiRuntimeConfig } from "../scene/aiProviderConfig";
 import { sceneToPptx } from "../scene/pptx";
 import { repairScene } from "../scene/repairScene";
+import { mergeRegionReconstruction, sceneRegionToImageExtract, sourceImageUrlFromScene, type RegionMergeMode, type SceneBox } from "../scene/regionReconstruction";
 import { reconstructWithOpenAI } from "../scene/reconstructWithOpenAI";
 import type { ReconstructionMode } from "../scene/reconstructionPrompt";
 import { sceneToSvg } from "../scene/svg";
@@ -270,6 +272,92 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
   }
 });
 
+apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (req, res, next) => {
+  /*
+   * ========================================================================
+   * 步骤1：AI 局部重建
+   * ========================================================================
+   * 目标：
+   *   1) 接收当前 scene 和框选区域
+   *   2) 从原图裁剪局部图片并调用 AI 重建
+   *   3) 按替换或叠加模式合并回 scene
+   */
+  logger.info("开始 AI 局部重建...");
+
+  let regionImagePath: string | undefined;
+  try {
+    // 1.1 校验当前 scene
+    const sceneValidation = validateSceneForExport(req.body?.scene);
+    if (!sceneValidation.ok) {
+      res.status(400).json({ error: "Invalid scene.", issues: sceneValidation.issues });
+      return;
+    }
+    const scene = sceneValidation.scene;
+
+    // 1.2 校验区域和原图来源
+    const region = sceneBoxValue(req.body?.region);
+    if (!region) {
+      res.status(400).json({ error: "Invalid region." });
+      return;
+    }
+    const sourceUrl = sourceImageUrlFromScene(scene);
+    if (!sourceUrl) {
+      res.status(400).json({ error: "Scene does not contain a source image." });
+      return;
+    }
+    const sourcePath = uploadPathFromSourceUrl(sourceUrl);
+
+    // 1.3 裁剪局部图片
+    const sourceMetadata = await sharp(sourcePath).metadata();
+    const imageWidth = sourceMetadata.width ?? scene.page.width;
+    const imageHeight = sourceMetadata.height ?? scene.page.height;
+    const extract = sceneRegionToImageExtract(region, scene.page, { width: imageWidth, height: imageHeight });
+    const id = sanitizeFileBase(scene.metadata.id || randomUUID());
+    regionImagePath = path.join(uploadDir, `${randomUUID()}.region.png`);
+    await sharp(sourcePath).extract(extract).png().toFile(regionImagePath);
+
+    // 1.4 调用 AI 重建并合并结果
+    const mode = reconstructionModeValue(req.body?.mode);
+    const model = reconstructModelValue(req.body?.model);
+    const mergeMode = regionMergeModeValue(req.body?.mergeMode);
+    const rawScene = await reconstructWithOpenAI({
+      imagePath: regionImagePath,
+      mimeType: "image/png",
+      mode,
+      model
+    });
+    const repairedRegionScene = repairScene(normalizeImportedScene(rawScene));
+    const mergedScene = mergeRegionReconstruction(scene, repairedRegionScene, region, mergeMode);
+    const validation = repairAndValidateSceneForPersistence(mergedScene, { id, sourceUrl });
+    if (!validation.ok) {
+      res.status(500).json({ error: "Generated scene is invalid.", issues: validation.issues });
+      return;
+    }
+
+    // 1.5 保存并返回新 scene
+    const nextScene = validation.scene;
+    nextScene.metadata.notes = [
+      ...nextScene.metadata.notes,
+      `Region reconstruction mode: ${mode}.`,
+      `Region reconstruction model: ${model || "default"}.`
+    ];
+    const scenePath = path.join(sceneDir, `${id}.scene.json`);
+    await fs.writeFile(scenePath, JSON.stringify(nextScene, null, 2), "utf-8");
+
+    logger.info("AI 局部重建完成", { id, mergeMode, nodes: nextScene.nodes.length, edges: nextScene.edges.length });
+    res.json({
+      scene: nextScene,
+      sourceUrl,
+      sceneUrl: `/api/scenes/${id}`
+    });
+  } catch (error) {
+    logger.error("AI 局部重建失败", { error: String(error) });
+    next(error);
+  } finally {
+    await cleanupUpload(undefined, regionImagePath);
+  }
+});
+
 apiRouter.get("/config", async (_req, res) => {
   /*
    * ========================================================================
@@ -402,6 +490,88 @@ function reconstructModelValue(value: unknown) {
 
   logger.info("读取重建模型名完成", { model });
   return model;
+}
+
+function regionMergeModeValue(value: unknown): RegionMergeMode {
+  /*
+   * ========================================================================
+   * 步骤1：读取局部重建合并模式
+   * ========================================================================
+   * 目标：
+   *   1) 支持替换旧节点
+   *   2) 支持叠加新节点
+   */
+  logger.info("开始读取局部重建合并模式...", { value });
+
+  // 1.1 读取合法模式
+  const mode = value === "overlay" ? "overlay" : "replace";
+
+  logger.info("读取局部重建合并模式完成", { mode });
+  return mode;
+}
+
+function sceneBoxValue(value: unknown): SceneBox | null {
+  /*
+   * ========================================================================
+   * 步骤1：读取 scene 区域
+   * ========================================================================
+   * 目标：
+   *   1) 校验 x/y/w/h 是有限数字
+   *   2) 拒绝过小区域
+   */
+  logger.info("开始读取 scene 区域...", { value });
+
+  // 1.1 校验对象结构
+  if (!isRecord(value)) {
+    logger.warn("读取 scene 区域失败，结构非法");
+    return null;
+  }
+
+  // 1.2 校验数字字段
+  const box = {
+    x: value.x,
+    y: value.y,
+    w: value.w,
+    h: value.h
+  };
+  if (!Object.values(box).every((item) => typeof item === "number" && Number.isFinite(item))) {
+    logger.warn("读取 scene 区域失败，字段非法");
+    return null;
+  }
+  const region = box as SceneBox;
+  if (Math.abs(region.w) < 4 || Math.abs(region.h) < 4) {
+    logger.warn("读取 scene 区域失败，区域过小");
+    return null;
+  }
+
+  logger.info("读取 scene 区域完成", region);
+  return region;
+}
+
+function uploadPathFromSourceUrl(sourceUrl: string) {
+  /*
+   * ========================================================================
+   * 步骤1：解析上传文件路径
+   * ========================================================================
+   * 目标：
+   *   1) 只允许 /uploads/ 下的运行产物
+   *   2) 使用 basename 防止路径穿越
+   */
+  logger.info("开始解析上传文件路径...", { sourceUrl });
+
+  // 1.1 校验上传 URL
+  const normalized = sourceUrl.replaceAll("\\", "/");
+  const marker = "/uploads/";
+  const index = normalized.indexOf(marker);
+  if (index < 0) {
+    throw new Error("Source image must be a local upload.");
+  }
+
+  // 1.2 返回本地路径
+  const fileName = path.basename(normalized.slice(index + marker.length));
+  const filePath = path.join(uploadDir, fileName);
+  logger.info("解析上传文件路径完成", { filePath });
+  return filePath;
 }
 
 export function isAllowedImageMime(mime: string) {

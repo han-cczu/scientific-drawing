@@ -1,9 +1,9 @@
-import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast, RotateCcw, GitBranch, Undo2, Redo2 } from "lucide-react";
+import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast, RotateCcw, GitBranch, Undo2, Redo2, Crop } from "lucide-react";
 import { logger } from "../lib/logger";
 import type { SceneNodeType } from "../shared/scene";
 import type { ReconstructionMode } from "../lib/api";
 
-export type Tool = "select" | "connector" | SceneNodeType;
+export type Tool = "select" | "connector" | "region-reconstruct" | SceneNodeType;
 
 type ToolbarProps = {
   tool: Tool;
@@ -30,14 +30,15 @@ type ToolbarProps = {
   onResetView: () => void;
 };
 
-const tools: Array<{ id: Tool; label: string; icon: React.ComponentType<{ size?: number }> }> = [
+const tools: Array<{ id: Tool; label: string; icon: React.ComponentType<{ size?: number }>; requiresAi?: boolean }> = [
   { id: "select", label: "选择", icon: MousePointer2 },
   { id: "rect", label: "矩形", icon: Square },
   { id: "ellipse", label: "椭圆", icon: Circle },
   { id: "text", label: "文本", icon: Type },
   { id: "line", label: "线条", icon: Minus },
   { id: "arrow", label: "箭头", icon: MoveRight },
-  { id: "connector", label: "语义连线", icon: GitBranch }
+  { id: "connector", label: "语义连线", icon: GitBranch },
+  { id: "region-reconstruct", label: "局部AI重建", icon: Crop, requiresAi: true }
 ];
 
 export function Toolbar({
@@ -156,6 +157,7 @@ export function Toolbar({
       <div className="tool-group">
         {tools.map((item) => {
           const Icon = item.icon;
+          const disabled = busy || (item.requiresAi && !aiReconstructionAvailable);
           return (
             <button
               key={item.id}
@@ -163,7 +165,7 @@ export function Toolbar({
               title={item.label}
               type="button"
               onClick={() => onToolChange(item.id)}
-              disabled={busy}
+              disabled={disabled}
             >
               <Icon size={18} />
             </button>

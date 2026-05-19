@@ -9,7 +9,7 @@ import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, mo
 import { clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
 import { normalizeImportedScene } from "./editor/visiomasterAdapter";
-import { analyzeImage, exportScene, loadAppConfig, reconstructImage, type ReconstructionMode } from "./lib/api";
+import { analyzeImage, exportScene, loadAppConfig, reconstructImage, reconstructRegion, type ReconstructionMode, type RegionMergeMode } from "./lib/api";
 import { logger } from "./lib/logger";
 import type { Scene } from "./shared/scene";
 import { validateScene } from "./shared/sceneValidation";
@@ -36,6 +36,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [viewport, setViewport] = useState<Viewport>({ scale: 1, offset: { x: 0, y: 0 } });
   const [pendingEdgeFromId, setPendingEdgeFromId] = useState<string | null>(null);
+  const [pendingRegion, setPendingRegion] = useState<SceneBox | null>(null);
   const [aiReconstructionAvailable, setAiReconstructionAvailable] = useState(false);
   const [reconstructionMode, setReconstructionMode] = useState<ReconstructionMode>("color");
   const [reconstructionModel, setReconstructionModel] = useState("");
@@ -139,6 +140,7 @@ export default function App() {
     setTool(next.tool);
     setViewport(next.viewport);
     setPendingEdgeFromId(next.pendingEdgeFromId);
+    setPendingRegion(null);
 
     logger.info("复位编辑器临时状态完成");
   };
@@ -176,6 +178,26 @@ export default function App() {
     setHistory((current) => pushHistory(current, updater(current.present)));
 
     logger.info("提交普通 scene 修改完成");
+  };
+
+  const resetAfterRegionReconstruction = () => {
+    /*
+     * ========================================================================
+     * 步骤1：清理局部重建状态
+     * ========================================================================
+     * 目标：
+     *   1) 关闭确认弹层
+     *   2) 回到选择工具并清空选择
+     */
+    logger.info("开始清理局部重建状态...");
+
+    // 1.1 清理临时状态
+    setPendingRegion(null);
+    setTool("select");
+    setPendingEdgeFromId(null);
+    setSelectedIds([]);
+
+    logger.info("清理局部重建状态完成");
   };
 
   const replaceSceneDuringInteraction = (updater: (current: Scene) => Scene) => {
@@ -257,7 +279,31 @@ export default function App() {
     }
   };
 
-  // 2.3 导入 Visiomaster 风格 scene
+  // 2.3 请求 AI 局部重建
+  const handleRegionReconstruct = async (mergeMode: RegionMergeMode) => {
+    if (!pendingRegion) {
+      return;
+    }
+    if (!aiReconstructionAvailable) {
+      setMessage("AI 局部重建不可用：请在启动后端前设置 OPENAI_API_KEY。");
+      return;
+    }
+    setBusy(true);
+    setMessage(mergeMode === "replace" ? "正在替换式局部重建..." : "正在叠加式局部重建...");
+    try {
+      const payload = await reconstructRegion(scene, pendingRegion, reconstructionMode, reconstructionModel, mergeMode);
+      applySceneChange(() => payload.scene);
+      resetAfterRegionReconstruction();
+      setMessage(`局部 AI 重建完成：${payload.scene.nodes.length} 个节点，${payload.scene.edges.length} 条连线。`);
+    } catch (error) {
+      logger.error("AI 局部重建失败", { error: String(error) });
+      setMessage("AI 局部重建失败。请检查原图是否仍在 data/uploads，或查看服务日志。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 2.4 导入 Visiomaster 风格 scene
   const handleSceneImport = async (file: File) => {
     setBusy(true);
     setMessage("正在导入 scene.json...");
@@ -281,7 +327,7 @@ export default function App() {
     }
   };
 
-  // 2.4 导出重建提示词
+  // 2.5 导出重建提示词
   const handlePromptExport = () => {
     const blob = new Blob([buildReconstructionPrompt()], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -292,28 +338,42 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  // 2.5 移动画布节点
+  // 2.6 移动画布节点
   const handleMove = (nodeIds: string[], dx: number, dy: number) => {
     replaceSceneDuringInteraction((current) => moveNodes(current, nodeIds, dx, dy));
   };
 
-  // 2.6 调整节点尺寸
+  // 2.7 调整节点尺寸
   const handleResize = (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number) => {
     replaceSceneDuringInteraction((current) => resizeNodeFromHandle(current, nodeId, handle, startBox, dx, dy));
   };
 
-  // 2.7 更新选中节点
+  // 2.8 更新选中节点
   const handleSelect = (ids: string[]) => {
     setSelectedIds(ids);
   };
 
-  // 2.8 框选画布节点
+  // 2.9 框选画布节点
   const handleBoxSelect = (box: SceneBox) => {
+    if (tool === "region-reconstruct") {
+      if (!aiReconstructionAvailable) {
+        setMessage("AI 局部重建不可用：请在启动后端前设置 OPENAI_API_KEY。");
+        return;
+      }
+      if (Math.abs(box.w) < 4 || Math.abs(box.h) < 4) {
+        setMessage("局部重建区域太小。");
+        return;
+      }
+      setPendingRegion(box);
+      setSelectedIds([]);
+      setMessage("选择局部重建方式。");
+      return;
+    }
     const ids = selectNodesInRect(scene, box);
     handleSelect(ids);
   };
 
-  // 2.9 点击节点处理语义连线
+  // 2.10 点击节点处理语义连线
   const handleNodeActivate = (nodeId: string) => {
     if (tool !== "connector") {
       return;
@@ -331,9 +391,9 @@ export default function App() {
     setMessage("已创建语义连线。");
   };
 
-  // 2.10 点击画布添加节点
+  // 2.11 点击画布添加节点
   const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (tool === "select" || tool === "connector") {
+    if (tool === "select" || tool === "connector" || tool === "region-reconstruct") {
       return;
     }
     if (event.target !== event.currentTarget && !(event.target instanceof SVGSVGElement)) {
@@ -359,7 +419,7 @@ export default function App() {
     setTool("select");
   };
 
-  // 2.11 导出当前场景
+  // 2.12 导出当前场景
   const handleExport = async (kind: "svg" | "pptx" | "json") => {
     setBusy(true);
     setMessage(`正在导出 ${kind.toUpperCase()}...`);
@@ -375,7 +435,7 @@ export default function App() {
     }
   };
 
-  // 2.12 删除选中节点
+  // 2.13 删除选中节点
   const handleDelete = () => {
     if (selectedIds.length === 0) {
       return;
@@ -384,7 +444,7 @@ export default function App() {
     handleSelect([]);
   };
 
-  // 2.13 复制选中节点
+  // 2.14 复制选中节点
   const handleDuplicate = () => {
     if (selectedIds.length === 0) {
       return;
@@ -399,7 +459,7 @@ export default function App() {
     handleSelect(copies.map((node) => node.id));
   };
 
-  // 2.14 撤销上一项修改
+  // 2.15 撤销上一项修改
   const handleUndo = () => {
     if (!canUndo) {
       return;
@@ -409,7 +469,7 @@ export default function App() {
     setMessage("已撤销。");
   };
 
-  // 2.15 重做上一项修改
+  // 2.16 重做上一项修改
   const handleRedo = () => {
     if (!canRedo) {
       return;
@@ -478,6 +538,7 @@ export default function App() {
         onToolChange={(nextTool) => {
           setTool(nextTool);
           setPendingEdgeFromId(null);
+          setPendingRegion(null);
         }}
         onFileChange={handleFile}
         aiReconstructionAvailable={aiReconstructionAvailable}
@@ -527,6 +588,27 @@ export default function App() {
         onChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
         onStyleChange={(patch) => selectedId && applySceneChange((current) => updateNodeStyle(current, selectedId, patch))}
       />
+      {pendingRegion ? (
+        <div className="region-confirm" role="dialog" aria-label="局部 AI 重建方式">
+          <div>
+            <div className="region-confirm-title">局部 AI 重建</div>
+            <div className="region-confirm-meta">
+              {Math.round(Math.abs(pendingRegion.w))} × {Math.round(Math.abs(pendingRegion.h))} px
+            </div>
+          </div>
+          <div className="region-confirm-actions">
+            <button type="button" onClick={() => handleRegionReconstruct("replace")} disabled={busy}>
+              替换旧节点
+            </button>
+            <button type="button" onClick={() => handleRegionReconstruct("overlay")} disabled={busy}>
+              叠加新节点
+            </button>
+            <button type="button" onClick={() => setPendingRegion(null)} disabled={busy}>
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

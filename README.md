@@ -302,6 +302,7 @@ raw ──▶ normalizeImportedScene ──▶ repairScene ──▶ validateSce
 | 缩放 | 选中后拖动蓝色八方向手柄 |
 | 线条端点 | 拖动折线 / 箭头两个端点 |
 | 语义连线 | 选连线工具，点起止节点 |
+| 局部 AI 重建 | 选局部重建工具，框选区域后选择替换或叠加 |
 | 视图缩放 | `Ctrl` + 滚轮（0.25× ~ 4×） |
 | 视图平移 | 中键拖拽，或 `空格` + 左键拖拽 |
 | 重置视图 | 工具栏重置按钮 |
@@ -352,7 +353,7 @@ raw ──▶ normalizeImportedScene ──▶ repairScene ──▶ validateSce
 
 ### `POST /api/reconstruct`
 
-AI 重建。同 `analyze`，额外可选 `mode = color | mono`（默认 `color`）。
+AI 重建。同 `analyze`，额外可选 `mode = color | mono`（默认 `color`）和 `model`。
 
 服务端流程：
 
@@ -364,6 +365,29 @@ AI 重建。同 `analyze`，额外可选 `mode = color | mono`（默认 `color`�
 5. ensureReplicaBaseLayer 插入锁定原图底图（index 0）
 6. 持久化 scene 到 data/scenes
 ```
+
+### `POST /api/reconstruct-region`
+
+AI 局部重建。请求体为 JSON：
+
+```json
+{
+  "scene": { "version": "0.1" },
+  "region": { "x": 100, "y": 80, "w": 320, "h": 180 },
+  "mode": "color",
+  "model": "gpt-4o",
+  "mergeMode": "replace"
+}
+```
+
+`mergeMode` 支持：
+
+| 值 | 行为 |
+| --- | --- |
+| `replace` | 删除框选区域内旧的可编辑节点，再插入 AI 新节点 |
+| `overlay` | 保留旧节点，把 AI 新节点叠加到当前 scene |
+
+服务端会从 `scene.metadata.sourceImage` 或锁定 `image` 节点找到 `/uploads/...` 原图，按框选区域裁剪后调用同一个 AI 重建链路。AI 返回的是局部坐标，合并时会平移回全局 scene 坐标。
 
 ### `GET /api/scenes/:id`
 
@@ -561,7 +585,7 @@ scientific-drawing/
 | --- | --- |
 | OCR | 普通分析只标记文本区域，不识别真实文字 |
 | 箭头检测 | 普通分析暂不稳定输出 `arrow` edges |
-| AI 稳定性 | 取决于模型能力与提示词 |
+| AI 稳定性 | 取决于模型能力、提示词和框选区域质量 |
 | 数学公式 | 以普通文本保存，不渲染 LaTeX |
 | PPTX 保真 | 优先可编辑，不保证像素一致 |
 | 图层管理 | 暂无显式图层面板 |
@@ -583,7 +607,6 @@ scientific-drawing/
 
 - **OCR**：识别真实文字以替换默认 Text
 - **箭头检测**：让普通分析稳定生成 `arrow` edges
-- **局部重建**：用户框选区域，只让 AI 重建局部
 - **差异闭环**：导出 SVG 后反渲染，与原图自动对比
 - **图层面板**：控制底图、辅助层、语义层可见性
 - **视觉回归**：把 `meanDiff` 接入测试阈值，防止退化

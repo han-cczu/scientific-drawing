@@ -2,6 +2,14 @@ import { logger } from "./logger";
 import type { AnalyzeResponse, Scene } from "../shared/scene";
 
 export type ReconstructionMode = "color" | "mono";
+export type RegionMergeMode = "replace" | "overlay";
+
+export type ApiSceneBox = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
 
 export type AppConfig = {
   aiReconstructionAvailable: boolean;
@@ -98,6 +106,42 @@ export async function reconstructImage(file: File, mode: ReconstructionMode, mod
   // 1.3 解析响应
   const payload = await response.json() as AnalyzeResponse;
   logger.info("上传图片并请求 AI 重建完成", { nodes: payload.scene.nodes.length });
+  return payload;
+}
+
+export async function reconstructRegion(
+  scene: Scene,
+  region: ApiSceneBox,
+  mode: ReconstructionMode,
+  model: string,
+  mergeMode: RegionMergeMode
+): Promise<AnalyzeResponse> {
+  /*
+   * ========================================================================
+   * 步骤1：请求 AI 局部重建
+   * ========================================================================
+   * 目标：
+   *   1) 把当前 scene 和框选区域提交给后端
+   *   2) 获取替换或叠加后的完整 scene
+   */
+  logger.info("开始请求 AI 局部重建...", { region, mode, model, mergeMode });
+
+  // 1.1 请求局部重建接口
+  const response = await fetch("/api/reconstruct-region", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ scene, region, mode, model, mergeMode })
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Region reconstruct failed: ${response.status} ${text}`);
+  }
+
+  // 1.2 解析响应
+  const payload = await response.json() as AnalyzeResponse;
+  logger.info("请求 AI 局部重建完成", { nodes: payload.scene.nodes.length });
   return payload;
 }
 
