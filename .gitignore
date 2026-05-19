@@ -1,0 +1,8 @@
+/node_modules/
+/dist/
+/tsconfig.tsbuildinfo
+/.env
+/.env.*
+/data/exports/
+/data/evaluation/
+/data/*.log
