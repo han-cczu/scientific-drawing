@@ -1,4 +1,4 @@
-import { normalizeHexColor } from "../../../src/shared/geometry";
+import { normalizeHexColor } from "@shared/geometry";
 import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneStyle } from "./types";
 
 const NODE_TYPES = new Set<SceneNodeType>([

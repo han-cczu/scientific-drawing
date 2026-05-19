@@ -10,7 +10,7 @@ import { reconstructWithOpenAI } from "./scene/reconstructWithOpenAI";
 import { sceneToSvg } from "./scene/svg";
 import type { Scene } from "./scene/types";
 import { normalizeImportedScene } from "./scene/visiomasterAdapter";
-import { validateScene } from "../../src/shared/sceneValidation";
+import { validateScene } from "@shared/sceneValidation";
 
 export type SampleResult = {
   file: string;

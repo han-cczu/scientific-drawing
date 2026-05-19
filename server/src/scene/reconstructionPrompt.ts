@@ -3,7 +3,7 @@ import {
   buildReconstructionRulesText,
   buildReconstructionSchemaText,
   buildReconstructionVocabularyText
-} from "../../../src/shared/reconstructionPrompt";
+} from "@shared/reconstructionPrompt";
 
 export type ReconstructionMode = "color" | "mono";
 

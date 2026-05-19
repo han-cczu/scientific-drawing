@@ -6,4 +6,4 @@ export type {
   SceneNode,
   SceneNodeType,
   SceneStyle
-} from "../../../src/shared/scene";
+} from "@shared/scene";

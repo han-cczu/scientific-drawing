@@ -1,5 +1,5 @@
 import { logger } from "../logger";
-import { resolveEndpoint, shadeColor } from "../../../src/shared/geometry";
+import { resolveEndpoint, shadeColor } from "@shared/geometry";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
 export async function sceneToSvg(scene: Scene): Promise<string> {

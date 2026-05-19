@@ -1,6 +1,6 @@
 import pptxgenjs from "pptxgenjs";
 import { logger } from "../logger";
-import { resolveEndpoint, shadeColor } from "../../../src/shared/geometry";
+import { resolveEndpoint, shadeColor } from "@shared/geometry";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
 const TARGET_WIDTH_IN = 13.333;

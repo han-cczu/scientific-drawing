@@ -14,7 +14,7 @@ import type { ReconstructionMode } from "../scene/reconstructionPrompt";
 import { sceneToSvg } from "../scene/svg";
 import type { Scene } from "../scene/types";
 import { normalizeImportedScene } from "../scene/visiomasterAdapter";
-import { validateScene, type ValidationIssue } from "../../../src/shared/sceneValidation";
+import { validateScene, type ValidationIssue } from "@shared/sceneValidation";
 
 const MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024;
 const IMAGE_EXTENSIONS_BY_MIME = new Map([

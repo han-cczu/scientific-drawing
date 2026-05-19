@@ -1,4 +1,4 @@
-import { resolveEndpoint } from "../../../src/shared/geometry";
+import { resolveEndpoint } from "@shared/geometry";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
 type AnyRecord = Record<string, unknown>;
