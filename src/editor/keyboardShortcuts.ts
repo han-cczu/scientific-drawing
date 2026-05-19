@@ -1,11 +1,12 @@
 import { logger } from "../lib/logger";
 
-export type EditorShortcutAction = "delete" | "duplicate" | "cancel";
+export type EditorShortcutAction = "delete" | "duplicate" | "cancel" | "undo" | "redo";
 
 export type EditorShortcutInput = {
   key: string;
   ctrlKey?: boolean;
   metaKey?: boolean;
+  shiftKey?: boolean;
   editable?: boolean;
 };
 
@@ -53,19 +54,36 @@ export function getEditorShortcutAction(input: EditorShortcutInput): EditorShort
     return null;
   }
 
-  // 1.2 映射删除动作
+  // 1.2 映射撤销重做动作
+  if (input.ctrlKey || input.metaKey) {
+    const key = input.key.toLowerCase();
+    if (key === "z" && input.shiftKey) {
+      logger.info("映射编辑器快捷键完成", { action: "redo" });
+      return "redo";
+    }
+    if (key === "z") {
+      logger.info("映射编辑器快捷键完成", { action: "undo" });
+      return "undo";
+    }
+    if (key === "y") {
+      logger.info("映射编辑器快捷键完成", { action: "redo" });
+      return "redo";
+    }
+  }
+
+  // 1.3 映射删除动作
   if (input.key === "Delete" || input.key === "Backspace") {
     logger.info("映射编辑器快捷键完成", { action: "delete" });
     return "delete";
   }
 
-  // 1.3 映射复制动作
+  // 1.4 映射复制动作
   if ((input.ctrlKey || input.metaKey) && input.key.toLowerCase() === "d") {
     logger.info("映射编辑器快捷键完成", { action: "duplicate" });
     return "duplicate";
   }
 
-  // 1.4 映射取消动作
+  // 1.5 映射取消动作
   if (input.key === "Escape") {
     logger.info("映射编辑器快捷键完成", { action: "cancel" });
     return "cancel";

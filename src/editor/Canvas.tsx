@@ -14,12 +14,13 @@ type CanvasProps = {
   onSelect: (ids: string[]) => void;
   onMove: (nodeIds: string[], dx: number, dy: number) => void;
   onResize: (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number) => void;
+  onSceneInteractionCommit: () => void;
   onBoxSelect: (box: SceneBox) => void;
   onNodeActivate: (nodeId: string) => void;
   onViewportChange: (viewport: Viewport) => void;
 };
 
-export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onMove, onResize, onBoxSelect, onNodeActivate, onViewportChange }: CanvasProps) {
+export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onMove, onResize, onSceneInteractionCommit, onBoxSelect, onNodeActivate, onViewportChange }: CanvasProps) {
   /*
    * ========================================================================
    * 步骤1：初始化画布交互
@@ -125,8 +126,12 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
 
   // 2.4 结束拖拽
   const handlePointerUp = () => {
+    const shouldCommit = Boolean(resize || drag);
     setResize(null);
     setDrag(null);
+    if (shouldCommit) {
+      onSceneInteractionCommit();
+    }
   };
 
   // 2.5 启动空白区域框选

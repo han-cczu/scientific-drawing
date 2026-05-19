@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
 import { Toolbar, type Tool } from "./editor/Toolbar";
 import { resetEditorState, selectedIdFromIds } from "./editor/appState";
+import { canRedoHistory, canUndoHistory, commitHistoryPresent, createHistoryState, pushHistory, redoHistory, replaceHistoryPresent, undoHistory } from "./editor/history";
 import { getEditorShortcutAction, isEditableKeyboardTarget } from "./editor/keyboardShortcuts";
 import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, updateNode, updateNodeStyle, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
 import { clientPointToScene, type Viewport } from "./editor/viewport";
@@ -26,7 +27,9 @@ export default function App() {
   logger.info("开始初始化应用状态...");
 
   // 1.1 初始化核心状态
-  const [scene, setScene] = useState<Scene>(() => createBlankScene());
+  const [history, setHistory] = useState(() => createHistoryState<Scene>(createBlankScene()));
+  const scene = history.present;
+  const interactionBaselineRef = useRef<Scene | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectedId = selectedIdFromIds(selectedIds);
   const [tool, setTool] = useState<Tool>("select");
@@ -44,7 +47,9 @@ export default function App() {
     () => scene.nodes.find((node) => selectedIds.includes(node.id) && !node.locked) ?? null,
     [scene.nodes, selectedIds]
   );
-  logger.info("初始化应用状态完成", { selectedId, tool });
+  const canUndo = canUndoHistory(history);
+  const canRedo = canRedoHistory(history);
+  logger.info("初始化应用状态完成", { selectedId, tool, canUndo, canRedo });
 
   /*
    * ========================================================================
@@ -85,6 +90,26 @@ export default function App() {
   // 2.2 完成配置读取绑定
   logger.info("读取后端能力配置完成", { aiReconstructionAvailable });
 
+  useEffect(() => {
+    /*
+     * ========================================================================
+     * 步骤1：同步选择状态
+     * ========================================================================
+     * 目标：
+     *   1) 撤销、重做或删除后移除失效选中项
+     *   2) 保持 Inspector 指向真实可编辑节点
+     */
+    logger.info("开始同步选择状态...");
+
+    // 1.1 过滤已不存在或锁定节点
+    setSelectedIds((current) => {
+      const next = current.filter((id) => scene.nodes.some((node) => node.id === id && !node.locked));
+      return next.length === current.length ? current : next;
+    });
+
+    logger.info("同步选择状态完成");
+  }, [scene.nodes]);
+
   /*
    * ========================================================================
    * 步骤3：绑定业务动作
@@ -118,13 +143,89 @@ export default function App() {
     logger.info("复位编辑器临时状态完成");
   };
 
+  const replaceSceneHistory = (nextScene: Scene) => {
+    /*
+     * ========================================================================
+     * 步骤1：替换 scene 历史
+     * ========================================================================
+     * 目标：
+     *   1) 上传、导入或整图 AI 重建后重置撤销栈
+     *   2) 避免跨文件撤销污染当前画布
+     */
+    logger.info("开始替换 scene 历史...", { nodes: nextScene.nodes.length });
+
+    // 1.1 创建新的历史状态
+    setHistory(createHistoryState(nextScene));
+    interactionBaselineRef.current = null;
+
+    logger.info("替换 scene 历史完成");
+  };
+
+  const applySceneChange = (updater: (current: Scene) => Scene) => {
+    /*
+     * ========================================================================
+     * 步骤1：提交普通 scene 修改
+     * ========================================================================
+     * 目标：
+     *   1) 把一次业务动作记为一个撤销点
+     *   2) 清理重做栈
+     */
+    logger.info("开始提交普通 scene 修改...");
+
+    // 1.1 推入历史快照
+    setHistory((current) => pushHistory(current, updater(current.present)));
+
+    logger.info("提交普通 scene 修改完成");
+  };
+
+  const replaceSceneDuringInteraction = (updater: (current: Scene) => Scene) => {
+    /*
+     * ========================================================================
+     * 步骤1：更新连续交互预览
+     * ========================================================================
+     * 目标：
+     *   1) 拖拽和缩放时实时刷新画布
+     *   2) 暂不产生逐帧撤销记录
+     */
+    logger.info("开始更新连续交互预览...");
+
+    // 1.1 记录交互开始前快照
+    if (!interactionBaselineRef.current) {
+      interactionBaselineRef.current = scene;
+    }
+
+    // 1.2 替换当前快照
+    setHistory((current) => replaceHistoryPresent(current, updater(current.present)));
+
+    logger.info("更新连续交互预览完成");
+  };
+
+  const commitSceneInteraction = () => {
+    /*
+     * ========================================================================
+     * 步骤1：提交连续交互历史
+     * ========================================================================
+     * 目标：
+     *   1) 拖拽或缩放结束后只生成一个撤销点
+     *   2) 保留最终位置或尺寸
+     */
+    logger.info("开始提交连续交互历史...");
+
+    // 1.1 提交交互基线
+    const baseline = interactionBaselineRef.current;
+    setHistory((current) => commitHistoryPresent(current, baseline));
+    interactionBaselineRef.current = null;
+
+    logger.info("提交连续交互历史完成");
+  };
+
   // 2.1 上传并分析图片
   const handleFile = async (file: File) => {
     setBusy(true);
     setMessage("正在分析图片...");
     try {
       const payload = await analyzeImage(file);
-      setScene(payload.scene);
+      replaceSceneHistory(payload.scene);
       applyEditorReset();
       setMessage(`已生成复刻底图和 ${Math.max(0, payload.scene.nodes.length - 1)} 个辅助对象。`);
     } catch (error) {
@@ -145,7 +246,7 @@ export default function App() {
     setMessage("正在调用 AI 重建 scene.json...");
     try {
       const payload = await reconstructImage(file, reconstructionMode, reconstructionModel);
-      setScene(payload.scene);
+      replaceSceneHistory(payload.scene);
       applyEditorReset();
       setMessage(`AI 重建完成：${payload.scene.nodes.length} 个节点，${payload.scene.edges.length} 条连线。`);
     } catch (error) {
@@ -169,7 +270,7 @@ export default function App() {
         setMessage("导入 scene.json 失败：协议不合法。");
         return;
       }
-      setScene(imported);
+      replaceSceneHistory(imported);
       applyEditorReset();
       setMessage(`已导入 ${imported.nodes.length} 个节点和 ${imported.edges.length} 条连线。`);
     } catch (error) {
@@ -193,12 +294,12 @@ export default function App() {
 
   // 2.5 移动画布节点
   const handleMove = (nodeIds: string[], dx: number, dy: number) => {
-    setScene((current) => moveNodes(current, nodeIds, dx, dy));
+    replaceSceneDuringInteraction((current) => moveNodes(current, nodeIds, dx, dy));
   };
 
   // 2.6 调整节点尺寸
   const handleResize = (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number) => {
-    setScene((current) => resizeNodeFromHandle(current, nodeId, handle, startBox, dx, dy));
+    replaceSceneDuringInteraction((current) => resizeNodeFromHandle(current, nodeId, handle, startBox, dx, dy));
   };
 
   // 2.7 更新选中节点
@@ -223,7 +324,7 @@ export default function App() {
       setMessage("请选择连线目标节点。");
       return;
     }
-    setScene((current) => createEdgeBetweenNodes(current, pendingEdgeFromId, nodeId));
+    applySceneChange((current) => createEdgeBetweenNodes(current, pendingEdgeFromId, nodeId));
     setPendingEdgeFromId(null);
     setTool("select");
     handleSelect([nodeId]);
@@ -253,7 +354,7 @@ export default function App() {
     const x = point.x;
     const y = point.y;
     const node = createNode(tool, x, y);
-    setScene((current) => ({ ...current, nodes: [...current.nodes, node] }));
+    applySceneChange((current) => ({ ...current, nodes: [...current.nodes, node] }));
     handleSelect([node.id]);
     setTool("select");
   };
@@ -279,7 +380,7 @@ export default function App() {
     if (selectedIds.length === 0) {
       return;
     }
-    setScene((current) => selectedIds.reduce((next, id) => removeNode(next, id), current));
+    applySceneChange((current) => selectedIds.reduce((next, id) => removeNode(next, id), current));
     handleSelect([]);
   };
 
@@ -294,8 +395,28 @@ export default function App() {
     if (copies.length === 0) {
       return;
     }
-    setScene((current) => ({ ...current, nodes: [...current.nodes, ...copies] }));
+    applySceneChange((current) => ({ ...current, nodes: [...current.nodes, ...copies] }));
     handleSelect(copies.map((node) => node.id));
+  };
+
+  // 2.14 撤销上一项修改
+  const handleUndo = () => {
+    if (!canUndo) {
+      return;
+    }
+    setHistory((current) => undoHistory(current));
+    setPendingEdgeFromId(null);
+    setMessage("已撤销。");
+  };
+
+  // 2.15 重做上一项修改
+  const handleRedo = () => {
+    if (!canRedo) {
+      return;
+    }
+    setHistory((current) => redoHistory(current));
+    setPendingEdgeFromId(null);
+    setMessage("已重做。");
   };
   logger.info("绑定业务动作完成");
 
@@ -317,6 +438,7 @@ export default function App() {
         key: event.key,
         ctrlKey: event.ctrlKey,
         metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
         editable: isEditableKeyboardTarget(event.target)
       });
       if (!action) {
@@ -334,12 +456,18 @@ export default function App() {
         setTool("select");
         setMessage("已取消当前操作。");
       }
+      if (action === "undo") {
+        handleUndo();
+      }
+      if (action === "redo") {
+        handleRedo();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     logger.info("绑定编辑器快捷键完成");
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, scene, pendingEdgeFromId]);
+  }, [selectedIds, scene, pendingEdgeFromId, canUndo, canRedo]);
 
   return (
     <div className="app-shell">
@@ -364,6 +492,10 @@ export default function App() {
         onExport={handleExport}
         onDelete={handleDelete}
         onDuplicate={handleDuplicate}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onResetView={() => setViewport({ scale: 1, offset: { x: 0, y: 0 } })}
       />
       <main className="workspace">
@@ -383,6 +515,7 @@ export default function App() {
             onSelect={handleSelect}
             onMove={handleMove}
             onResize={handleResize}
+            onSceneInteractionCommit={commitSceneInteraction}
             onBoxSelect={handleBoxSelect}
             onNodeActivate={handleNodeActivate}
             onViewportChange={setViewport}
@@ -391,8 +524,8 @@ export default function App() {
       </main>
       <Inspector
         node={selectedNode}
-        onChange={(patch) => selectedId && setScene((current) => updateNode(current, selectedId, patch))}
-        onStyleChange={(patch) => selectedId && setScene((current) => updateNodeStyle(current, selectedId, patch))}
+        onChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
+        onStyleChange={(patch) => selectedId && applySceneChange((current) => updateNodeStyle(current, selectedId, patch))}
       />
     </div>
   );

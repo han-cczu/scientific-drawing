@@ -1,4 +1,4 @@
-import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast, RotateCcw, GitBranch } from "lucide-react";
+import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast, RotateCcw, GitBranch, Undo2, Redo2 } from "lucide-react";
 import { logger } from "../lib/logger";
 import type { SceneNodeType } from "../shared/scene";
 import type { ReconstructionMode } from "../lib/api";
@@ -23,6 +23,10 @@ type ToolbarProps = {
   onExport: (kind: "svg" | "pptx" | "json") => void;
   onDelete: () => void;
   onDuplicate: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onResetView: () => void;
 };
 
@@ -54,6 +58,10 @@ export function Toolbar({
   onExport,
   onDelete,
   onDuplicate,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onResetView
 }: ToolbarProps) {
   /*
@@ -64,7 +72,7 @@ export function Toolbar({
    *   1) 提供上传、选择和绘制工具
    *   2) 提供删除、复制和导出命令
    */
-  logger.info("开始渲染编辑工具栏...", { tool, busy, hasSelection, aiReconstructionAvailable, reconstructionModel });
+  logger.info("开始渲染编辑工具栏...", { tool, busy, hasSelection, aiReconstructionAvailable, reconstructionModel, canUndo, canRedo });
 
   // 1.1 处理文件选择
   const handleInput = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -164,6 +172,12 @@ export function Toolbar({
       </div>
 
       <div className="tool-group">
+        <button className="icon-button" title="撤销" type="button" onClick={onUndo} disabled={!canUndo || busy}>
+          <Undo2 size={18} />
+        </button>
+        <button className="icon-button" title="重做" type="button" onClick={onRedo} disabled={!canRedo || busy}>
+          <Redo2 size={18} />
+        </button>
         <button className="icon-button" title="重置视图" type="button" onClick={onResetView} disabled={busy}>
           <RotateCcw size={18} />
         </button>
