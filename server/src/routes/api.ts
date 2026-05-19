@@ -113,12 +113,18 @@ apiRouter.post("/analyze", uploadImage, async (req, res, next) => {
 
     // 1.3 生成 scene 文件
     const sourceUrl = `/uploads/${fileName}`;
-    const scene = await analyzeImage({
+    const rawScene = await analyzeImage({
       id,
       imagePath,
       sourceUrl,
       title: req.body?.title || req.file.originalname || "Scientific Figure"
     });
+    const validation = repairAndValidateSceneForPersistence(rawScene, { id, sourceUrl });
+    if (!validation.ok) {
+      res.status(500).json({ error: "Generated scene is invalid.", issues: validation.issues });
+      return;
+    }
+    const scene = validation.scene;
     const scenePath = path.join(sceneDir, `${id}.scene.json`);
     await fs.writeFile(scenePath, JSON.stringify(scene, null, 2), "utf-8");
 
@@ -171,11 +177,14 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
       mimeType: req.file.mimetype,
       mode
     });
-    const scene = repairScene(normalizeImportedScene(rawScene));
-    scene.metadata.id = id;
-    scene.metadata.sourceImage = `/uploads/${fileName}`;
+    const sourceUrl = `/uploads/${fileName}`;
+    const validation = repairAndValidateSceneForPersistence(normalizeImportedScene(rawScene), { id, sourceUrl });
+    if (!validation.ok) {
+      res.status(500).json({ error: "Generated scene is invalid.", issues: validation.issues });
+      return;
+    }
+    const scene = validation.scene;
     scene.metadata.notes = [...scene.metadata.notes, `Reconstruction mode: ${mode}.`];
-    ensureReplicaBaseLayer(scene, `/uploads/${fileName}`);
     const scenePath = path.join(sceneDir, `${id}.scene.json`);
     await fs.writeFile(scenePath, JSON.stringify(scene, null, 2), "utf-8");
 
@@ -442,6 +451,34 @@ export function validateSceneForExport(value: unknown): { ok: true; scene: Scene
   const scene = value as Scene;
   logger.info("校验导出 scene 请求体完成", { nodes: scene.nodes.length });
   return { ok: true, scene, issues: [] };
+}
+
+export function repairAndValidateSceneForPersistence(scene: Scene, options: { id: string; sourceUrl: string }): { ok: true; scene: Scene; issues: [] } | { ok: false; scene?: undefined; issues: ValidationIssue[] } {
+  /*
+   * ========================================================================
+   * 步骤1：修复并校验待持久化 scene
+   * ========================================================================
+   * 目标：
+   *   1) 所有写入 data/scenes 的 scene 都先经过修复层
+   *   2) 阻止非法 scene 延迟到导出阶段才暴露
+   */
+  logger.info("开始修复并校验待持久化 scene...", { id: options.id });
+
+  // 1.1 修复 scene 并覆盖服务端元数据
+  const repaired = repairScene(scene);
+  repaired.metadata.id = options.id;
+  repaired.metadata.sourceImage = options.sourceUrl;
+  ensureReplicaBaseLayer(repaired, options.sourceUrl);
+
+  // 1.2 校验修复结果
+  const validation = validateScene(repaired);
+  if (!validation.ok) {
+    logger.warn("待持久化 scene 校验失败", { issues: validation.issues });
+    return { ok: false, issues: validation.issues };
+  }
+
+  logger.info("修复并校验待持久化 scene 完成", { nodes: repaired.nodes.length });
+  return { ok: true, scene: repaired, issues: [] };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
