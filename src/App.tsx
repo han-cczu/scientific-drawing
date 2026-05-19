@@ -3,6 +3,7 @@ import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
 import { Toolbar, type Tool } from "./editor/Toolbar";
 import { createBlankScene, createNode, duplicateNode, moveNodes, removeNode, selectNodesInRect, updateNode, updateNodeStyle, type SceneBox } from "./editor/sceneOps";
+import { clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
 import { normalizeImportedScene } from "./editor/visiomasterAdapter";
 import { analyzeImage, exportScene, loadAppConfig, reconstructImage, type ReconstructionMode } from "./lib/api";
@@ -28,6 +29,7 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState<Tool>("select");
   const [busy, setBusy] = useState(false);
+  const [viewport, setViewport] = useState<Viewport>({ scale: 1, offset: { x: 0, y: 0 } });
   const [aiReconstructionAvailable, setAiReconstructionAvailable] = useState(false);
   const [reconstructionMode, setReconstructionMode] = useState<ReconstructionMode>("color");
   const [message, setMessage] = useState("上传论文图，先生成高保真复刻底图，再叠加可编辑辅助层。");
@@ -93,6 +95,7 @@ export default function App() {
       setSelectedId(null);
       setSelectedIds([]);
       setTool("select");
+      setViewport({ scale: 1, offset: { x: 0, y: 0 } });
       setMessage(`已生成复刻底图和 ${Math.max(0, payload.scene.nodes.length - 1)} 个辅助对象。`);
     } catch (error) {
       logger.error("图片分析失败", { error: String(error) });
@@ -116,6 +119,7 @@ export default function App() {
       setSelectedId(null);
       setSelectedIds([]);
       setTool("select");
+      setViewport({ scale: 1, offset: { x: 0, y: 0 } });
       setMessage(`AI 重建完成：${payload.scene.nodes.length} 个节点，${payload.scene.edges.length} 条连线。`);
     } catch (error) {
       logger.error("AI 重建失败", { error: String(error) });
@@ -142,6 +146,7 @@ export default function App() {
       setSelectedId(null);
       setSelectedIds([]);
       setTool("select");
+      setViewport({ scale: 1, offset: { x: 0, y: 0 } });
       setMessage(`已导入 ${imported.nodes.length} 个节点和 ${imported.edges.length} 条连线。`);
     } catch (error) {
       logger.error("导入 scene 失败", { error: String(error) });
@@ -192,8 +197,15 @@ export default function App() {
       return;
     }
     const rect = target.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * scene.page.width;
-    const y = ((event.clientY - rect.top) / rect.height) * scene.page.height;
+    const point = clientPointToScene({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      rect,
+      page: scene.page,
+      viewport
+    });
+    const x = point.x;
+    const y = point.y;
     const node = createNode(tool, x, y);
     setScene((current) => ({ ...current, nodes: [...current.nodes, node] }));
     handleSelect([node.id]);
@@ -258,6 +270,7 @@ export default function App() {
         onExport={handleExport}
         onDelete={handleDelete}
         onDuplicate={handleDuplicate}
+        onResetView={() => setViewport({ scale: 1, offset: { x: 0, y: 0 } })}
       />
       <main className="workspace">
         <header className="topbar">
@@ -272,9 +285,11 @@ export default function App() {
             scene={scene}
             selectedId={selectedId}
             selectedIds={selectedIds}
+            viewport={viewport}
             onSelect={handleSelect}
             onMove={handleMove}
             onBoxSelect={handleBoxSelect}
+            onViewportChange={setViewport}
           />
         </div>
       </main>

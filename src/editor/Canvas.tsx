@@ -1,16 +1,19 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { logger } from "../lib/logger";
 import { resolveEndpoint, shadeColor } from "../shared/geometry";
 import type { Scene, SceneEdge, SceneNode } from "../shared/scene";
 import type { SceneBox } from "./sceneOps";
+import { clientPointToScene, panViewport, zoomViewportAt, type Viewport } from "./viewport";
 
 type CanvasProps = {
   scene: Scene;
   selectedId: string | null;
   selectedIds: string[];
+  viewport: Viewport;
   onSelect: (ids: string[]) => void;
   onMove: (nodeIds: string[], dx: number, dy: number) => void;
   onBoxSelect: (box: SceneBox) => void;
+  onViewportChange: (viewport: Viewport) => void;
 };
 
 type DragState = {
@@ -26,7 +29,12 @@ type BoxSelectState = {
   currentY: number;
 };
 
-export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBoxSelect }: CanvasProps) {
+type PanState = {
+  clientX: number;
+  clientY: number;
+};
+
+export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onMove, onBoxSelect, onViewportChange }: CanvasProps) {
   /*
    * ========================================================================
    * 步骤1：初始化画布交互
@@ -41,10 +49,32 @@ export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBox
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
+  const [pan, setPan] = useState<PanState | null>(null);
+  const [spacePressed, setSpacePressed] = useState(false);
 
   // 1.2 计算画布样式
   const aspectRatio = useMemo(() => `${scene.page.width} / ${scene.page.height}`, [scene.page.width, scene.page.height]);
   logger.info("初始化画布交互完成", { aspectRatio });
+
+  // 1.3 监听空格平移模式
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        setSpacePressed(true);
+      }
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        setSpacePressed(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
 
   /*
    * ========================================================================
@@ -56,21 +86,29 @@ export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBox
    */
 
   // 2.1 转换指针坐标
-  const pointFromEvent = (event: React.PointerEvent) => {
+  const pointFromEvent = (event: React.PointerEvent | React.WheelEvent) => {
     const svg = svgRef.current;
     if (!svg) {
       return { x: 0, y: 0 };
     }
     const rect = svg.getBoundingClientRect();
-    return {
-      x: ((event.clientX - rect.left) / rect.width) * scene.page.width,
-      y: ((event.clientY - rect.top) / rect.height) * scene.page.height
-    };
+    return clientPointToScene({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      rect,
+      page: scene.page,
+      viewport
+    });
   };
 
   // 2.2 启动拖拽
   const handlePointerDown = (event: React.PointerEvent, node: SceneNode) => {
     event.stopPropagation();
+    if (event.button === 1 || spacePressed) {
+      setPan({ clientX: event.clientX, clientY: event.clientY });
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
     const activeIds = selectedIds.includes(node.id) ? selectedIds : [node.id];
     onSelect(activeIds);
     if (node.locked) {
@@ -103,6 +141,11 @@ export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBox
     if (event.target !== event.currentTarget) {
       return;
     }
+    if (event.button === 1 || spacePressed) {
+      setPan({ clientX: event.clientX, clientY: event.clientY });
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
     const point = pointFromEvent(event);
     onSelect([]);
     setBoxSelect({ startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
@@ -111,6 +154,17 @@ export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBox
 
   // 2.6 更新框选区域
   const handleCanvasPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (pan) {
+      const svg = svgRef.current;
+      const rect = svg?.getBoundingClientRect();
+      const delta = rect ? {
+        x: ((event.clientX - pan.clientX) / rect.width) * scene.page.width,
+        y: ((event.clientY - pan.clientY) / rect.height) * scene.page.height
+      } : { x: 0, y: 0 };
+      onViewportChange(panViewport(viewport, delta));
+      setPan({ clientX: event.clientX, clientY: event.clientY });
+      return;
+    }
     if (boxSelect) {
       const point = pointFromEvent(event);
       setBoxSelect({ ...boxSelect, currentX: point.x, currentY: point.y });
@@ -121,6 +175,10 @@ export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBox
 
   // 2.7 结束框选
   const handleCanvasPointerUp = () => {
+    if (pan) {
+      setPan(null);
+      return;
+    }
     if (boxSelect) {
       onBoxSelect({
         x: boxSelect.startX,
@@ -142,6 +200,17 @@ export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBox
     h: Math.abs(boxSelect.currentY - boxSelect.startY)
   } : null;
 
+  // 2.9 处理滚轮缩放
+  const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
+    if (!event.ctrlKey) {
+      return;
+    }
+    event.preventDefault();
+    const point = pointFromEvent(event);
+    const factor = event.deltaY > 0 ? 0.9 : 1.1;
+    onViewportChange(zoomViewportAt(viewport, point, viewport.scale * factor));
+  };
+
   return (
     <div className="canvas-shell">
       <svg
@@ -149,6 +218,7 @@ export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBox
         className="scene-canvas"
         viewBox={`0 0 ${scene.page.width} ${scene.page.height}`}
         style={{ aspectRatio }}
+        onWheel={handleWheel}
         onPointerMove={handleCanvasPointerMove}
         onPointerUp={handleCanvasPointerUp}
         onPointerLeave={handleCanvasPointerUp}
@@ -159,28 +229,30 @@ export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBox
             <path d="M0,0 L0,6 L9,3 z" fill="context-stroke" />
           </marker>
         </defs>
-        <rect x="0" y="0" width={scene.page.width} height={scene.page.height} fill={scene.page.background} pointerEvents="none" />
-        {scene.edges.map((edge) => (
-          <EdgeView key={edge.id} edge={edge} nodes={scene.nodes} />
-        ))}
-        {scene.nodes.map((node) => (
-          <NodeView
-            key={node.id}
-            node={node}
-            selected={node.id === selectedId || selectedIds.includes(node.id)}
-            onPointerDown={(event) => handlePointerDown(event, node)}
-          />
-        ))}
-        {selectionRect ? (
-          <rect
-            x={selectionRect.x}
-            y={selectionRect.y}
-            width={selectionRect.w}
-            height={selectionRect.h}
-            className="selection-rect"
-            vectorEffect="non-scaling-stroke"
-          />
-        ) : null}
+        <g transform={`translate(${viewport.offset.x} ${viewport.offset.y}) scale(${viewport.scale})`}>
+          <rect x="0" y="0" width={scene.page.width} height={scene.page.height} fill={scene.page.background} pointerEvents="none" />
+          {scene.edges.map((edge) => (
+            <EdgeView key={edge.id} edge={edge} nodes={scene.nodes} />
+          ))}
+          {scene.nodes.map((node) => (
+            <NodeView
+              key={node.id}
+              node={node}
+              selected={node.id === selectedId || selectedIds.includes(node.id)}
+              onPointerDown={(event) => handlePointerDown(event, node)}
+            />
+          ))}
+          {selectionRect ? (
+            <rect
+              x={selectionRect.x}
+              y={selectionRect.y}
+              width={selectionRect.w}
+              height={selectionRect.h}
+              className="selection-rect"
+              vectorEffect="non-scaling-stroke"
+            />
+          ) : null}
+        </g>
       </svg>
     </div>
   );

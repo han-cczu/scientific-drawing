@@ -1,4 +1,4 @@
-import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast } from "lucide-react";
+import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast, RotateCcw } from "lucide-react";
 import { logger } from "../lib/logger";
 import type { SceneNodeType } from "../shared/scene";
 import type { ReconstructionMode } from "../lib/api";
@@ -20,6 +20,7 @@ type ToolbarProps = {
   onExport: (kind: "svg" | "pptx" | "json") => void;
   onDelete: () => void;
   onDuplicate: () => void;
+  onResetView: () => void;
 };
 
 const tools: Array<{ id: Tool; label: string; icon: React.ComponentType<{ size?: number }> }> = [
@@ -45,7 +46,8 @@ export function Toolbar({
   onPromptExport,
   onExport,
   onDelete,
-  onDuplicate
+  onDuplicate,
+  onResetView
 }: ToolbarProps) {
   /*
    * ========================================================================
@@ -144,6 +146,9 @@ export function Toolbar({
       </div>
 
       <div className="tool-group">
+        <button className="icon-button" title="重置视图" type="button" onClick={onResetView} disabled={busy}>
+          <RotateCcw size={18} />
+        </button>
         <button className="icon-button" title="复制" type="button" onClick={onDuplicate} disabled={!hasSelection || busy}>
           <Copy size={18} />
         </button>
