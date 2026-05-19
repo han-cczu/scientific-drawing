@@ -1,6 +1,6 @@
 type LogMeta = Record<string, unknown>;
 
-const browserInfoEnabled = Boolean((import.meta as ImportMeta & { env?: Record<string, unknown> }).env?.VITE_ENABLE_INFO_LOGS);
+const browserInfoEnabled = isBrowserInfoLogEnabled((import.meta as ImportMeta & { env?: Record<string, unknown> }).env);
 
 export const logger = {
   info(message: string, meta?: LogMeta) {
@@ -20,4 +20,18 @@ export const logger = {
 function format(level: string, message: string, meta?: LogMeta) {
   const payload = meta ? ` ${JSON.stringify(meta)}` : "";
   return `[${new Date().toISOString()}] [${level}] ${message}${payload}`;
+}
+
+export function isBrowserInfoLogEnabled(env: Record<string, unknown> | undefined) {
+  /*
+   * ========================================================================
+   * 步骤1：判断前端 info 日志开关
+   * ========================================================================
+   * 目标：
+   *   1) 只在 VITE_ENABLE_INFO_LOGS=1 时启用 info
+   *   2) 避免字符串 0 被误判为启用
+   */
+
+  // 1.1 判断明确开启值
+  return env?.VITE_ENABLE_INFO_LOGS === "1";
 }
