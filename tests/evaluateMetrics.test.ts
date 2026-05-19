@@ -82,6 +82,7 @@ describe("evaluation metrics", () => {
       ssim: 0.98,
       normalizedMeanDiffDelta: 0.001,
       ssimDelta: -0.01,
+      modeResults: [],
       lockedNodes: 1,
       imageNodes: 1,
       textNodes: 1,

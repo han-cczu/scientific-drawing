@@ -4,8 +4,13 @@ import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 import { logger } from "./logger";
 import { analyzeImage } from "./scene/analyzeImage";
+import { readAiRuntimeConfig } from "./scene/aiProviderConfig";
+import { repairScene } from "./scene/repairScene";
+import { reconstructWithOpenAI } from "./scene/reconstructWithOpenAI";
 import { sceneToSvg } from "./scene/svg";
 import type { Scene } from "./scene/types";
+import { normalizeImportedScene } from "./scene/visiomasterAdapter";
+import { validateScene } from "../../src/shared/sceneValidation";
 
 export type SampleResult = {
   file: string;
@@ -26,6 +31,7 @@ export type SampleResult = {
   textNodes: number;
   shapeNodes: number;
   edgeEndpointIssues: number;
+  modeResults: EvaluationModeResult[];
 };
 
 export type SceneComplexity = {
@@ -60,6 +66,17 @@ type EvaluationBaseline = {
 export type EvaluationBaselineDelta = {
   normalizedMeanDiffDelta: number | null;
   ssimDelta: number | null;
+};
+
+export type EvaluationMode = "heuristic" | "ai";
+
+export type EvaluationModeResult = {
+  mode: EvaluationMode;
+  file: string;
+  latencyMs: number;
+  success: boolean;
+  error?: string;
+  estimatedCostUsd: number | null;
 };
 
 const SAMPLE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
@@ -229,6 +246,7 @@ export async function evaluateSample(imagePath: string, reportDir: string): Prom
   logger.info("开始评估单张图片...", { imagePath });
 
   // 1.1 生成 scene
+  const heuristicStartedAt = Date.now();
   const id = path.basename(imagePath, path.extname(imagePath));
   const scene = await analyzeImage({
     id,
@@ -245,6 +263,18 @@ export async function evaluateSample(imagePath: string, reportDir: string): Prom
   await fs.writeFile(svgPath, svg, "utf-8");
 
   // 1.3 计算视觉差异和对象统计
+  const modeResults: EvaluationModeResult[] = [
+    createEvaluationModeResult({
+      mode: "heuristic",
+      file: path.basename(imagePath),
+      startedAt: heuristicStartedAt,
+      endedAt: Date.now()
+    })
+  ];
+  const aiResult = await evaluateAiModeIfEnabled(imagePath, reportDir);
+  if (aiResult) {
+    modeResults.push(aiResult);
+  }
   const visualMetrics = await measureVisualMetrics(imagePath, Buffer.from(svg));
   const complexity = computeSceneComplexity(scene);
   const result: SampleResult = {
@@ -258,11 +288,140 @@ export async function evaluateSample(imagePath: string, reportDir: string): Prom
     ...visualMetrics,
     normalizedMeanDiffDelta: null,
     ssimDelta: null,
+    modeResults,
     ...complexity
   };
 
   logger.info("评估单张图片完成", result);
   return result;
+}
+
+export function createEvaluationModeResult(input: {
+  mode: EvaluationMode;
+  file: string;
+  startedAt: number;
+  endedAt: number;
+  error?: string;
+}): EvaluationModeResult {
+  /*
+   * ========================================================================
+   * 步骤1：创建评估链路结果
+   * ========================================================================
+   * 目标：
+   *   1) 统一记录启发式和 AI 链路状态
+   *   2) 保留耗时、失败原因和成本占位字段
+   */
+  logger.info("开始创建评估链路结果...", { mode: input.mode, file: input.file });
+
+  // 1.1 生成链路结果
+  const result: EvaluationModeResult = {
+    mode: input.mode,
+    file: input.file,
+    latencyMs: input.endedAt - input.startedAt,
+    success: !input.error,
+    error: input.error,
+    estimatedCostUsd: null
+  };
+
+  logger.info("创建评估链路结果完成", result);
+  return result;
+}
+
+async function evaluateAiModeIfEnabled(imagePath: string, reportDir: string) {
+  /*
+   * ========================================================================
+   * 步骤1：按需评估 AI 重建链路
+   * ========================================================================
+   * 目标：
+   *   1) 默认不调用外部模型
+   *   2) EVALUATE_AI=1 时记录 AI 耗时、成功率和校验状态
+   */
+  logger.info("开始按需评估 AI 重建链路...", { imagePath, enabled: process.env.EVALUATE_AI });
+
+  // 1.1 未启用时跳过
+  if (process.env.EVALUATE_AI !== "1") {
+    logger.info("按需评估 AI 重建链路完成", { enabled: false });
+    return null;
+  }
+
+  // 1.2 缺少 API Key 时记录失败
+  const file = path.basename(imagePath);
+  const startedAt = Date.now();
+  const runtimeConfig = readAiRuntimeConfig();
+  if (!runtimeConfig.apiKey) {
+    const result = createEvaluationModeResult({
+      mode: "ai",
+      file,
+      startedAt,
+      endedAt: Date.now(),
+      error: "OPENAI_API_KEY is not set."
+    });
+    logger.info("按需评估 AI 重建链路完成", result);
+    return result;
+  }
+
+  try {
+    // 1.3 调用 AI 重建并校验结果
+    const rawScene = await reconstructWithOpenAI({
+      imagePath,
+      mimeType: mimeTypeFromImagePath(imagePath),
+      mode: "color",
+      model: runtimeConfig.defaultModel
+    });
+    const scene = repairScene(normalizeImportedScene(rawScene));
+    const validation = validateScene(scene);
+    if (!validation.ok) {
+      throw new Error(`AI scene invalid: ${validation.issues.map((issue) => issue.code).join(", ")}`);
+    }
+
+    // 1.4 写入 AI 链路产物
+    const id = path.basename(imagePath, path.extname(imagePath));
+    const aiScenePath = path.join(reportDir, `${id}.ai.scene.json`);
+    await fs.writeFile(aiScenePath, JSON.stringify(scene, null, 2), "utf-8");
+
+    const result = createEvaluationModeResult({
+      mode: "ai",
+      file,
+      startedAt,
+      endedAt: Date.now()
+    });
+    logger.info("按需评估 AI 重建链路完成", result);
+    return result;
+  } catch (error) {
+    // 1.5 捕获 AI 失败并继续评估主链路
+    const result = createEvaluationModeResult({
+      mode: "ai",
+      file,
+      startedAt,
+      endedAt: Date.now(),
+      error: error instanceof Error ? error.message : String(error)
+    });
+    logger.warn("按需评估 AI 重建链路失败", result);
+    return result;
+  }
+}
+
+function mimeTypeFromImagePath(imagePath: string) {
+  /*
+   * ========================================================================
+   * 步骤1：根据文件扩展名推断 MIME
+   * ========================================================================
+   * 目标：
+   *   1) 给 AI 重建 data URL 提供 MIME
+   *   2) 未识别时回退 PNG
+   */
+
+  // 1.1 读取扩展名
+  const extension = path.extname(imagePath).toLowerCase();
+
+  // 1.2 返回 MIME
+  if (extension === ".jpg" || extension === ".jpeg") {
+    return "image/jpeg";
+  }
+  if (extension === ".webp") {
+    return "image/webp";
+  }
+  return "image/png";
 }
 
 export async function measureMeanDiff(imagePath: string, svgBytes: Buffer) {
@@ -491,14 +650,18 @@ function roundedDelta(current: number | null, previous: number | null) {
    *   1) 任一侧缺失时保留 null
    *   2) 避免浮点尾差污染报告
    */
+  logger.info("开始计算四位小数差值...", { current, previous });
 
   // 1.1 处理缺失指标
   if (current === null || previous === null) {
+    logger.info("计算四位小数差值完成", { result: null });
     return null;
   }
 
   // 1.2 返回四位小数差值
-  return Math.round((current - previous) * 10000) / 10000;
+  const result = Math.round((current - previous) * 10000) / 10000;
+  logger.info("计算四位小数差值完成", { result });
+  return result;
 }
 
 export function summarizeTypes(scene: Scene) {

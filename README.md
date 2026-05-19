@@ -451,7 +451,14 @@ $$
 
 如果存在 `data/eval-suite/baseline.json`，评估会按文件名匹配历史结果，并输出 `normalizedMeanDiffDelta` 与 `ssimDelta`。正的 `normalizedMeanDiffDelta` 表示像素误差变大；正的 `ssimDelta` 表示结构相似度提高。
 
-> 评估目前只覆盖**普通分析**链路，不评估 AI 重建质量。
+默认只评估**普通分析**链路。需要评估 AI 重建链路时设置：
+
+```powershell
+$env:EVALUATE_AI = "1"
+npm run evaluate
+```
+
+AI 链路结果会写入每个样本的 `modeResults`，记录 `latencyMs`、`success`、`error` 和 `estimatedCostUsd`。未配置 `OPENAI_API_KEY` 时不会中断评估，只记录 AI 链路失败。
 
 ---
 
