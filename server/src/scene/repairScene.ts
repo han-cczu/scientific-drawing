@@ -82,7 +82,9 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>):
     y: finite(node.y, 0),
     w: positive(Math.abs(finite(node.w, 100)), 1),
     h: nonNegative(Math.abs(finite(node.h, 40)), type === "line" || type === "arrow" ? 0 : 1),
-    style: repairStyle(node.style)
+    style: repairStyle(node.style),
+    locked: typeof node.locked === "boolean" ? node.locked : undefined,
+    hidden: typeof node.hidden === "boolean" ? node.hidden : undefined
   };
 
   // 1.2 修复附属字段

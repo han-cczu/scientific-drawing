@@ -253,6 +253,36 @@ describe("scene export", () => {
     assert.match(svg, new RegExp(`fill="${shadeColor("#FCA5A5", 0.25)}"`));
   });
 
+  it("omits hidden nodes and dependent edges from SVG export", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证隐藏图层不导出
+     * ========================================================================
+     * 目标：
+     *   1) hidden 节点不出现在 SVG
+     *   2) 引用 hidden 节点的 edge 不出现在 SVG
+     */
+
+    // 1.1 准备隐藏节点和依赖边
+    const scene = sampleScene();
+    scene.nodes.push({
+      id: "hidden-node",
+      type: "rect",
+      x: 20,
+      y: 20,
+      w: 40,
+      h: 20,
+      hidden: true,
+      style: { fill: "#FFFFFF", stroke: "#111111" }
+    });
+    scene.edges.push({ id: "hidden-edge", type: "arrow", from: "box:right@0.5", to: "hidden-node:left@0.5", style: { stroke: "#111111" } });
+
+    // 1.2 导出并校验
+    const svg = await sceneToSvg(scene);
+    assert.doesNotMatch(svg, /hidden-node/);
+    assert.doesNotMatch(svg, /hidden-edge/);
+  });
+
   it("writes a PPTX file for grid, bracket, and segmented lines", async () => {
     /*
      * ========================================================================

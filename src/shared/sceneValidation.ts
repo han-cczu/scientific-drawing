@@ -216,6 +216,8 @@ function validateNode(node: SceneNode, index: number, seen: Set<string>, issues:
     addIssue(issues, `${path}.h`, "invalid_node_height", "Node height must be non-negative.");
   }
   validateStyle(node.style, `${path}.style`, issues);
+  validateOptionalBoolean(node.locked, `${path}.locked`, "invalid_node_locked", issues);
+  validateOptionalBoolean(node.hidden, `${path}.hidden`, "invalid_node_hidden", issues);
   validateNodeCollections(node, path, issues);
 }
 
@@ -437,6 +439,12 @@ function validateColor(value: unknown, path: string, issues: ValidationIssue[], 
 function validateFiniteNumber(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     addIssue(issues, path, code, "Value must be a finite number.");
+  }
+}
+
+function validateOptionalBoolean(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
+  if (value !== undefined && typeof value !== "boolean") {
+    addIssue(issues, path, code, "Value must be a boolean.");
   }
 }
 

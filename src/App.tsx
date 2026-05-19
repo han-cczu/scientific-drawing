@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
+import { LayersPanel } from "./editor/LayersPanel";
 import { Toolbar, type Tool } from "./editor/Toolbar";
 import { resetEditorState, selectedIdFromIds } from "./editor/appState";
 import { canRedoHistory, canUndoHistory, commitHistoryPresent, createHistoryState, pushHistory, redoHistory, replaceHistoryPresent, undoHistory } from "./editor/history";
 import { getEditorShortcutAction, isEditableKeyboardTarget } from "./editor/keyboardShortcuts";
-import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, updateNode, updateNodeStyle, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
+import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodeLayer, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked, updateNode, updateNodeStyle, type LayerMoveDirection, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
 import { clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
 import { normalizeImportedScene } from "./editor/visiomasterAdapter";
@@ -45,7 +46,7 @@ export default function App() {
 
   // 1.2 计算选中节点
   const selectedNode = useMemo(
-    () => scene.nodes.find((node) => selectedIds.includes(node.id) && !node.locked) ?? null,
+    () => scene.nodes.find((node) => selectedIds.includes(node.id) && !node.locked && !node.hidden) ?? null,
     [scene.nodes, selectedIds]
   );
   const canUndo = canUndoHistory(history);
@@ -104,7 +105,7 @@ export default function App() {
 
     // 1.1 过滤已不存在或锁定节点
     setSelectedIds((current) => {
-      const next = current.filter((id) => scene.nodes.some((node) => node.id === id && !node.locked));
+      const next = current.filter((id) => scene.nodes.some((node) => node.id === id && !node.locked && !node.hidden));
       return next.length === current.length ? current : next;
     });
 
@@ -459,7 +460,36 @@ export default function App() {
     handleSelect(copies.map((node) => node.id));
   };
 
-  // 2.15 撤销上一项修改
+  // 2.15 切换图层可见性
+  const handleLayerHiddenToggle = (nodeId: string) => {
+    const node = scene.nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      return;
+    }
+    applySceneChange((current) => setNodeHidden(current, nodeId, !node.hidden));
+    if (!node.hidden) {
+      handleSelect(selectedIds.filter((id) => id !== nodeId));
+    }
+  };
+
+  // 2.16 切换图层锁定状态
+  const handleLayerLockedToggle = (nodeId: string) => {
+    const node = scene.nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      return;
+    }
+    applySceneChange((current) => setNodeLocked(current, nodeId, !node.locked));
+    if (!node.locked) {
+      handleSelect(selectedIds.filter((id) => id !== nodeId));
+    }
+  };
+
+  // 2.17 调整图层顺序
+  const handleLayerMove = (nodeId: string, direction: LayerMoveDirection) => {
+    applySceneChange((current) => moveNodeLayer(current, nodeId, direction));
+  };
+
+  // 2.18 撤销上一项修改
   const handleUndo = () => {
     if (!canUndo) {
       return;
@@ -469,7 +499,7 @@ export default function App() {
     setMessage("已撤销。");
   };
 
-  // 2.16 重做上一项修改
+  // 2.19 重做上一项修改
   const handleRedo = () => {
     if (!canRedo) {
       return;
@@ -534,7 +564,7 @@ export default function App() {
       <Toolbar
         tool={tool}
         busy={busy}
-        hasSelection={selectedIds.some((id) => scene.nodes.some((node) => node.id === id && !node.locked))}
+        hasSelection={selectedIds.some((id) => scene.nodes.some((node) => node.id === id && !node.locked && !node.hidden))}
         onToolChange={(nextTool) => {
           setTool(nextTool);
           setPendingEdgeFromId(null);
@@ -583,11 +613,21 @@ export default function App() {
           />
         </div>
       </main>
-      <Inspector
-        node={selectedNode}
-        onChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
-        onStyleChange={(patch) => selectedId && applySceneChange((current) => updateNodeStyle(current, selectedId, patch))}
-      />
+      <aside className="right-panel">
+        <LayersPanel
+          nodes={scene.nodes}
+          selectedIds={selectedIds}
+          onSelect={handleSelect}
+          onToggleHidden={handleLayerHiddenToggle}
+          onToggleLocked={handleLayerLockedToggle}
+          onMoveLayer={handleLayerMove}
+        />
+        <Inspector
+          node={selectedNode}
+          onChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
+          onStyleChange={(patch) => selectedId && applySceneChange((current) => updateNodeStyle(current, selectedId, patch))}
+        />
+      </aside>
       {pendingRegion ? (
         <div className="region-confirm" role="dialog" aria-label="局部 AI 重建方式">
           <div>

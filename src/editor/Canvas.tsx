@@ -5,6 +5,7 @@ import type { BoxSelectState, DragState, PanState, ResizeState } from "./canvasP
 import { EdgeView, NodeView } from "./canvasRender";
 import type { ResizeHandle, SceneBox } from "./sceneOps";
 import { clientPointToScene, panViewport, zoomViewportAt, type Viewport } from "./viewport";
+import { visibleSceneEdges, visibleSceneNodes } from "../shared/sceneVisibility";
 
 type CanvasProps = {
   scene: Scene;
@@ -41,6 +42,8 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
 
   // 1.2 计算画布样式
   const aspectRatio = useMemo(() => `${scene.page.width} / ${scene.page.height}`, [scene.page.width, scene.page.height]);
+  const visibleNodes = useMemo(() => visibleSceneNodes(scene.nodes), [scene.nodes]);
+  const visibleEdges = useMemo(() => visibleSceneEdges(scene.edges, scene.nodes), [scene.edges, scene.nodes]);
   logger.info("初始化画布交互完成", { aspectRatio });
 
   // 1.3 监听空格平移模式
@@ -243,10 +246,10 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
         </defs>
         <g transform={`translate(${viewport.offset.x} ${viewport.offset.y}) scale(${viewport.scale})`}>
           <rect x="0" y="0" width={scene.page.width} height={scene.page.height} fill={scene.page.background} pointerEvents="none" />
-          {scene.edges.map((edge) => (
-            <EdgeView key={edge.id} edge={edge} nodes={scene.nodes} />
+          {visibleEdges.map((edge) => (
+            <EdgeView key={edge.id} edge={edge} nodes={visibleNodes} />
           ))}
-          {scene.nodes.map((node) => (
+          {visibleNodes.map((node) => (
             <NodeView
               key={node.id}
               node={node}

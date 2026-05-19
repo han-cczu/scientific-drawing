@@ -1,6 +1,7 @@
 import pptxgenjs from "pptxgenjs";
 import { logger } from "../logger";
 import { resolveEndpoint, shadeColor } from "@shared/geometry";
+import { visibleSceneEdges, visibleSceneNodes } from "@shared/sceneVisibility";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
 const TARGET_WIDTH_IN = 13.333;
@@ -51,14 +52,16 @@ export async function sceneToPptx(scene: Scene, outputPath: string) {
    *   1) 图片节点作为参考底图
    *   2) 文本、矩形、椭圆和线条转为 PPT 可编辑对象
    */
-  logger.info("开始写入可编辑节点...", { nodes: scene.nodes.length });
+  const visibleNodes = visibleSceneNodes(scene.nodes);
+  const visibleEdges = visibleSceneEdges(scene.edges ?? [], scene.nodes);
+  logger.info("开始写入可编辑节点...", { nodes: visibleNodes.length });
 
   // 2.1 按顺序写入节点
-  for (const node of scene.nodes) {
+  for (const node of visibleNodes) {
     addNode(slide, node, scale);
   }
-  for (const edge of scene.edges ?? []) {
-    addEdge(slide, edge, scene.nodes, scale);
+  for (const edge of visibleEdges) {
+    addEdge(slide, edge, visibleNodes, scale);
   }
 
   // 2.2 输出 PPTX 文件

@@ -48,6 +48,26 @@ describe("scene validation", () => {
     assert.equal(assertScene(validScene()).metadata.id, "scene-1");
   });
 
+  it("accepts hidden and locked node flags", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证节点布尔标记
+     * ========================================================================
+     * 目标：
+     *   1) hidden 可作为协议字段进入 scene
+     *   2) locked 继续保持合法
+     */
+
+    // 1.1 添加图层面板相关标记
+    const scene = validScene();
+    scene.nodes[0].hidden = true;
+    scene.nodes[1].locked = true;
+
+    // 1.2 校验协议通过
+    const result = validateScene(scene);
+    assert.equal(result.ok, true);
+  });
+
   it("rejects duplicate ids and invalid edge endpoints", () => {
     /*
      * ========================================================================
@@ -86,6 +106,7 @@ describe("scene validation", () => {
     scene.page.width = 0;
     scene.page.background = "white";
     scene.nodes[0].w = -1;
+    scene.nodes[0].hidden = "yes" as unknown as boolean;
     scene.nodes[0].style.opacity = 1.5;
     scene.nodes[0].style.fill = "#12";
     scene.edges[0].type = "bad" as Scene["edges"][number]["type"];
@@ -96,6 +117,7 @@ describe("scene validation", () => {
     assert.ok(result.issues.some((issue) => issue.code === "invalid_page_width"));
     assert.ok(result.issues.some((issue) => issue.code === "invalid_color"));
     assert.ok(result.issues.some((issue) => issue.code === "invalid_node_width"));
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_node_hidden"));
     assert.ok(result.issues.some((issue) => issue.code === "invalid_opacity"));
     assert.ok(result.issues.some((issue) => issue.code === "invalid_edge_type"));
   });

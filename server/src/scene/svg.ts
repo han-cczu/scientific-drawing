@@ -1,5 +1,6 @@
 import { logger } from "../logger";
 import { resolveEndpoint, shadeColor } from "@shared/geometry";
+import { visibleSceneEdges, visibleSceneNodes } from "@shared/sceneVisibility";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
 export async function sceneToSvg(scene: Scene): Promise<string> {
@@ -18,8 +19,10 @@ export async function sceneToSvg(scene: Scene): Promise<string> {
   });
 
   // 1.1 生成节点元素
-  const edgeElements = (scene.edges ?? []).map((edge) => edgeToSvg(edge, scene.nodes)).join("\n");
-  const elements = (await Promise.all(scene.nodes.map((node) => nodeToSvg(node)))).join("\n");
+  const visibleNodes = visibleSceneNodes(scene.nodes);
+  const visibleEdges = visibleSceneEdges(scene.edges ?? [], scene.nodes);
+  const edgeElements = visibleEdges.map((edge) => edgeToSvg(edge, visibleNodes)).join("\n");
+  const elements = (await Promise.all(visibleNodes.map((node) => nodeToSvg(node)))).join("\n");
 
   // 1.2 组装完整 SVG
   const svg = [

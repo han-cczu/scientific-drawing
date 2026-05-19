@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolveEndpoint } from "../src/shared/geometry";
-import { createEdgeBetweenNodes, moveNodes, normalizeBox, removeNode, resizeNode, resizeNodeFromHandle, selectNodesInRect } from "../src/editor/sceneOps";
+import { createEdgeBetweenNodes, moveNodeLayer, moveNodes, normalizeBox, removeNode, resizeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked } from "../src/editor/sceneOps";
 import type { Scene } from "../src/shared/scene";
 
 function editorScene(): Scene {
@@ -130,6 +130,71 @@ describe("editor scene operations", () => {
 
     // 1.2 校验选中结果
     assert.deepEqual(ids, ["a", "line"]);
+  });
+
+  it("ignores hidden nodes during box selection", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证隐藏节点不可框选
+     * ========================================================================
+     * 目标：
+     *   1) 隐藏节点不进入框选结果
+     *   2) 可见节点仍正常命中
+     */
+
+    // 1.1 隐藏一个节点
+    const scene = editorScene();
+    scene.nodes[1].hidden = true;
+
+    // 1.2 执行框选
+    const ids = selectNodesInRect(scene, { x: -10, y: -10, w: 120, h: 180 });
+
+    // 1.3 校验隐藏节点未选中
+    assert.deepEqual(ids, ["line"]);
+  });
+
+  it("toggles layer visibility and lock flags", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证图层标记修改
+     * ========================================================================
+     * 目标：
+     *   1) 支持设置 hidden
+     *   2) 支持设置 locked
+     */
+
+    // 1.1 切换图层状态
+    const hidden = setNodeHidden(editorScene(), "a", true);
+    const locked = setNodeLocked(hidden, "a", true);
+
+    // 1.2 校验节点状态
+    const node = locked.nodes.find((item) => item.id === "a");
+    assert.equal(node?.hidden, true);
+    assert.equal(node?.locked, true);
+  });
+
+  it("moves nodes through layer order without moving locked base below top constraints", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证图层排序
+     * ========================================================================
+     * 目标：
+     *   1) 支持上移、下移、置顶、置底
+     *   2) 保持节点总数不变
+     */
+
+    // 1.1 移动图层
+    const forward = moveNodeLayer(editorScene(), "a", "forward");
+    const backward = moveNodeLayer(forward, "a", "backward");
+    const front = moveNodeLayer(backward, "line", "front");
+    const back = moveNodeLayer(front, "line", "back");
+
+    // 1.2 校验顺序
+    assert.deepEqual(forward.nodes.map((node) => node.id), ["base", "b", "a", "line", "arrow"]);
+    assert.deepEqual(backward.nodes.map((node) => node.id), ["base", "a", "b", "line", "arrow"]);
+    assert.equal(front.nodes.at(-1)?.id, "line");
+    assert.equal(back.nodes[0]?.id, "line");
+    assert.equal(back.nodes.length, editorScene().nodes.length);
   });
 
   it("resizes shape nodes from directional handles", () => {

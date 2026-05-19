@@ -44,6 +44,7 @@ export type SceneNode = {
   tickPositions?: number[];
   style: SceneStyle;
   locked?: boolean;
+  hidden?: boolean;
 };
 
 export type SceneEdgeType = "arrow" | "line" | "join" | "fork";

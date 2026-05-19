@@ -23,6 +23,7 @@ export type ResizeHandle =
   | "line-end";
 
 const MIN_NODE_SIZE = 8;
+export type LayerMoveDirection = "front" | "back" | "forward" | "backward";
 
 export function createBlankScene(): Scene {
   /*
@@ -164,7 +165,7 @@ export function moveNodes(scene: Scene, nodeIds: string[], dx: number, dy: numbe
 
   // 1.2 生成移动后的节点列表
   const nodes = scene.nodes.map((node) => {
-    if (!idSet.has(node.id) || node.locked) {
+    if (!idSet.has(node.id) || node.locked || node.hidden) {
       return node;
     }
     const moved: SceneNode = {
@@ -204,7 +205,7 @@ export function resizeNode(scene: Scene, nodeId: string, nextBox: SceneBox): Sce
 
   // 1.2 更新目标节点
   const nodes = scene.nodes.map((node) => {
-    if (node.id !== nodeId || node.locked) {
+    if (node.id !== nodeId || node.locked || node.hidden) {
       return node;
     }
     return { ...node, ...clamped };
@@ -227,7 +228,7 @@ export function resizeNodeFromHandle(scene: Scene, nodeId: string, handle: Resiz
 
   // 1.1 查找目标节点
   const node = scene.nodes.find((item) => item.id === nodeId);
-  if (!node || node.locked) {
+  if (!node || node.locked || node.hidden) {
     logger.warn("按手柄调整节点失败，节点不存在或已锁定", { nodeId });
     return scene;
   }
@@ -264,7 +265,7 @@ export function selectNodesInRect(scene: Scene, rect: SceneBox): string[] {
 
   // 1.2 返回相交节点 id
   const ids = scene.nodes
-    .filter((node) => !node.locked && boxesIntersect(selection, nodeBox(node)))
+    .filter((node) => !node.locked && !node.hidden && boxesIntersect(selection, nodeBox(node)))
     .map((node) => node.id);
 
   logger.info("框选节点完成", { count: ids.length });
@@ -285,7 +286,7 @@ export function createEdgeBetweenNodes(scene: Scene, fromNodeId: string, toNodeI
   // 1.1 校验起止节点
   const from = scene.nodes.find((node) => node.id === fromNodeId);
   const to = scene.nodes.find((node) => node.id === toNodeId);
-  if (!from || !to || from.id === to.id) {
+  if (!from || !to || from.id === to.id || from.hidden || to.hidden) {
     logger.warn("创建语义连线失败，节点无效", { fromNodeId, toNodeId });
     return scene;
   }
@@ -368,7 +369,7 @@ export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {
 
   // 1.1 查找源节点
   const source = scene.nodes.find((node) => node.id === nodeId);
-  if (!source) {
+  if (!source || source.hidden) {
     logger.warn("复制节点失败，节点不存在", { nodeId });
     return null;
   }
@@ -385,6 +386,106 @@ export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {
 
   logger.info("复制节点完成", { nodeId, copyId: copy.id });
   return copy;
+}
+
+export function setNodeHidden(scene: Scene, nodeId: string, hidden: boolean): Scene {
+  /*
+   * ========================================================================
+   * 步骤1：设置节点可见性
+   * ========================================================================
+   * 目标：
+   *   1) 支持图层面板隐藏或显示节点
+   *   2) 保留节点其他字段
+   */
+  logger.info("开始设置节点可见性...", { nodeId, hidden });
+
+  // 1.1 更新节点 hidden 字段
+  const nodes = scene.nodes.map((node) => node.id === nodeId ? { ...node, hidden } : node);
+
+  // 1.2 返回新场景
+  const next = { ...scene, nodes };
+  logger.info("设置节点可见性完成", { nodeId, hidden });
+  return next;
+}
+
+export function setNodeLocked(scene: Scene, nodeId: string, locked: boolean): Scene {
+  /*
+   * ========================================================================
+   * 步骤1：设置节点锁定状态
+   * ========================================================================
+   * 目标：
+   *   1) 支持图层面板锁定或解锁节点
+   *   2) 保留节点其他字段
+   */
+  logger.info("开始设置节点锁定状态...", { nodeId, locked });
+
+  // 1.1 更新节点 locked 字段
+  const nodes = scene.nodes.map((node) => node.id === nodeId ? { ...node, locked } : node);
+
+  // 1.2 返回新场景
+  const next = { ...scene, nodes };
+  logger.info("设置节点锁定状态完成", { nodeId, locked });
+  return next;
+}
+
+export function moveNodeLayer(scene: Scene, nodeId: string, direction: LayerMoveDirection): Scene {
+  /*
+   * ========================================================================
+   * 步骤1：调整节点图层顺序
+   * ========================================================================
+   * 目标：
+   *   1) 支持上移、下移、置顶和置底
+   *   2) 保持节点对象内容不变
+   */
+  logger.info("开始调整节点图层顺序...", { nodeId, direction });
+
+  // 1.1 查找节点位置
+  const index = scene.nodes.findIndex((node) => node.id === nodeId);
+  if (index < 0) {
+    logger.warn("调整节点图层顺序失败，节点不存在", { nodeId });
+    return scene;
+  }
+
+  // 1.2 计算目标位置
+  const target = targetLayerIndex(index, scene.nodes.length, direction);
+  if (target === index) {
+    logger.info("调整节点图层顺序完成，顺序未变化", { nodeId });
+    return scene;
+  }
+
+  // 1.3 移动节点
+  const nodes = [...scene.nodes];
+  const [node] = nodes.splice(index, 1);
+  nodes.splice(target, 0, node);
+
+  logger.info("调整节点图层顺序完成", { nodeId, target });
+  return { ...scene, nodes };
+}
+
+function targetLayerIndex(index: number, length: number, direction: LayerMoveDirection) {
+  /*
+   * ========================================================================
+   * 步骤1：计算目标图层位置
+   * ========================================================================
+   * 目标：
+   *   1) 把图层动作转换成数组索引
+   *   2) 限制索引不越界
+   */
+  logger.info("开始计算目标图层位置...", { index, length, direction });
+
+  // 1.1 根据方向计算索引
+  const target = direction === "front"
+    ? length - 1
+    : direction === "back"
+      ? 0
+      : direction === "forward"
+        ? index + 1
+        : index - 1;
+
+  // 1.2 夹紧索引
+  const result = Math.max(0, Math.min(length - 1, target));
+  logger.info("计算目标图层位置完成", { result });
+  return result;
 }
 
 function nodeBox(node: SceneNode): SceneBox {
