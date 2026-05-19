@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
 import { Toolbar, type Tool } from "./editor/Toolbar";
-import { createBlankScene, createNode, duplicateNode, removeNode, updateNode, updateNodeStyle } from "./editor/sceneOps";
+import { createBlankScene, createNode, duplicateNode, moveNodes, removeNode, selectNodesInRect, updateNode, updateNodeStyle, type SceneBox } from "./editor/sceneOps";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
 import { normalizeImportedScene } from "./editor/visiomasterAdapter";
 import { analyzeImage, exportScene, loadAppConfig, reconstructImage, type ReconstructionMode } from "./lib/api";
@@ -25,6 +25,7 @@ export default function App() {
   // 1.1 初始化核心状态
   const [scene, setScene] = useState<Scene>(() => createBlankScene());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState<Tool>("select");
   const [busy, setBusy] = useState(false);
   const [aiReconstructionAvailable, setAiReconstructionAvailable] = useState(false);
@@ -33,8 +34,8 @@ export default function App() {
 
   // 1.2 计算选中节点
   const selectedNode = useMemo(
-    () => scene.nodes.find((node) => node.id === selectedId) ?? null,
-    [scene.nodes, selectedId]
+    () => scene.nodes.find((node) => selectedIds.includes(node.id) && !node.locked) ?? null,
+    [scene.nodes, selectedIds]
   );
   logger.info("初始化应用状态完成", { selectedId, tool });
 
@@ -90,6 +91,7 @@ export default function App() {
       const payload = await analyzeImage(file);
       setScene(payload.scene);
       setSelectedId(null);
+      setSelectedIds([]);
       setTool("select");
       setMessage(`已生成复刻底图和 ${Math.max(0, payload.scene.nodes.length - 1)} 个辅助对象。`);
     } catch (error) {
@@ -112,6 +114,7 @@ export default function App() {
       const payload = await reconstructImage(file, reconstructionMode);
       setScene(payload.scene);
       setSelectedId(null);
+      setSelectedIds([]);
       setTool("select");
       setMessage(`AI 重建完成：${payload.scene.nodes.length} 个节点，${payload.scene.edges.length} 条连线。`);
     } catch (error) {
@@ -137,6 +140,7 @@ export default function App() {
       }
       setScene(imported);
       setSelectedId(null);
+      setSelectedIds([]);
       setTool("select");
       setMessage(`已导入 ${imported.nodes.length} 个节点和 ${imported.edges.length} 条连线。`);
     } catch (error) {
@@ -159,18 +163,23 @@ export default function App() {
   };
 
   // 2.5 移动画布节点
-  const handleMove = (nodeId: string, dx: number, dy: number) => {
-    setScene((current) => {
-      const node = current.nodes.find((item) => item.id === nodeId);
-      if (!node || node.locked) {
-        return current;
-      }
-      const points = node.points?.map((point) => ({ x: point.x + dx, y: point.y + dy }));
-      return updateNode(current, nodeId, { x: node.x + dx, y: node.y + dy, points });
-    });
+  const handleMove = (nodeIds: string[], dx: number, dy: number) => {
+    setScene((current) => moveNodes(current, nodeIds, dx, dy));
   };
 
-  // 2.6 点击画布添加节点
+  // 2.6 更新选中节点
+  const handleSelect = (ids: string[]) => {
+    setSelectedIds(ids);
+    setSelectedId(ids[0] ?? null);
+  };
+
+  // 2.7 框选画布节点
+  const handleBoxSelect = (box: SceneBox) => {
+    const ids = selectNodesInRect(scene, box);
+    handleSelect(ids);
+  };
+
+  // 2.8 点击画布添加节点
   const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (tool === "select") {
       return;
@@ -187,11 +196,11 @@ export default function App() {
     const y = ((event.clientY - rect.top) / rect.height) * scene.page.height;
     const node = createNode(tool, x, y);
     setScene((current) => ({ ...current, nodes: [...current.nodes, node] }));
-    setSelectedId(node.id);
+    handleSelect([node.id]);
     setTool("select");
   };
 
-  // 2.7 导出当前场景
+  // 2.9 导出当前场景
   const handleExport = async (kind: "svg" | "pptx" | "json") => {
     setBusy(true);
     setMessage(`正在导出 ${kind.toUpperCase()}...`);
@@ -207,26 +216,28 @@ export default function App() {
     }
   };
 
-  // 2.8 删除选中节点
+  // 2.10 删除选中节点
   const handleDelete = () => {
-    if (!selectedId) {
+    if (selectedIds.length === 0) {
       return;
     }
-    setScene((current) => removeNode(current, selectedId));
-    setSelectedId(null);
+    setScene((current) => selectedIds.reduce((next, id) => removeNode(next, id), current));
+    handleSelect([]);
   };
 
-  // 2.9 复制选中节点
+  // 2.11 复制选中节点
   const handleDuplicate = () => {
-    if (!selectedId) {
+    if (selectedIds.length === 0) {
       return;
     }
-    const copy = duplicateNode(scene, selectedId);
-    if (!copy) {
+    const copies = selectedIds
+      .map((id) => duplicateNode(scene, id))
+      .filter((node) => node !== null);
+    if (copies.length === 0) {
       return;
     }
-    setScene((current) => ({ ...current, nodes: [...current.nodes, copy] }));
-    setSelectedId(copy.id);
+    setScene((current) => ({ ...current, nodes: [...current.nodes, ...copies] }));
+    handleSelect(copies.map((node) => node.id));
   };
   logger.info("绑定业务动作完成");
 
@@ -235,7 +246,7 @@ export default function App() {
       <Toolbar
         tool={tool}
         busy={busy}
-        hasSelection={Boolean(selectedNode && !selectedNode.locked)}
+        hasSelection={selectedIds.some((id) => scene.nodes.some((node) => node.id === id && !node.locked))}
         onToolChange={setTool}
         onFileChange={handleFile}
         aiReconstructionAvailable={aiReconstructionAvailable}
@@ -257,7 +268,14 @@ export default function App() {
           <div className="scene-meta">{scene.page.width} × {scene.page.height}px · {scene.nodes.length} objects</div>
         </header>
         <div className={tool === "select" ? "canvas-hit-area" : "canvas-hit-area drawing"} onClick={handleCanvasClick}>
-          <Canvas scene={scene} selectedId={selectedId} onSelect={setSelectedId} onMove={handleMove} />
+          <Canvas
+            scene={scene}
+            selectedId={selectedId}
+            selectedIds={selectedIds}
+            onSelect={handleSelect}
+            onMove={handleMove}
+            onBoxSelect={handleBoxSelect}
+          />
         </div>
       </main>
       <Inspector

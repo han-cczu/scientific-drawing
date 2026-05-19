@@ -3,6 +3,15 @@ import { createId } from "../lib/id";
 import { endpointReferencesNode } from "../shared/geometry";
 import type { Scene, SceneNode, SceneNodeType } from "../shared/scene";
 
+export type SceneBox = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+const MIN_NODE_SIZE = 8;
+
 export function createBlankScene(): Scene {
   /*
    * ========================================================================
@@ -127,6 +136,120 @@ export function updateNodeStyle(scene: Scene, nodeId: string, patch: SceneNode["
   return next;
 }
 
+export function moveNodes(scene: Scene, nodeIds: string[], dx: number, dy: number): Scene {
+  /*
+   * ========================================================================
+   * 步骤1：批量移动节点
+   * ========================================================================
+   * 目标：
+   *   1) 支持多选节点一起移动
+   *   2) 跳过锁定节点并同步移动 points
+   */
+  logger.info("开始批量移动节点...", { count: nodeIds.length, dx, dy });
+
+  // 1.1 准备待移动节点集合
+  const idSet = new Set(nodeIds);
+
+  // 1.2 生成移动后的节点列表
+  const nodes = scene.nodes.map((node) => {
+    if (!idSet.has(node.id) || node.locked) {
+      return node;
+    }
+    const moved: SceneNode = {
+      ...node,
+      x: node.x + dx,
+      y: node.y + dy
+    };
+    if (node.points?.length) {
+      moved.points = node.points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+    }
+    return moved;
+  });
+
+  logger.info("批量移动节点完成", { count: nodeIds.length });
+  return { ...scene, nodes };
+}
+
+export function resizeNode(scene: Scene, nodeId: string, nextBox: SceneBox): Scene {
+  /*
+   * ========================================================================
+   * 步骤1：调整节点尺寸
+   * ========================================================================
+   * 目标：
+   *   1) 归一化拖拽产生的反向盒子
+   *   2) 限制最小宽高，避免节点不可见
+   */
+  logger.info("开始调整节点尺寸...", { nodeId });
+
+  // 1.1 归一化目标盒子
+  const box = normalizeBox(nextBox);
+  const clamped = {
+    x: box.x,
+    y: box.y,
+    w: Math.max(MIN_NODE_SIZE, box.w),
+    h: Math.max(MIN_NODE_SIZE, box.h)
+  };
+
+  // 1.2 更新目标节点
+  const nodes = scene.nodes.map((node) => {
+    if (node.id !== nodeId || node.locked) {
+      return node;
+    }
+    return { ...node, ...clamped };
+  });
+
+  logger.info("调整节点尺寸完成", { nodeId, width: clamped.w, height: clamped.h });
+  return { ...scene, nodes };
+}
+
+export function selectNodesInRect(scene: Scene, rect: SceneBox): string[] {
+  /*
+   * ========================================================================
+   * 步骤1：框选节点
+   * ========================================================================
+   * 目标：
+   *   1) 选出与选择框相交的可编辑节点
+   *   2) 默认忽略锁定底图等不可编辑对象
+   */
+  logger.info("开始框选节点...");
+
+  // 1.1 归一化选择区域
+  const selection = normalizeBox(rect);
+
+  // 1.2 返回相交节点 id
+  const ids = scene.nodes
+    .filter((node) => !node.locked && boxesIntersect(selection, nodeBox(node)))
+    .map((node) => node.id);
+
+  logger.info("框选节点完成", { count: ids.length });
+  return ids;
+}
+
+export function normalizeBox(box: SceneBox): SceneBox {
+  /*
+   * ========================================================================
+   * 步骤1：归一化矩形盒子
+   * ========================================================================
+   * 目标：
+   *   1) 把负向拖拽转换为正向坐标
+   *   2) 供框选和尺寸调整共用
+   */
+  logger.info("开始归一化矩形盒子...", box);
+
+  // 1.1 计算正向坐标
+  const x = box.w < 0 ? box.x + box.w : box.x;
+  const y = box.h < 0 ? box.y + box.h : box.y;
+  const normalized = {
+    x,
+    y,
+    w: Math.abs(box.w),
+    h: Math.abs(box.h)
+  };
+
+  logger.info("归一化矩形盒子完成", normalized);
+  return normalized;
+}
+
 export function removeNode(scene: Scene, nodeId: string): Scene {
   /*
    * ========================================================================
@@ -180,4 +303,52 @@ export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {
 
   logger.info("复制节点完成", { nodeId, copyId: copy.id });
   return copy;
+}
+
+function nodeBox(node: SceneNode): SceneBox {
+  /*
+   * ========================================================================
+   * 步骤1：读取节点包围盒
+   * ========================================================================
+   * 目标：
+   *   1) 优先从 points 计算线条包围盒
+   *   2) 普通节点使用 x/y/w/h
+   */
+  logger.info("开始读取节点包围盒...", { nodeId: node.id });
+
+  // 1.1 处理线条点数组
+  if (node.points?.length) {
+    const xs = node.points.map((point) => point.x);
+    const ys = node.points.map((point) => point.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    const box = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    logger.info("读取节点包围盒完成", { nodeId: node.id, box });
+    return box;
+  }
+
+  // 1.2 返回普通节点盒子
+  const box = { x: node.x, y: node.y, w: node.w, h: node.h };
+  logger.info("读取节点包围盒完成", { nodeId: node.id, box });
+  return box;
+}
+
+function boxesIntersect(a: SceneBox, b: SceneBox) {
+  /*
+   * ========================================================================
+   * 步骤1：判断矩形相交
+   * ========================================================================
+   * 目标：
+   *   1) 支持框选命中节点
+   *   2) 允许边界接触视为选中
+   */
+  logger.info("开始判断矩形相交...");
+
+  // 1.1 计算相交结果
+  const result = a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
+
+  logger.info("判断矩形相交完成", { result });
+  return result;
 }

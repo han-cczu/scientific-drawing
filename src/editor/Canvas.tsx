@@ -2,21 +2,31 @@ import { useMemo, useRef, useState } from "react";
 import { logger } from "../lib/logger";
 import { resolveEndpoint, shadeColor } from "../shared/geometry";
 import type { Scene, SceneEdge, SceneNode } from "../shared/scene";
+import type { SceneBox } from "./sceneOps";
 
 type CanvasProps = {
   scene: Scene;
   selectedId: string | null;
-  onSelect: (id: string | null) => void;
-  onMove: (nodeId: string, dx: number, dy: number) => void;
+  selectedIds: string[];
+  onSelect: (ids: string[]) => void;
+  onMove: (nodeIds: string[], dx: number, dy: number) => void;
+  onBoxSelect: (box: SceneBox) => void;
 };
 
 type DragState = {
-  nodeId: string;
+  nodeIds: string[];
   startX: number;
   startY: number;
 };
 
-export function Canvas({ scene, selectedId, onSelect, onMove }: CanvasProps) {
+type BoxSelectState = {
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+};
+
+export function Canvas({ scene, selectedId, selectedIds, onSelect, onMove, onBoxSelect }: CanvasProps) {
   /*
    * ========================================================================
    * 步骤1：初始化画布交互
@@ -30,6 +40,7 @@ export function Canvas({ scene, selectedId, onSelect, onMove }: CanvasProps) {
   // 1.1 准备 SVG 引用和拖拽状态
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
 
   // 1.2 计算画布样式
   const aspectRatio = useMemo(() => `${scene.page.width} / ${scene.page.height}`, [scene.page.width, scene.page.height]);
@@ -60,12 +71,13 @@ export function Canvas({ scene, selectedId, onSelect, onMove }: CanvasProps) {
   // 2.2 启动拖拽
   const handlePointerDown = (event: React.PointerEvent, node: SceneNode) => {
     event.stopPropagation();
-    onSelect(node.id);
+    const activeIds = selectedIds.includes(node.id) ? selectedIds : [node.id];
+    onSelect(activeIds);
     if (node.locked) {
       return;
     }
     const point = pointFromEvent(event);
-    setDrag({ nodeId: node.id, startX: point.x, startY: point.y });
+    setDrag({ nodeIds: activeIds, startX: point.x, startY: point.y });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -77,7 +89,7 @@ export function Canvas({ scene, selectedId, onSelect, onMove }: CanvasProps) {
     const point = pointFromEvent(event);
     const dx = point.x - drag.startX;
     const dy = point.y - drag.startY;
-    onMove(drag.nodeId, dx, dy);
+    onMove(drag.nodeIds, dx, dy);
     setDrag({ ...drag, startX: point.x, startY: point.y });
   };
 
@@ -86,6 +98,50 @@ export function Canvas({ scene, selectedId, onSelect, onMove }: CanvasProps) {
     setDrag(null);
   };
 
+  // 2.5 启动空白区域框选
+  const handleCanvasPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    const point = pointFromEvent(event);
+    onSelect([]);
+    setBoxSelect({ startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  // 2.6 更新框选区域
+  const handleCanvasPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (boxSelect) {
+      const point = pointFromEvent(event);
+      setBoxSelect({ ...boxSelect, currentX: point.x, currentY: point.y });
+      return;
+    }
+    handlePointerMove(event);
+  };
+
+  // 2.7 结束框选
+  const handleCanvasPointerUp = () => {
+    if (boxSelect) {
+      onBoxSelect({
+        x: boxSelect.startX,
+        y: boxSelect.startY,
+        w: boxSelect.currentX - boxSelect.startX,
+        h: boxSelect.currentY - boxSelect.startY
+      });
+      setBoxSelect(null);
+      return;
+    }
+    handlePointerUp();
+  };
+
+  // 2.8 生成框选可视矩形
+  const selectionRect = boxSelect ? {
+    x: Math.min(boxSelect.startX, boxSelect.currentX),
+    y: Math.min(boxSelect.startY, boxSelect.currentY),
+    w: Math.abs(boxSelect.currentX - boxSelect.startX),
+    h: Math.abs(boxSelect.currentY - boxSelect.startY)
+  } : null;
+
   return (
     <div className="canvas-shell">
       <svg
@@ -93,17 +149,17 @@ export function Canvas({ scene, selectedId, onSelect, onMove }: CanvasProps) {
         className="scene-canvas"
         viewBox={`0 0 ${scene.page.width} ${scene.page.height}`}
         style={{ aspectRatio }}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        onPointerDown={() => onSelect(null)}
+        onPointerMove={handleCanvasPointerMove}
+        onPointerUp={handleCanvasPointerUp}
+        onPointerLeave={handleCanvasPointerUp}
+        onPointerDown={handleCanvasPointerDown}
       >
         <defs>
           <marker id="arrow-head" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
             <path d="M0,0 L0,6 L9,3 z" fill="context-stroke" />
           </marker>
         </defs>
-        <rect x="0" y="0" width={scene.page.width} height={scene.page.height} fill={scene.page.background} />
+        <rect x="0" y="0" width={scene.page.width} height={scene.page.height} fill={scene.page.background} pointerEvents="none" />
         {scene.edges.map((edge) => (
           <EdgeView key={edge.id} edge={edge} nodes={scene.nodes} />
         ))}
@@ -111,10 +167,20 @@ export function Canvas({ scene, selectedId, onSelect, onMove }: CanvasProps) {
           <NodeView
             key={node.id}
             node={node}
-            selected={node.id === selectedId}
+            selected={node.id === selectedId || selectedIds.includes(node.id)}
             onPointerDown={(event) => handlePointerDown(event, node)}
           />
         ))}
+        {selectionRect ? (
+          <rect
+            x={selectionRect.x}
+            y={selectionRect.y}
+            width={selectionRect.w}
+            height={selectionRect.h}
+            className="selection-rect"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
       </svg>
     </div>
   );
