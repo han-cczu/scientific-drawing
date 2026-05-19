@@ -77,6 +77,9 @@ describe("evaluation metrics", () => {
       edges: 2,
       typeSummary: "image=1, rect=1, text=1",
       meanDiff: 1.25,
+      normalizedMeanDiff: 0.0049,
+      psnr: 35.12,
+      ssim: 0.98,
       lockedNodes: 1,
       imageNodes: 1,
       textNodes: 1,
@@ -89,5 +92,8 @@ describe("evaluation metrics", () => {
     assert.match(line, /editable=2/);
     assert.match(line, /endpointIssues=1/);
     assert.match(line, /meanDiff=1.25/);
+    assert.match(line, /normalized=0.0049/);
+    assert.match(line, /psnr=35.12/);
+    assert.match(line, /ssim=0.98/);
   });
 });

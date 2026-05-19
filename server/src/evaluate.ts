@@ -16,6 +16,9 @@ export type SampleResult = {
   edges: number;
   typeSummary: string;
   meanDiff: number | null;
+  normalizedMeanDiff: number | null;
+  psnr: number | null;
+  ssim: number | null;
   lockedNodes: number;
   imageNodes: number;
   textNodes: number;
@@ -191,7 +194,7 @@ export async function evaluateSample(imagePath: string, reportDir: string): Prom
   await fs.writeFile(svgPath, svg, "utf-8");
 
   // 1.3 计算视觉差异和对象统计
-  const meanDiff = await measureMeanDiff(imagePath, Buffer.from(svg));
+  const visualMetrics = await measureVisualMetrics(imagePath, Buffer.from(svg));
   const complexity = computeSceneComplexity(scene);
   const result: SampleResult = {
     file: path.basename(imagePath),
@@ -201,7 +204,7 @@ export async function evaluateSample(imagePath: string, reportDir: string): Prom
     editableNodes: countEditableNodes(scene),
     edges: scene.edges.length,
     typeSummary: summarizeTypes(scene),
-    meanDiff,
+    ...visualMetrics,
     ...complexity
   };
 
@@ -220,6 +223,32 @@ export async function measureMeanDiff(imagePath: string, svgBytes: Buffer) {
    */
   logger.info("开始计算平均像素差...", { imagePath });
 
+  // 1.1 复用视觉指标管线
+  const metrics = await measureVisualMetrics(imagePath, svgBytes);
+
+  // 1.2 返回旧接口字段
+  logger.info("计算平均像素差完成", { result: metrics.meanDiff });
+  return metrics.meanDiff;
+}
+
+export type VisualMetrics = {
+  meanDiff: number | null;
+  normalizedMeanDiff: number | null;
+  psnr: number | null;
+  ssim: number | null;
+};
+
+export async function measureVisualMetrics(imagePath: string, svgBytes: Buffer): Promise<VisualMetrics> {
+  /*
+   * ========================================================================
+   * 步骤1：计算视觉评估指标
+   * ========================================================================
+   * 目标：
+   *   1) 保留原始 meanDiff
+   *   2) 补充归一化误差、PSNR 和近似 SSIM
+   */
+  logger.info("开始计算视觉评估指标...", { imagePath });
+
   try {
     // 1.1 读取原图尺寸并计算评估尺寸
     const metadata = await sharp(imagePath).metadata();
@@ -230,30 +259,142 @@ export async function measureMeanDiff(imagePath: string, svgBytes: Buffer) {
     const evalHeight = Math.max(1, Math.round(height * scale));
 
     // 1.2 渲染原图和 SVG
-    const source = await sharp(imagePath)
-      .resize(evalWidth, evalHeight, { fit: "fill" })
-      .removeAlpha()
-      .raw()
-      .toBuffer();
-    const rendered = await sharp(svgBytes, { density: 96 })
-      .resize(evalWidth, evalHeight, { fit: "fill" })
-      .removeAlpha()
-      .raw()
-      .toBuffer();
+    const [source, rendered] = await Promise.all([
+      sharp(imagePath)
+        .resize(evalWidth, evalHeight, { fit: "fill" })
+        .removeAlpha()
+        .raw()
+        .toBuffer(),
+      sharp(svgBytes, { density: 96 })
+        .resize(evalWidth, evalHeight, { fit: "fill" })
+        .removeAlpha()
+        .raw()
+        .toBuffer()
+    ]);
 
-    // 1.3 计算平均差异
-    let total = 0;
+    // 1.3 汇总视觉指标
+    let absoluteDiffTotal = 0;
+    let squaredDiffTotal = 0;
     const length = Math.min(source.length, rendered.length);
     for (let index = 0; index < length; index += 1) {
-      total += Math.abs(source[index] - rendered[index]);
+      const diff = source[index] - rendered[index];
+      absoluteDiffTotal += Math.abs(diff);
+      squaredDiffTotal += diff * diff;
     }
-    const result = Math.round((total / Math.max(1, length)) * 100) / 100;
-    logger.info("计算平均像素差完成", { result });
+    const safeLength = Math.max(1, length);
+    const meanDiff = Math.round((absoluteDiffTotal / safeLength) * 100) / 100;
+    const mse = squaredDiffTotal / safeLength;
+    const result: VisualMetrics = {
+      meanDiff,
+      normalizedMeanDiff: normalizeMeanDiff(meanDiff),
+      psnr: computePsnr(mse),
+      ssim: computeSsimApprox(source, rendered)
+    };
+
+    logger.info("计算视觉评估指标完成", result);
     return result;
   } catch (error) {
-    logger.warn("计算平均像素差失败", { imagePath, error: String(error) });
+    logger.warn("计算视觉评估指标失败", { imagePath, error: String(error) });
+    return { meanDiff: null, normalizedMeanDiff: null, psnr: null, ssim: null };
+  }
+}
+
+export function normalizeMeanDiff(meanDiff: number | null) {
+  /*
+   * ========================================================================
+   * 步骤1：归一化平均像素差
+   * ========================================================================
+   * 目标：
+   *   1) 把 0..255 通道误差压到 0..1
+   *   2) 保留 null 失败状态
+   */
+  logger.info("开始归一化平均像素差...", { meanDiff });
+
+  // 1.1 处理失败状态
+  if (meanDiff === null) {
+    logger.info("归一化平均像素差完成", { result: null });
     return null;
   }
+
+  // 1.2 返回四位小数指标
+  const result = Math.round((meanDiff / 255) * 10000) / 10000;
+  logger.info("归一化平均像素差完成", { result });
+  return result;
+}
+
+export function computePsnr(mse: number) {
+  /*
+   * ========================================================================
+   * 步骤1：计算 PSNR
+   * ========================================================================
+   * 目标：
+   *   1) 用均方误差衡量像素级保真度
+   *   2) 零误差返回 Infinity
+   */
+  logger.info("开始计算 PSNR...", { mse });
+
+  // 1.1 处理零误差
+  if (mse === 0) {
+    logger.info("计算 PSNR 完成", { result: Infinity });
+    return Infinity;
+  }
+
+  // 1.2 计算并保留两位小数
+  const result = Math.round(10 * Math.log10((255 * 255) / mse) * 100) / 100;
+  logger.info("计算 PSNR 完成", { result });
+  return result;
+}
+
+export function computeSsimApprox(source: Buffer, rendered: Buffer) {
+  /*
+   * ========================================================================
+   * 步骤1：计算近似 SSIM
+   * ========================================================================
+   * 目标：
+   *   1) 用全图亮度统计补充平均像素差
+   *   2) 输出限制在 SSIM 合法范围内
+   */
+  logger.info("开始计算近似 SSIM...", { sourceLength: source.length, renderedLength: rendered.length });
+
+  // 1.1 处理空输入
+  const length = Math.min(source.length, rendered.length);
+  if (length === 0) {
+    logger.info("计算近似 SSIM 完成", { result: 0 });
+    return 0;
+  }
+
+  // 1.2 计算均值
+  let meanX = 0;
+  let meanY = 0;
+  for (let index = 0; index < length; index += 1) {
+    meanX += source[index];
+    meanY += rendered[index];
+  }
+  meanX /= length;
+  meanY /= length;
+
+  // 1.3 计算方差和协方差
+  let varianceX = 0;
+  let varianceY = 0;
+  let covariance = 0;
+  for (let index = 0; index < length; index += 1) {
+    const dx = source[index] - meanX;
+    const dy = rendered[index] - meanY;
+    varianceX += dx * dx;
+    varianceY += dy * dy;
+    covariance += dx * dy;
+  }
+  varianceX /= length;
+  varianceY /= length;
+  covariance /= length;
+
+  // 1.4 计算并限制范围
+  const c1 = 6.5025;
+  const c2 = 58.5225;
+  const rawValue = ((2 * meanX * meanY + c1) * (2 * covariance + c2)) / ((meanX * meanX + meanY * meanY + c1) * (varianceX + varianceY + c2));
+  const result = Math.max(-1, Math.min(1, Math.round(rawValue * 10000) / 10000));
+  logger.info("计算近似 SSIM 完成", { result });
+  return result;
 }
 
 export function summarizeTypes(scene: Scene) {
@@ -345,6 +486,9 @@ export function formatSummaryLine(result: SampleResult) {
     `shapes=${result.shapeNodes}`,
     `endpointIssues=${result.edgeEndpointIssues}`,
     `meanDiff=${result.meanDiff ?? "n/a"}`,
+    `normalized=${result.normalizedMeanDiff ?? "n/a"}`,
+    `psnr=${result.psnr ?? "n/a"}`,
+    `ssim=${result.ssim ?? "n/a"}`,
     result.typeSummary
   ].join(" | ");
 }
