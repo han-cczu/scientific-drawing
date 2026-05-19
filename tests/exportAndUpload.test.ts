@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ensureReplicaBaseLayer, isAllowedImageMime, sanitizeFileBase } from "../server/src/routes/api";
+import { ensureReplicaBaseLayer, isAllowedImageMime, sanitizeFileBase, validateSceneForExport } from "../server/src/routes/api";
 import { sceneToPptx } from "../server/src/scene/pptx";
 import { sceneToSvg } from "../server/src/scene/svg";
 import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
@@ -156,6 +156,35 @@ describe("upload helpers", () => {
     // 1.2 判断输出结果
     assert.equal(result, "bad-path-name-scene");
     assert.match(sanitizeFileBase(""), /^[a-f0-9-]{36}$/);
+  });
+
+  it("rejects invalid export scenes before exporters run", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证导出 scene 校验
+     * ========================================================================
+     * 目标：
+     *   1) 缺少 page 的请求不能进入导出器
+     *   2) 坏端点引用不能进入导出器
+     */
+
+    // 1.1 校验缺少 page 的请求
+    const missingPage = validateSceneForExport({ nodes: [] });
+    assert.equal(missingPage.ok, false);
+    assert.equal(missingPage.scene, undefined);
+
+    // 1.2 校验坏端点引用
+    const scene = sampleScene();
+    scene.edges = [{ id: "bad-edge", type: "arrow", from: "missing:right@0.5", to: "box:left@0.5", style: { stroke: "#111111" } }];
+    const badEndpoint = validateSceneForExport(scene);
+    assert.equal(badEndpoint.ok, false);
+    assert.equal(badEndpoint.scene, undefined);
+
+    // 1.3 校验合法 scene
+    scene.edges = [];
+    const valid = validateSceneForExport(scene);
+    assert.equal(valid.ok, true);
+    assert.equal(valid.scene?.metadata.id, "test-scene");
   });
 });
 

@@ -12,6 +12,7 @@ import type { ReconstructionMode } from "../scene/reconstructionPrompt";
 import { sceneToSvg } from "../scene/svg";
 import type { Scene } from "../scene/types";
 import { normalizeImportedScene } from "../scene/visiomasterAdapter";
+import { validateScene, type ValidationIssue } from "../../../src/shared/sceneValidation";
 
 const MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024;
 const IMAGE_EXTENSIONS_BY_MIME = new Map([
@@ -256,11 +257,12 @@ apiRouter.post("/export/svg", express.json({ limit: "20mb" }), async (req, res, 
 
   try {
     // 1.1 获取 scene
-    const scene = sceneFromBody(req.body?.scene);
-    if (!scene) {
-      res.status(400).json({ error: "Missing scene." });
+    const validation = validateSceneForExport(req.body?.scene);
+    if (!validation.ok) {
+      res.status(400).json({ error: "Invalid scene.", issues: validation.issues });
       return;
     }
+    const scene = validation.scene;
 
     // 1.2 生成并保存 SVG
     const svg = await sceneToSvg(scene);
@@ -290,11 +292,12 @@ apiRouter.post("/export/pptx", express.json({ limit: "20mb" }), async (req, res,
 
   try {
     // 1.1 获取 scene
-    const scene = sceneFromBody(req.body?.scene);
-    if (!scene) {
-      res.status(400).json({ error: "Missing scene." });
+    const validation = validateSceneForExport(req.body?.scene);
+    if (!validation.ok) {
+      res.status(400).json({ error: "Invalid scene.", issues: validation.issues });
       return;
     }
+    const scene = validation.scene;
 
     // 1.2 生成 PPTX
     const fileName = `${sanitizeFileBase(scene.metadata?.id || randomUUID())}.pptx`;
@@ -323,11 +326,12 @@ apiRouter.post("/export/json", express.json({ limit: "20mb" }), async (req, res,
 
   try {
     // 1.1 获取 scene
-    const scene = sceneFromBody(req.body?.scene);
-    if (!scene) {
-      res.status(400).json({ error: "Missing scene." });
+    const validation = validateSceneForExport(req.body?.scene);
+    if (!validation.ok) {
+      res.status(400).json({ error: "Invalid scene.", issues: validation.issues });
       return;
     }
+    const scene = validation.scene;
 
     // 1.2 保存 JSON
     const fileName = `${sanitizeFileBase(scene.metadata?.id || randomUUID())}.scene.json`;
@@ -415,26 +419,28 @@ function safeSceneId(value: unknown) {
   return result;
 }
 
-function sceneFromBody(value: unknown): Scene | undefined {
+export function validateSceneForExport(value: unknown): { ok: true; scene: Scene; issues: [] } | { ok: false; scene?: undefined; issues: ValidationIssue[] } {
   /*
    * ========================================================================
    * 步骤1：校验导出 scene 请求体
    * ========================================================================
    * 目标：
-   *   1) 确认 page 和 nodes 基础结构存在
-   *   2) 避免无效对象进入导出器
+   *   1) 执行 scene 运行时深校验
+   *   2) 避免无效对象进入 SVG/PPTX/JSON 导出器
    */
   logger.info("开始校验导出 scene 请求体...");
 
-  // 1.1 校验最小结构
-  if (!isRecord(value) || !isRecord(value.page) || !Array.isArray(value.nodes)) {
-    logger.warn("导出 scene 请求体无效");
-    return undefined;
+  // 1.1 执行深校验
+  const result = validateScene(value);
+  if (!result.ok) {
+    logger.warn("导出 scene 请求体无效", { issues: result.issues });
+    return { ok: false, issues: result.issues };
   }
 
-  // 1.2 返回 scene
-  logger.info("校验导出 scene 请求体完成", { nodes: value.nodes.length });
-  return value as Scene;
+  // 1.2 返回合法 scene
+  const scene = value as Scene;
+  logger.info("校验导出 scene 请求体完成", { nodes: scene.nodes.length });
+  return { ok: true, scene, issues: [] };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

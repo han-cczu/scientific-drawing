@@ -8,6 +8,7 @@ import { normalizeImportedScene } from "./editor/visiomasterAdapter";
 import { analyzeImage, exportScene, loadAppConfig, reconstructImage, type ReconstructionMode } from "./lib/api";
 import { logger } from "./lib/logger";
 import type { Scene } from "./shared/scene";
+import { validateScene } from "./shared/sceneValidation";
 import "./styles.css";
 
 export default function App() {
@@ -128,6 +129,12 @@ export default function App() {
     try {
       const content = await file.text();
       const imported = normalizeImportedScene(JSON.parse(content));
+      const validation = validateScene(imported);
+      if (!validation.ok) {
+        logger.warn("导入 scene 协议校验失败", { issues: validation.issues });
+        setMessage("导入 scene.json 失败：协议不合法。");
+        return;
+      }
       setScene(imported);
       setSelectedId(null);
       setTool("select");
