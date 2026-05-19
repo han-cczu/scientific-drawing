@@ -60,26 +60,26 @@ export async function analyzeImage(input: AnalyzeInput): Promise<Scene> {
   // 2.1 生成缩放图管线
   const resized = sharp(input.imagePath).resize(scanWidth, scanHeight, { fit: "fill" });
 
-  // 2.2 转灰度并取原始像素
-  const buffer = await resized
-    .clone()
-    .grayscale()
-    .raw()
-    .toBuffer();
+  // 2.2 并行读取灰度和彩色像素
+  const [buffer, colorBuffer] = await Promise.all([
+    resized
+      .clone()
+      .grayscale()
+      .raw()
+      .toBuffer(),
+    resized
+      .clone()
+      .toColourspace("srgb")
+      .removeAlpha()
+      .raw()
+      .toBuffer()
+  ]);
 
-  // 2.3 读取彩色像素
-  const colorBuffer = await resized
-    .clone()
-    .toColourspace("srgb")
-    .removeAlpha()
-    .raw()
-    .toBuffer();
-
-  // 2.4 标记非背景像素和彩色区域
+  // 2.3 标记非背景像素和彩色区域
   const mask = buildForegroundMask(buffer, scanWidth, scanHeight);
   const colorMask = buildColorMask(colorBuffer, scanWidth, scanHeight);
 
-  // 2.5 连通域生成候选框
+  // 2.4 连通域生成候选框
   const components = findComponents(mask, scanWidth, scanHeight)
     .map((box) => scaleBox(box, 1 / scale))
     .filter((box) => keepUsefulBox(box, width, height));
