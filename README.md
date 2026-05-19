@@ -346,7 +346,7 @@ PPTX 文件生成
 
 ### 评估脚本
 
-`npm run evaluate` 会扫描 `data/uploads` 中的 PNG/JPEG/WebP，调用普通分析重新生成 scene 与 SVG，并把原图与导出 SVG 渲染后作像素差对比。
+`npm run evaluate` 会扫描 `data/uploads` 中的 PNG/JPEG/WebP，调用普通分析重新生成 scene 与 SVG，并把原图与导出 SVG 渲染后作像素差对比，同时统计 scene 的结构质量。
 
 输出指标（写入 `data/evaluation/summary.json`）：
 
@@ -354,6 +354,11 @@ PPTX 文件生成
 | --- | --- |
 | `editable` | 可编辑节点数量 |
 | `edges` | 语义连线数量 |
+| `locked` | 锁定节点数量，通常用于确认原图底图是否保留 |
+| `images` | 图片节点数量 |
+| `texts` | 文本节点数量 |
+| `shapes` | 非图片、非文本节点数量 |
+| `endpointIssues` | 连线端点引用不存在节点的次数 |
 | `meanDiff` | 导出 SVG 与原图的平均像素差，越低越接近原图 |
 
 > 评估目前只覆盖**普通分析**链路，不评估 AI 重建质量；普通分析尚未稳定输出箭头语义，因此 `edges` 通常为 0。
