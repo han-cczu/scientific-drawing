@@ -1,4 +1,9 @@
 import { logger } from "../logger";
+import {
+  buildReconstructionRulesText,
+  buildReconstructionSchemaText,
+  buildReconstructionVocabularyText
+} from "../../../src/shared/reconstructionPrompt";
 
 export type ReconstructionMode = "color" | "mono";
 
@@ -42,58 +47,11 @@ Coordinate rules:
 - origin is top-left
 - all x/y/w/h and edge points are pixels
 
-Output schema:
-{
-  "version": "0.1",
-  "metadata": {
-    "title": "short title",
-    "created_by": "openai_vision_reconstruction",
-    "style_profile": "paper_white",
-    "fidelity": "exact",
-    "notes": []
-  },
-  "page": {
-    "width": ${width},
-    "height": ${height},
-    "units": "px",
-    "origin": "top-left",
-    "background": "#FFFFFF"
-  },
-  "nodes": [],
-  "edges": []
-}
+${buildReconstructionSchemaText(width, height)}
 
-Allowed node types:
-- text_block: titles, labels, formulas, gray text
-- group_container: big frames and module boxes
-- rounded_process: rounded or colored blocks
-- process_box: rectangular blocks
-- operator_node: circle operators, check marks, x marks, locks when editable as symbols
-- grid_matrix: repeated colored square blocks and voting tables
-- feature_map_grid: heatmap-like feature blocks
-- bracket: U brackets or grouping brackets
-- boundary_port: frame-edge input/output anchors
-- junction_point: invisible merge/fan points
-- image_tile: only for tiny icons that are not worth reconstructing
+${buildReconstructionVocabularyText()}
 
-Allowed edge types:
-- arrow_connector
-- line_segment
-- join_connector
-- fork_connector
-- boundary_arrow
-
-Rules:
-1. Rebuild the main structure as editable nodes and edges.
-2. Include all visible text, including low-contrast gray labels.
-3. Colored numbered blocks must include the visible number as cell_labels or text. Do not output empty grids for numbered blocks.
-4. Vote rows such as "1 2 votes ✓" should preserve the number, vote text, and ✓/✕ as editable text or labeled cells.
-5. Solid rounded containers in the source must stay solid. Use style.line_dash only when the source border is visibly dashed.
-6. Use thick edges for large arrows. Use explicit points for multi-segment arrows.
-7. Do not use group_container as an edge endpoint. Use boundary_port or junction_point.
-8. Preserve the visual layout and follow the selected color mode exactly.
-9. Prefer fewer semantic composite nodes over hundreds of tiny unrelated boxes.
-10. JSON must be parseable.`;
+${buildReconstructionRulesText()}`;
 
   // 1.3 返回提示词
   logger.info("生成服务端重建提示词完成", { mode, chars: prompt.length });

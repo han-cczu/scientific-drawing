@@ -102,6 +102,7 @@ $$
 │  scene.ts             // 协议类型                   │
 │  sceneValidation.ts   // 运行时校验                 │
 │  geometry.ts          // resolveEndpoint/shadeColor │
+│  reconstructionPrompt.ts // AI 重建提示词共享片段   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -518,7 +519,8 @@ scientific-drawing/
 │  └─ shared/                        前后端共享
 │     ├─ scene.ts                    scene 类型
 │     ├─ sceneValidation.ts          运行时校验
-│     └─ geometry.ts                 端点解析 / 颜色工具
+│     ├─ geometry.ts                 端点解析 / 颜色工具
+│     └─ reconstructionPrompt.ts     AI 提示词 schema / 词表 / 规则
 ├─ server/src/                       后端
 │  ├─ index.ts                       Express 入口 + 启动清理
 │  ├─ routes/api.ts                  /analyze /reconstruct /export
@@ -529,7 +531,7 @@ scientific-drawing/
 │     ├─ analyzeImage.ts             启发式分析入口
 │     ├─ analysis/                   mask / components / elements
 │     ├─ reconstructWithOpenAI.ts    AI 多模态重建
-│     ├─ reconstructionPrompt.ts     服务端 AI 提示词
+│     ├─ reconstructionPrompt.ts     服务端 AI 提示词包装
 │     ├─ repairScene.ts              统一修复层
 │     ├─ visiomasterAdapter.ts       服务端 Visiomaster 适配
 │     ├─ svg.ts / pptx.ts            两种导出器
