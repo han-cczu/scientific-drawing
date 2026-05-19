@@ -7,6 +7,7 @@ import { logger } from "../logger";
 import { exportDir, sceneDir, uploadDir } from "../paths";
 import { analyzeImage } from "../scene/analyzeImage";
 import { sceneToPptx } from "../scene/pptx";
+import { repairScene } from "../scene/repairScene";
 import { reconstructWithOpenAI } from "../scene/reconstructWithOpenAI";
 import type { ReconstructionMode } from "../scene/reconstructionPrompt";
 import { sceneToSvg } from "../scene/svg";
@@ -170,7 +171,7 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
       mimeType: req.file.mimetype,
       mode
     });
-    const scene = normalizeImportedScene(rawScene);
+    const scene = repairScene(normalizeImportedScene(rawScene));
     scene.metadata.id = id;
     scene.metadata.sourceImage = `/uploads/${fileName}`;
     scene.metadata.notes = [...scene.metadata.notes, `Reconstruction mode: ${mode}.`];
