@@ -49,9 +49,10 @@ npm run dev
 ```powershell
 $env:LOG_LEVEL              = "info"  # 开启后端 info 日志
 $env:VITE_ENABLE_INFO_LOGS  = "1"     # 开启前端 info 日志
+$env:DATA_RETENTION_DAYS    = "14"    # data 运行产物保留天数
 ```
 
-默认关闭 info 级日志，避免拖拽和高频渲染刷屏。
+默认关闭 info 级日志，避免拖拽和高频渲染刷屏。后端启动时会按 `DATA_RETENTION_DAYS` 清理 `data/uploads`、`data/exports` 和 `data/scenes` 中过期的受管文件。
 
 ---
 
