@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
 import { Toolbar, type Tool } from "./editor/Toolbar";
+import { selectedIdFromIds } from "./editor/appState";
 import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, updateNode, updateNodeStyle, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
 import { clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
@@ -25,8 +26,8 @@ export default function App() {
 
   // 1.1 初始化核心状态
   const [scene, setScene] = useState<Scene>(() => createBlankScene());
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedId = selectedIdFromIds(selectedIds);
   const [tool, setTool] = useState<Tool>("select");
   const [busy, setBusy] = useState(false);
   const [viewport, setViewport] = useState<Viewport>({ scale: 1, offset: { x: 0, y: 0 } });
@@ -93,7 +94,6 @@ export default function App() {
     try {
       const payload = await analyzeImage(file);
       setScene(payload.scene);
-      setSelectedId(null);
       setSelectedIds([]);
       setTool("select");
       setViewport({ scale: 1, offset: { x: 0, y: 0 } });
@@ -118,7 +118,6 @@ export default function App() {
     try {
       const payload = await reconstructImage(file, reconstructionMode);
       setScene(payload.scene);
-      setSelectedId(null);
       setSelectedIds([]);
       setTool("select");
       setViewport({ scale: 1, offset: { x: 0, y: 0 } });
@@ -146,7 +145,6 @@ export default function App() {
         return;
       }
       setScene(imported);
-      setSelectedId(null);
       setSelectedIds([]);
       setTool("select");
       setViewport({ scale: 1, offset: { x: 0, y: 0 } });
@@ -184,7 +182,6 @@ export default function App() {
   // 2.7 更新选中节点
   const handleSelect = (ids: string[]) => {
     setSelectedIds(ids);
-    setSelectedId(ids[0] ?? null);
   };
 
   // 2.8 框选画布节点
