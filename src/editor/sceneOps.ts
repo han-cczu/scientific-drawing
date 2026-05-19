@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
 import { endpointReferencesNode } from "../shared/geometry";
-import type { Scene, SceneNode, SceneNodeType } from "../shared/scene";
+import type { Scene, SceneEdge, SceneNode, SceneNodeType } from "../shared/scene";
 
 export type SceneBox = {
   x: number;
@@ -9,6 +9,18 @@ export type SceneBox = {
   w: number;
   h: number;
 };
+
+export type ResizeHandle =
+  | "n"
+  | "s"
+  | "e"
+  | "w"
+  | "ne"
+  | "nw"
+  | "se"
+  | "sw"
+  | "line-start"
+  | "line-end";
 
 const MIN_NODE_SIZE = 8;
 
@@ -202,6 +214,40 @@ export function resizeNode(scene: Scene, nodeId: string, nextBox: SceneBox): Sce
   return { ...scene, nodes };
 }
 
+export function resizeNodeFromHandle(scene: Scene, nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number): Scene {
+  /*
+   * ========================================================================
+   * 步骤1：按手柄调整节点
+   * ========================================================================
+   * 目标：
+   *   1) 把手柄拖拽转换成目标盒子或端点坐标
+   *   2) 支持形状节点和线条节点共用入口
+   */
+  logger.info("开始按手柄调整节点...", { nodeId, handle, dx, dy });
+
+  // 1.1 查找目标节点
+  const node = scene.nodes.find((item) => item.id === nodeId);
+  if (!node || node.locked) {
+    logger.warn("按手柄调整节点失败，节点不存在或已锁定", { nodeId });
+    return scene;
+  }
+
+  // 1.2 处理线条端点手柄
+  if ((node.type === "line" || node.type === "arrow") && (handle === "line-start" || handle === "line-end")) {
+    const points = resizeLinePoints(node, handle, dx, dy);
+    const box = boxFromPoints(points);
+    const nodes = scene.nodes.map((item) => item.id === nodeId ? { ...item, ...box, points } : item);
+    logger.info("按手柄调整节点完成", { nodeId, handle });
+    return { ...scene, nodes };
+  }
+
+  // 1.3 处理形状方向手柄
+  const nextBox = boxFromHandle(startBox, handle, dx, dy);
+  const next = resizeNode(scene, nodeId, nextBox);
+  logger.info("按手柄调整节点完成", { nodeId, handle });
+  return next;
+}
+
 export function selectNodesInRect(scene: Scene, rect: SceneBox): string[] {
   /*
    * ========================================================================
@@ -223,6 +269,42 @@ export function selectNodesInRect(scene: Scene, rect: SceneBox): string[] {
 
   logger.info("框选节点完成", { count: ids.length });
   return ids;
+}
+
+export function createEdgeBetweenNodes(scene: Scene, fromNodeId: string, toNodeId: string): Scene {
+  /*
+   * ========================================================================
+   * 步骤1：创建语义连线
+   * ========================================================================
+   * 目标：
+   *   1) 在两个节点之间创建 arrow edge
+   *   2) 使用节点端点引用，保证移动节点后连线跟随
+   */
+  logger.info("开始创建语义连线...", { fromNodeId, toNodeId });
+
+  // 1.1 校验起止节点
+  const from = scene.nodes.find((node) => node.id === fromNodeId);
+  const to = scene.nodes.find((node) => node.id === toNodeId);
+  if (!from || !to || from.id === to.id) {
+    logger.warn("创建语义连线失败，节点无效", { fromNodeId, toNodeId });
+    return scene;
+  }
+
+  // 1.2 追加语义连线
+  const edge: SceneEdge = {
+    id: createId("edge"),
+    type: "arrow",
+    from: `${from.id}:right@0.5`,
+    to: `${to.id}:left@0.5`,
+    style: {
+      stroke: "#111111",
+      strokeWidth: 1.4,
+      opacity: 1
+    }
+  };
+
+  logger.info("创建语义连线完成", { edgeId: edge.id });
+  return { ...scene, edges: [...scene.edges, edge] };
 }
 
 export function normalizeBox(box: SceneBox): SceneBox {
@@ -332,6 +414,87 @@ function nodeBox(node: SceneNode): SceneBox {
   // 1.2 返回普通节点盒子
   const box = { x: node.x, y: node.y, w: node.w, h: node.h };
   logger.info("读取节点包围盒完成", { nodeId: node.id, box });
+  return box;
+}
+
+function boxFromHandle(box: SceneBox, handle: ResizeHandle, dx: number, dy: number): SceneBox {
+  /*
+   * ========================================================================
+   * 步骤1：按方向手柄生成盒子
+   * ========================================================================
+   * 目标：
+   *   1) 把八方向拖拽转换成 x/y/w/h
+   *   2) 保留原始盒子作为拖拽快照
+   */
+  logger.info("开始按方向手柄生成盒子...", { handle, dx, dy });
+
+  // 1.1 初始化目标盒子
+  const next = { ...box };
+
+  // 1.2 应用横向和纵向手柄
+  if (handle.includes("e")) {
+    next.w = Math.max(MIN_NODE_SIZE, box.w + dx);
+  }
+  if (handle.includes("s")) {
+    next.h = Math.max(MIN_NODE_SIZE, box.h + dy);
+  }
+  if (handle.includes("w")) {
+    next.w = Math.max(MIN_NODE_SIZE, box.w - dx);
+    next.x = box.x + box.w - next.w;
+  }
+  if (handle.includes("n")) {
+    next.h = Math.max(MIN_NODE_SIZE, box.h - dy);
+    next.y = box.y + box.h - next.h;
+  }
+
+  logger.info("按方向手柄生成盒子完成", next);
+  return next;
+}
+
+function resizeLinePoints(node: SceneNode, handle: ResizeHandle, dx: number, dy: number) {
+  /*
+   * ========================================================================
+   * 步骤1：调整线条端点
+   * ========================================================================
+   * 目标：
+   *   1) 移动起点或终点
+   *   2) 保留中间折线点
+   */
+  logger.info("开始调整线条端点...", { nodeId: node.id, handle });
+
+  // 1.1 读取线条点数组
+  const points = node.points?.length ? node.points.map((point) => ({ ...point })) : [{ x: node.x, y: node.y }, { x: node.x + node.w, y: node.y + node.h }];
+  const targetIndex = handle === "line-start" ? 0 : points.length - 1;
+
+  // 1.2 移动目标端点
+  points[targetIndex] = { x: points[targetIndex].x + dx, y: points[targetIndex].y + dy };
+
+  logger.info("调整线条端点完成", { nodeId: node.id, handle });
+  return points;
+}
+
+function boxFromPoints(points: Array<{ x: number; y: number }>): SceneBox {
+  /*
+   * ========================================================================
+   * 步骤1：从点数组计算包围盒
+   * ========================================================================
+   * 目标：
+   *   1) 同步线条节点 x/y/w/h
+   *   2) 保持 points 为真实端点坐标
+   */
+  logger.info("开始从点数组计算包围盒...", { count: points.length });
+
+  // 1.1 计算坐标边界
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+
+  // 1.2 返回包围盒
+  const box = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  logger.info("从点数组计算包围盒完成", box);
   return box;
 }
 

@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { moveNodes, normalizeBox, resizeNode, selectNodesInRect } from "../src/editor/sceneOps";
+import { resolveEndpoint } from "../src/shared/geometry";
+import { createEdgeBetweenNodes, moveNodes, normalizeBox, removeNode, resizeNode, resizeNodeFromHandle, selectNodesInRect } from "../src/editor/sceneOps";
 import type { Scene } from "../src/shared/scene";
 
 function editorScene(): Scene {
@@ -30,6 +31,16 @@ function editorScene(): Scene {
         w: 80,
         h: 0,
         points: [{ x: 70, y: 140 }, { x: 150, y: 140 }],
+        style: { fill: "none", stroke: "#111111" }
+      },
+      {
+        id: "arrow",
+        type: "arrow",
+        x: 220,
+        y: 160,
+        w: 80,
+        h: 0,
+        points: [{ x: 220, y: 160 }, { x: 300, y: 160 }],
         style: { fill: "none", stroke: "#111111" }
       }
     ],
@@ -119,5 +130,78 @@ describe("editor scene operations", () => {
 
     // 1.2 校验选中结果
     assert.deepEqual(ids, ["a", "line"]);
+  });
+
+  it("resizes shape nodes from directional handles", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证形状手柄缩放
+     * ========================================================================
+     * 目标：
+     *   1) 东侧手柄只增加宽度
+     *   2) 西侧手柄修改 x 和 w，并受最小尺寸保护
+     */
+
+    // 1.1 从东侧放大节点
+    const east = resizeNodeFromHandle(editorScene(), "a", "e", { x: 20, y: 30, w: 60, h: 40 }, 15, 0);
+    const eastNode = east.nodes.find((node) => node.id === "a");
+    assert.equal(eastNode?.x, 20);
+    assert.equal(eastNode?.w, 75);
+
+    // 1.2 从西侧缩小到最小尺寸
+    const west = resizeNodeFromHandle(editorScene(), "a", "w", { x: 20, y: 30, w: 60, h: 40 }, 100, 0);
+    const westNode = west.nodes.find((node) => node.id === "a");
+    assert.equal(westNode?.x, 72);
+    assert.equal(westNode?.w, 8);
+  });
+
+  it("resizes line and arrow nodes by endpoint handles", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证线条端点手柄
+     * ========================================================================
+     * 目标：
+     *   1) 线段结束点拖拽会更新 points
+     *   2) 箭头起点拖拽会更新 points 和包围盒
+     */
+
+    // 1.1 调整线段结束点
+    const lineScene = resizeNodeFromHandle(editorScene(), "line", "line-end", { x: 70, y: 140, w: 80, h: 0 }, 20, 10);
+    const line = lineScene.nodes.find((node) => node.id === "line");
+    assert.deepEqual(line?.points, [{ x: 70, y: 140 }, { x: 170, y: 150 }]);
+    assert.equal(line?.w, 100);
+    assert.equal(line?.h, 10);
+
+    // 1.2 调整箭头起点
+    const arrowScene = resizeNodeFromHandle(editorScene(), "arrow", "line-start", { x: 220, y: 160, w: 80, h: 0 }, -10, -20);
+    const arrow = arrowScene.nodes.find((node) => node.id === "arrow");
+    assert.deepEqual(arrow?.points, [{ x: 210, y: 140 }, { x: 300, y: 160 }]);
+    assert.equal(arrow?.x, 210);
+    assert.equal(arrow?.y, 140);
+  });
+
+  it("creates semantic edges and keeps endpoint behavior tied to nodes", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证语义连线
+     * ========================================================================
+     * 目标：
+     *   1) 从两个节点创建 arrow edge
+     *   2) 删除节点清理依赖 edge，移动节点后端点随节点变化
+     */
+
+    // 1.1 创建语义连线
+    const scene = createEdgeBetweenNodes(editorScene(), "a", "b");
+    const edge = scene.edges[0];
+    assert.equal(edge.type, "arrow");
+    assert.equal(edge.from, "a:right@0.5");
+    assert.equal(edge.to, "b:left@0.5");
+
+    // 1.2 删除节点时清理连线
+    assert.equal(removeNode(scene, "a").edges.length, 0);
+
+    // 1.3 移动节点后端点跟随变化
+    const moved = moveNodes(scene, ["a"], 20, 0);
+    assert.deepEqual(resolveEndpoint(edge.from ?? "", moved.nodes), { x: 100, y: 50 });
   });
 });

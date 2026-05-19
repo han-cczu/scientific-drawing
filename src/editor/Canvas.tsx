@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { logger } from "../lib/logger";
 import { resolveEndpoint, shadeColor } from "../shared/geometry";
 import type { Scene, SceneEdge, SceneNode } from "../shared/scene";
-import type { SceneBox } from "./sceneOps";
+import type { ResizeHandle, SceneBox } from "./sceneOps";
 import { clientPointToScene, panViewport, zoomViewportAt, type Viewport } from "./viewport";
 
 type CanvasProps = {
@@ -12,12 +12,22 @@ type CanvasProps = {
   viewport: Viewport;
   onSelect: (ids: string[]) => void;
   onMove: (nodeIds: string[], dx: number, dy: number) => void;
+  onResize: (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number) => void;
   onBoxSelect: (box: SceneBox) => void;
+  onNodeActivate: (nodeId: string) => void;
   onViewportChange: (viewport: Viewport) => void;
 };
 
 type DragState = {
   nodeIds: string[];
+  startX: number;
+  startY: number;
+};
+
+type ResizeState = {
+  nodeId: string;
+  handle: ResizeHandle;
+  startBox: SceneBox;
   startX: number;
   startY: number;
 };
@@ -34,7 +44,7 @@ type PanState = {
   clientY: number;
 };
 
-export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onMove, onBoxSelect, onViewportChange }: CanvasProps) {
+export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onMove, onResize, onBoxSelect, onNodeActivate, onViewportChange }: CanvasProps) {
   /*
    * ========================================================================
    * 步骤1：初始化画布交互
@@ -48,6 +58,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
   // 1.1 准备 SVG 引用和拖拽状态
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [resize, setResize] = useState<ResizeState | null>(null);
   const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
   const [pan, setPan] = useState<PanState | null>(null);
   const [spacePressed, setSpacePressed] = useState(false);
@@ -111,6 +122,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
     }
     const activeIds = selectedIds.includes(node.id) ? selectedIds : [node.id];
     onSelect(activeIds);
+    onNodeActivate(node.id);
     if (node.locked) {
       return;
     }
@@ -121,6 +133,11 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
 
   // 2.3 移动节点
   const handlePointerMove = (event: React.PointerEvent) => {
+    if (resize) {
+      const point = pointFromEvent(event);
+      onResize(resize.nodeId, resize.handle, resize.startBox, point.x - resize.startX, point.y - resize.startY);
+      return;
+    }
     if (!drag) {
       return;
     }
@@ -133,6 +150,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
 
   // 2.4 结束拖拽
   const handlePointerUp = () => {
+    setResize(null);
     setDrag(null);
   };
 
@@ -192,7 +210,21 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
     handlePointerUp();
   };
 
-  // 2.8 生成框选可视矩形
+  // 2.8 启动尺寸手柄拖拽
+  const handleResizePointerDown = (event: React.PointerEvent<SVGElement>, node: SceneNode, handle: ResizeHandle) => {
+    event.stopPropagation();
+    const point = pointFromEvent(event);
+    setResize({
+      nodeId: node.id,
+      handle,
+      startBox: { x: node.x, y: node.y, w: node.w, h: node.h },
+      startX: point.x,
+      startY: point.y
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  // 2.9 生成框选可视矩形
   const selectionRect = boxSelect ? {
     x: Math.min(boxSelect.startX, boxSelect.currentX),
     y: Math.min(boxSelect.startY, boxSelect.currentY),
@@ -200,7 +232,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
     h: Math.abs(boxSelect.currentY - boxSelect.startY)
   } : null;
 
-  // 2.9 处理滚轮缩放
+  // 2.10 处理滚轮缩放
   const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
     if (!event.ctrlKey) {
       return;
@@ -240,6 +272,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
               node={node}
               selected={node.id === selectedId || selectedIds.includes(node.id)}
               onPointerDown={(event) => handlePointerDown(event, node)}
+              onResizePointerDown={(event, handle) => handleResizePointerDown(event, node, handle)}
             />
           ))}
           {selectionRect ? (
@@ -258,10 +291,11 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
   );
 }
 
-function NodeView({ node, selected, onPointerDown }: {
+function NodeView({ node, selected, onPointerDown, onResizePointerDown }: {
   node: SceneNode;
   selected: boolean;
   onPointerDown: (event: React.PointerEvent<SVGGElement>) => void;
+  onResizePointerDown: (event: React.PointerEvent<SVGElement>, handle: ResizeHandle) => void;
 }) {
   /*
    * ========================================================================
@@ -276,18 +310,21 @@ function NodeView({ node, selected, onPointerDown }: {
 
   // 1.2 生成选中框
   const selection = selected && !node.locked ? (
-    <rect
-      x={node.x - 5}
-      y={node.y - 5}
-      width={node.w + 10}
-      height={node.h + 10}
-      fill="none"
-      stroke="#2563EB"
-      strokeWidth={2}
-      strokeDasharray="7 5"
-      vectorEffect="non-scaling-stroke"
-      pointerEvents="none"
-    />
+    <>
+      <rect
+        x={node.x - 5}
+        y={node.y - 5}
+        width={node.w + 10}
+        height={node.h + 10}
+        fill="none"
+        stroke="#2563EB"
+        strokeWidth={2}
+        strokeDasharray="7 5"
+        vectorEffect="non-scaling-stroke"
+        pointerEvents="none"
+      />
+      <ResizeHandles node={node} onPointerDown={onResizePointerDown} />
+    </>
   ) : null;
 
   return (
@@ -295,6 +332,66 @@ function NodeView({ node, selected, onPointerDown }: {
       {body}
       {selection}
     </g>
+  );
+}
+
+function ResizeHandles({ node, onPointerDown }: {
+  node: SceneNode;
+  onPointerDown: (event: React.PointerEvent<SVGElement>, handle: ResizeHandle) => void;
+}) {
+  /*
+   * ========================================================================
+   * 步骤1：渲染尺寸手柄
+   * ========================================================================
+   * 目标：
+   *   1) 形状节点显示八方向手柄
+   *   2) 线条和箭头显示两个端点手柄
+   */
+
+  // 1.1 渲染线条端点手柄
+  if (node.type === "line" || node.type === "arrow") {
+    const points = node.points?.length ? node.points : [{ x: node.x, y: node.y }, { x: node.x + node.w, y: node.y + node.h }];
+    const start = points[0];
+    const end = points[points.length - 1];
+    return (
+      <>
+        <circle className="resize-handle" cx={start.x} cy={start.y} r={5} onPointerDown={(event) => onPointerDown(event, "line-start")} />
+        <circle className="resize-handle" cx={end.x} cy={end.y} r={5} onPointerDown={(event) => onPointerDown(event, "line-end")} />
+      </>
+    );
+  }
+
+  // 1.2 渲染八方向手柄
+  const x0 = node.x;
+  const x1 = node.x + node.w / 2;
+  const x2 = node.x + node.w;
+  const y0 = node.y;
+  const y1 = node.y + node.h / 2;
+  const y2 = node.y + node.h;
+  const handles: Array<{ handle: ResizeHandle; x: number; y: number }> = [
+    { handle: "nw", x: x0, y: y0 },
+    { handle: "n", x: x1, y: y0 },
+    { handle: "ne", x: x2, y: y0 },
+    { handle: "e", x: x2, y: y1 },
+    { handle: "se", x: x2, y: y2 },
+    { handle: "s", x: x1, y: y2 },
+    { handle: "sw", x: x0, y: y2 },
+    { handle: "w", x: x0, y: y1 }
+  ];
+  return (
+    <>
+      {handles.map((item) => (
+        <rect
+          key={item.handle}
+          className="resize-handle"
+          x={item.x - 4}
+          y={item.y - 4}
+          width={8}
+          height={8}
+          onPointerDown={(event) => onPointerDown(event, item.handle)}
+        />
+      ))}
+    </>
   );
 }
 

@@ -1,9 +1,9 @@
-import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast, RotateCcw } from "lucide-react";
+import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast, RotateCcw, GitBranch } from "lucide-react";
 import { logger } from "../lib/logger";
 import type { SceneNodeType } from "../shared/scene";
 import type { ReconstructionMode } from "../lib/api";
 
-export type Tool = "select" | SceneNodeType;
+export type Tool = "select" | "connector" | SceneNodeType;
 
 type ToolbarProps = {
   tool: Tool;
@@ -29,7 +29,8 @@ const tools: Array<{ id: Tool; label: string; icon: React.ComponentType<{ size?:
   { id: "ellipse", label: "椭圆", icon: Circle },
   { id: "text", label: "文本", icon: Type },
   { id: "line", label: "线条", icon: Minus },
-  { id: "arrow", label: "箭头", icon: MoveRight }
+  { id: "arrow", label: "箭头", icon: MoveRight },
+  { id: "connector", label: "语义连线", icon: GitBranch }
 ];
 
 export function Toolbar({

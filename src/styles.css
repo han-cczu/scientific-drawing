@@ -201,6 +201,14 @@ button:disabled {
   pointer-events: none;
 }
 
+.resize-handle {
+  fill: #ffffff;
+  stroke: #2563eb;
+  stroke-width: 1.5;
+  cursor: pointer;
+  vector-effect: non-scaling-stroke;
+}
+
 .inspector {
   padding: 16px;
   overflow-y: auto;

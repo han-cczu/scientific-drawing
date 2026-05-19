@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
 import { Toolbar, type Tool } from "./editor/Toolbar";
-import { createBlankScene, createNode, duplicateNode, moveNodes, removeNode, selectNodesInRect, updateNode, updateNodeStyle, type SceneBox } from "./editor/sceneOps";
+import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, updateNode, updateNodeStyle, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
 import { clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
 import { normalizeImportedScene } from "./editor/visiomasterAdapter";
@@ -30,6 +30,7 @@ export default function App() {
   const [tool, setTool] = useState<Tool>("select");
   const [busy, setBusy] = useState(false);
   const [viewport, setViewport] = useState<Viewport>({ scale: 1, offset: { x: 0, y: 0 } });
+  const [pendingEdgeFromId, setPendingEdgeFromId] = useState<string | null>(null);
   const [aiReconstructionAvailable, setAiReconstructionAvailable] = useState(false);
   const [reconstructionMode, setReconstructionMode] = useState<ReconstructionMode>("color");
   const [message, setMessage] = useState("上传论文图，先生成高保真复刻底图，再叠加可编辑辅助层。");
@@ -96,6 +97,7 @@ export default function App() {
       setSelectedIds([]);
       setTool("select");
       setViewport({ scale: 1, offset: { x: 0, y: 0 } });
+      setPendingEdgeFromId(null);
       setMessage(`已生成复刻底图和 ${Math.max(0, payload.scene.nodes.length - 1)} 个辅助对象。`);
     } catch (error) {
       logger.error("图片分析失败", { error: String(error) });
@@ -120,6 +122,7 @@ export default function App() {
       setSelectedIds([]);
       setTool("select");
       setViewport({ scale: 1, offset: { x: 0, y: 0 } });
+      setPendingEdgeFromId(null);
       setMessage(`AI 重建完成：${payload.scene.nodes.length} 个节点，${payload.scene.edges.length} 条连线。`);
     } catch (error) {
       logger.error("AI 重建失败", { error: String(error) });
@@ -147,6 +150,7 @@ export default function App() {
       setSelectedIds([]);
       setTool("select");
       setViewport({ scale: 1, offset: { x: 0, y: 0 } });
+      setPendingEdgeFromId(null);
       setMessage(`已导入 ${imported.nodes.length} 个节点和 ${imported.edges.length} 条连线。`);
     } catch (error) {
       logger.error("导入 scene 失败", { error: String(error) });
@@ -172,21 +176,44 @@ export default function App() {
     setScene((current) => moveNodes(current, nodeIds, dx, dy));
   };
 
-  // 2.6 更新选中节点
+  // 2.6 调整节点尺寸
+  const handleResize = (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number) => {
+    setScene((current) => resizeNodeFromHandle(current, nodeId, handle, startBox, dx, dy));
+  };
+
+  // 2.7 更新选中节点
   const handleSelect = (ids: string[]) => {
     setSelectedIds(ids);
     setSelectedId(ids[0] ?? null);
   };
 
-  // 2.7 框选画布节点
+  // 2.8 框选画布节点
   const handleBoxSelect = (box: SceneBox) => {
     const ids = selectNodesInRect(scene, box);
     handleSelect(ids);
   };
 
-  // 2.8 点击画布添加节点
+  // 2.9 点击节点处理语义连线
+  const handleNodeActivate = (nodeId: string) => {
+    if (tool !== "connector") {
+      return;
+    }
+    if (!pendingEdgeFromId) {
+      setPendingEdgeFromId(nodeId);
+      handleSelect([nodeId]);
+      setMessage("请选择连线目标节点。");
+      return;
+    }
+    setScene((current) => createEdgeBetweenNodes(current, pendingEdgeFromId, nodeId));
+    setPendingEdgeFromId(null);
+    setTool("select");
+    handleSelect([nodeId]);
+    setMessage("已创建语义连线。");
+  };
+
+  // 2.10 点击画布添加节点
   const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (tool === "select") {
+    if (tool === "select" || tool === "connector") {
       return;
     }
     if (event.target !== event.currentTarget && !(event.target instanceof SVGSVGElement)) {
@@ -212,7 +239,7 @@ export default function App() {
     setTool("select");
   };
 
-  // 2.9 导出当前场景
+  // 2.11 导出当前场景
   const handleExport = async (kind: "svg" | "pptx" | "json") => {
     setBusy(true);
     setMessage(`正在导出 ${kind.toUpperCase()}...`);
@@ -228,7 +255,7 @@ export default function App() {
     }
   };
 
-  // 2.10 删除选中节点
+  // 2.12 删除选中节点
   const handleDelete = () => {
     if (selectedIds.length === 0) {
       return;
@@ -237,7 +264,7 @@ export default function App() {
     handleSelect([]);
   };
 
-  // 2.11 复制选中节点
+  // 2.13 复制选中节点
   const handleDuplicate = () => {
     if (selectedIds.length === 0) {
       return;
@@ -259,7 +286,10 @@ export default function App() {
         tool={tool}
         busy={busy}
         hasSelection={selectedIds.some((id) => scene.nodes.some((node) => node.id === id && !node.locked))}
-        onToolChange={setTool}
+        onToolChange={(nextTool) => {
+          setTool(nextTool);
+          setPendingEdgeFromId(null);
+        }}
         onFileChange={handleFile}
         aiReconstructionAvailable={aiReconstructionAvailable}
         reconstructionMode={reconstructionMode}
@@ -288,7 +318,9 @@ export default function App() {
             viewport={viewport}
             onSelect={handleSelect}
             onMove={handleMove}
+            onResize={handleResize}
             onBoxSelect={handleBoxSelect}
+            onNodeActivate={handleNodeActivate}
             onViewportChange={setViewport}
           />
         </div>
