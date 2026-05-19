@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
 import { Toolbar, type Tool } from "./editor/Toolbar";
-import { selectedIdFromIds } from "./editor/appState";
+import { resetEditorState, selectedIdFromIds } from "./editor/appState";
 import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, updateNode, updateNodeStyle, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
 import { clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
@@ -87,6 +87,29 @@ export default function App() {
    */
   logger.info("开始绑定业务动作...");
 
+  const applyEditorReset = () => {
+    /*
+     * ========================================================================
+     * 步骤1：复位编辑器临时状态
+     * ========================================================================
+     * 目标：
+     *   1) 上传、AI 重建、导入后统一清理交互状态
+     *   2) 防止选择、视图和连线中间态遗漏
+     */
+    logger.info("开始复位编辑器临时状态...");
+
+    // 1.1 读取复位状态
+    const next = resetEditorState();
+
+    // 1.2 应用复位状态
+    setSelectedIds(next.selectedIds);
+    setTool(next.tool);
+    setViewport(next.viewport);
+    setPendingEdgeFromId(next.pendingEdgeFromId);
+
+    logger.info("复位编辑器临时状态完成");
+  };
+
   // 2.1 上传并分析图片
   const handleFile = async (file: File) => {
     setBusy(true);
@@ -94,10 +117,7 @@ export default function App() {
     try {
       const payload = await analyzeImage(file);
       setScene(payload.scene);
-      setSelectedIds([]);
-      setTool("select");
-      setViewport({ scale: 1, offset: { x: 0, y: 0 } });
-      setPendingEdgeFromId(null);
+      applyEditorReset();
       setMessage(`已生成复刻底图和 ${Math.max(0, payload.scene.nodes.length - 1)} 个辅助对象。`);
     } catch (error) {
       logger.error("图片分析失败", { error: String(error) });
@@ -118,10 +138,7 @@ export default function App() {
     try {
       const payload = await reconstructImage(file, reconstructionMode);
       setScene(payload.scene);
-      setSelectedIds([]);
-      setTool("select");
-      setViewport({ scale: 1, offset: { x: 0, y: 0 } });
-      setPendingEdgeFromId(null);
+      applyEditorReset();
       setMessage(`AI 重建完成：${payload.scene.nodes.length} 个节点，${payload.scene.edges.length} 条连线。`);
     } catch (error) {
       logger.error("AI 重建失败", { error: String(error) });
@@ -145,10 +162,7 @@ export default function App() {
         return;
       }
       setScene(imported);
-      setSelectedIds([]);
-      setTool("select");
-      setViewport({ scale: 1, offset: { x: 0, y: 0 } });
-      setPendingEdgeFromId(null);
+      applyEditorReset();
       setMessage(`已导入 ${imported.nodes.length} 个节点和 ${imported.edges.length} 条连线。`);
     } catch (error) {
       logger.error("导入 scene 失败", { error: String(error) });
