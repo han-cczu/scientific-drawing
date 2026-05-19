@@ -415,6 +415,7 @@ AI 重建。同 `analyze`，额外可选 `mode = color | mono`（默认 `color`�
 ```text
 data/eval-suite/
 ├─ manifest.json   # 固定样本清单
+├─ baseline.json   # 可选基线指标
 └─ README.md       # 样本字段说明
 ```
 
@@ -432,8 +433,10 @@ data/eval-suite/
 | `edgeEndpointIssues` | 端点引用不存在节点的次数 |
 | `meanDiff` | SVG 与原图平均像素差 |
 | `normalizedMeanDiff` | `meanDiff / 255`，便于跨样本比较 |
+| `normalizedMeanDiffDelta` | 当前归一化像素差相对基线的变化 |
 | `psnr` | 基于均方误差的峰值信噪比，越高越好 |
 | `ssim` | 全图统计近似 SSIM，越接近 1 越好 |
+| `ssimDelta` | 当前 SSIM 相对基线的变化 |
 | `typeSummary` | 类型分布字符串 |
 
 像素差定义为对齐到相同分辨率后，每通道差值绝对值的均值：
@@ -445,6 +448,8 @@ $$
 值越小越接近原图。当前数据集（`data/evaluation/summary.json`）上典型 `meanDiff` 在 0.1 ~ 7 之间，说明启发式分析在视觉上接近原图，但 `edges` 通常为 0（启发式尚未稳定输出箭头语义）。
 
 评估同时输出 `normalizedMeanDiff`、`psnr` 和 `ssim`。`normalizedMeanDiff` 用于把 0 到 255 的通道差值压到 0 到 1；`psnr` 更适合观察像素级退化；`ssim` 用全图亮度、方差和协方差做近似结构相似度。
+
+如果存在 `data/eval-suite/baseline.json`，评估会按文件名匹配历史结果，并输出 `normalizedMeanDiffDelta` 与 `ssimDelta`。正的 `normalizedMeanDiffDelta` 表示像素误差变大；正的 `ssimDelta` 表示结构相似度提高。
 
 > 评估目前只覆盖**普通分析**链路，不评估 AI 重建质量。
 

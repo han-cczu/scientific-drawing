@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { computePsnr, computeSsimApprox, normalizeMeanDiff } from "../server/src/evaluate";
+import { computePsnr, computeSsimApprox, deltaFromBaseline, normalizeMeanDiff } from "../server/src/evaluate";
 
 describe("visual evaluation metrics", () => {
   it("normalizes meanDiff to 0..1", () => {
@@ -36,5 +36,28 @@ describe("visual evaluation metrics", () => {
     const ssim = computeSsimApprox(Buffer.from([0, 10, 20]), Buffer.from([0, 10, 25]));
     assert.ok(ssim <= 1);
     assert.ok(ssim >= -1);
+  });
+
+  it("computes baseline deltas by file name", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证基线差异
+     * ========================================================================
+     * 目标：
+     *   1) 按文件名匹配历史指标
+     *   2) 输出当前指标相对基线的变化
+     */
+
+    // 1.1 计算 delta
+    const delta = deltaFromBaseline(
+      { file: "a.png", normalizedMeanDiff: 0.12, ssim: 0.9 },
+      [{ file: "a.png", normalizedMeanDiff: 0.1, ssim: 0.92 }]
+    );
+
+    // 1.2 校验 delta
+    assert.deepEqual(delta, {
+      normalizedMeanDiffDelta: 0.02,
+      ssimDelta: -0.02
+    });
   });
 });

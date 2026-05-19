@@ -19,6 +19,8 @@ export type SampleResult = {
   normalizedMeanDiff: number | null;
   psnr: number | null;
   ssim: number | null;
+  normalizedMeanDiffDelta: number | null;
+  ssimDelta: number | null;
   lockedNodes: number;
   imageNodes: number;
   textNodes: number;
@@ -44,6 +46,22 @@ type EvaluationManifest = {
   }>;
 };
 
+export type EvaluationBaselineEntry = {
+  file: string;
+  normalizedMeanDiff?: number | null;
+  ssim?: number | null;
+};
+
+type EvaluationBaseline = {
+  version: number;
+  results: EvaluationBaselineEntry[];
+};
+
+export type EvaluationBaselineDelta = {
+  normalizedMeanDiffDelta: number | null;
+  ssimDelta: number | null;
+};
+
 const SAMPLE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const MAX_EVAL_WIDTH = 900;
 
@@ -63,14 +81,18 @@ export async function runEvaluation() {
   const rootDir = process.cwd();
   const uploadDir = path.join(rootDir, "data", "uploads");
   const suiteDir = path.join(rootDir, "data", "eval-suite");
+  const baselinePath = path.join(suiteDir, "baseline.json");
   const reportDir = path.join(rootDir, "data", "evaluation");
   await fs.mkdir(reportDir, { recursive: true });
 
   // 1.2 执行样例评估
+  const baseline = await readEvaluationBaseline(baselinePath);
   const samples = await listEvaluationSamples(rootDir, { suiteDir, fallbackDir: uploadDir });
   const results: SampleResult[] = [];
   for (const sample of samples) {
-    results.push(await evaluateSample(sample, reportDir));
+    const result = await evaluateSample(sample, reportDir);
+    const delta = deltaFromBaseline(result, baseline.results);
+    results.push({ ...result, ...delta });
   }
 
   // 1.3 写入报告
@@ -141,6 +163,35 @@ async function readEvaluationManifest(manifestPath: string): Promise<EvaluationM
   }
 }
 
+async function readEvaluationBaseline(baselinePath: string): Promise<EvaluationBaseline> {
+  /*
+   * ========================================================================
+   * 步骤1：读取评估基线
+   * ========================================================================
+   * 目标：
+   *   1) 支持 data/eval-suite/baseline.json 可选输入
+   *   2) 只读取可用于 delta 的视觉指标
+   */
+  logger.info("开始读取评估基线...", { baselinePath });
+
+  try {
+    // 1.1 读取并解析 JSON
+    const content = await fs.readFile(baselinePath, "utf-8");
+    const payload = JSON.parse(content) as Partial<EvaluationBaseline>;
+
+    // 1.2 归一化基线记录
+    const results = Array.isArray(payload.results)
+      ? payload.results.filter((result): result is EvaluationBaselineEntry => typeof result?.file === "string" && result.file.length > 0)
+      : [];
+
+    logger.info("读取评估基线完成", { results: results.length });
+    return { version: 1, results };
+  } catch (error) {
+    logger.warn("读取评估基线失败，跳过基线对比", { error: String(error) });
+    return { version: 1, results: [] };
+  }
+}
+
 export async function listSamples(directory: string) {
   /*
    * ========================================================================
@@ -205,6 +256,8 @@ export async function evaluateSample(imagePath: string, reportDir: string): Prom
     edges: scene.edges.length,
     typeSummary: summarizeTypes(scene),
     ...visualMetrics,
+    normalizedMeanDiffDelta: null,
+    ssimDelta: null,
     ...complexity
   };
 
@@ -397,6 +450,57 @@ export function computeSsimApprox(source: Buffer, rendered: Buffer) {
   return result;
 }
 
+export function deltaFromBaseline(
+  result: { file: string; normalizedMeanDiff: number | null; ssim: number | null },
+  baseline: EvaluationBaselineEntry[]
+): EvaluationBaselineDelta {
+  /*
+   * ========================================================================
+   * 步骤1：计算相对基线差异
+   * ========================================================================
+   * 目标：
+   *   1) 按文件名匹配历史评估结果
+   *   2) 输出当前视觉指标相对基线的变化
+   */
+  logger.info("开始计算相对基线差异...", { file: result.file });
+
+  // 1.1 查找同名基线记录
+  const baselineResult = baseline.find((item) => item.file === result.file);
+  if (!baselineResult) {
+    const emptyDelta = { normalizedMeanDiffDelta: null, ssimDelta: null };
+    logger.info("计算相对基线差异完成", emptyDelta);
+    return emptyDelta;
+  }
+
+  // 1.2 计算指标差值
+  const delta: EvaluationBaselineDelta = {
+    normalizedMeanDiffDelta: roundedDelta(result.normalizedMeanDiff, baselineResult.normalizedMeanDiff ?? null),
+    ssimDelta: roundedDelta(result.ssim, baselineResult.ssim ?? null)
+  };
+
+  logger.info("计算相对基线差异完成", delta);
+  return delta;
+}
+
+function roundedDelta(current: number | null, previous: number | null) {
+  /*
+   * ========================================================================
+   * 步骤1：计算四位小数差值
+   * ========================================================================
+   * 目标：
+   *   1) 任一侧缺失时保留 null
+   *   2) 避免浮点尾差污染报告
+   */
+
+  // 1.1 处理缺失指标
+  if (current === null || previous === null) {
+    return null;
+  }
+
+  // 1.2 返回四位小数差值
+  return Math.round((current - previous) * 10000) / 10000;
+}
+
 export function summarizeTypes(scene: Scene) {
   /*
    * ========================================================================
@@ -487,8 +591,10 @@ export function formatSummaryLine(result: SampleResult) {
     `endpointIssues=${result.edgeEndpointIssues}`,
     `meanDiff=${result.meanDiff ?? "n/a"}`,
     `normalized=${result.normalizedMeanDiff ?? "n/a"}`,
+    `normalizedDelta=${result.normalizedMeanDiffDelta ?? "n/a"}`,
     `psnr=${result.psnr ?? "n/a"}`,
     `ssim=${result.ssim ?? "n/a"}`,
+    `ssimDelta=${result.ssimDelta ?? "n/a"}`,
     result.typeSummary
   ].join(" | ");
 }

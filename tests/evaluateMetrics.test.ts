@@ -80,6 +80,8 @@ describe("evaluation metrics", () => {
       normalizedMeanDiff: 0.0049,
       psnr: 35.12,
       ssim: 0.98,
+      normalizedMeanDiffDelta: 0.001,
+      ssimDelta: -0.01,
       lockedNodes: 1,
       imageNodes: 1,
       textNodes: 1,
@@ -93,7 +95,9 @@ describe("evaluation metrics", () => {
     assert.match(line, /endpointIssues=1/);
     assert.match(line, /meanDiff=1.25/);
     assert.match(line, /normalized=0.0049/);
+    assert.match(line, /normalizedDelta=0.001/);
     assert.match(line, /psnr=35.12/);
     assert.match(line, /ssim=0.98/);
+    assert.match(line, /ssimDelta=-0.01/);
   });
 });
