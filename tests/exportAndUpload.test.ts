@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ensureReplicaBaseLayer, isAllowedImageMime, sanitizeFileBase, validateSceneForExport } from "../server/src/routes/api";
+import { ensureReplicaBaseLayer, exportKindConfig, isAllowedImageMime, sanitizeFileBase, validateSceneForExport } from "../server/src/routes/api";
 import { sceneToPptx } from "../server/src/scene/pptx";
 import { sceneToSvg } from "../server/src/scene/svg";
 import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
@@ -186,6 +186,25 @@ describe("upload helpers", () => {
     const valid = validateSceneForExport(scene);
     assert.equal(valid.ok, true);
     assert.equal(valid.scene?.metadata.id, "test-scene");
+  });
+
+  it("defines all supported export kinds in one table", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证导出类型配置
+     * ========================================================================
+     * 目标：
+     *   1) svg/pptx/json 由同一张表驱动
+     *   2) 文件后缀稳定
+     */
+
+    // 1.1 校验导出配置
+    assert.deepEqual(Object.keys(exportKindConfig).sort(), ["json", "pptx", "svg"]);
+
+    // 1.2 校验后缀
+    assert.equal(exportKindConfig.svg.ext, "svg");
+    assert.equal(exportKindConfig.pptx.ext, "pptx");
+    assert.equal(exportKindConfig.json.ext, "scene.json");
   });
 });
 

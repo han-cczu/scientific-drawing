@@ -84,6 +84,72 @@ const uploadImage: express.RequestHandler = (req, res, next) => {
 
 export const apiRouter = express.Router();
 
+type ExportKind = "svg" | "pptx" | "json";
+
+export const exportKindConfig: Record<ExportKind, {
+  ext: string;
+  write: (scene: Scene, outputPath: string) => Promise<void>;
+}> = {
+  svg: {
+    ext: "svg",
+    write: async (scene, outputPath) => {
+      /*
+       * ========================================================================
+       * 步骤1：写入 SVG 导出文件
+       * ========================================================================
+       * 目标：
+       *   1) 把 scene 转换为 SVG 字符串
+       *   2) 用 UTF-8 写入导出目录
+       */
+      logger.info("开始写入 SVG 导出文件...", { outputPath });
+
+      // 1.1 生成并写入 SVG
+      const svg = await sceneToSvg(scene);
+      await fs.writeFile(outputPath, svg, "utf-8");
+
+      logger.info("写入 SVG 导出文件完成", { outputPath });
+    }
+  },
+  pptx: {
+    ext: "pptx",
+    write: async (scene, outputPath) => {
+      /*
+       * ========================================================================
+       * 步骤1：写入 PPTX 导出文件
+       * ========================================================================
+       * 目标：
+       *   1) 把 scene 转换为可编辑 PowerPoint
+       *   2) 写入导出目录
+       */
+      logger.info("开始写入 PPTX 导出文件...", { outputPath });
+
+      // 1.1 生成 PPTX
+      await sceneToPptx(scene, outputPath);
+
+      logger.info("写入 PPTX 导出文件完成", { outputPath });
+    }
+  },
+  json: {
+    ext: "scene.json",
+    write: async (scene, outputPath) => {
+      /*
+       * ========================================================================
+       * 步骤1：写入 JSON 导出文件
+       * ========================================================================
+       * 目标：
+       *   1) 保留 scene 中间协议
+       *   2) 用缩进格式便于人工检查
+       */
+      logger.info("开始写入 JSON 导出文件...", { outputPath });
+
+      // 1.1 写入 JSON
+      await fs.writeFile(outputPath, JSON.stringify(scene, null, 2), "utf-8");
+
+      logger.info("写入 JSON 导出文件完成", { outputPath });
+    }
+  }
+};
+
 apiRouter.post("/analyze", uploadImage, async (req, res, next) => {
   /*
    * ========================================================================
@@ -253,20 +319,27 @@ apiRouter.get("/scenes/:id", async (req, res, next) => {
   }
 });
 
-apiRouter.post("/export/svg", express.json({ limit: "20mb" }), async (req, res, next) => {
+apiRouter.post("/export/:kind", express.json({ limit: "20mb" }), async (req, res, next) => {
   /*
    * ========================================================================
-   * 步骤1：导出 SVG
+   * 步骤1：导出 scene
    * ========================================================================
    * 目标：
-   *   1) 接收前端当前 scene
-   *   2) 转换为 SVG 字符串
-   *   3) 保存并返回下载地址
+   *   1) 按 kind 选择导出器
+   *   2) 共用 scene 校验、文件命名和响应逻辑
    */
-  logger.info("开始导出 SVG...");
+  logger.info("开始导出 scene...", { kind: req.params.kind });
 
   try {
-    // 1.1 获取 scene
+    // 1.1 校验导出类型
+    const kind = req.params.kind as ExportKind;
+    const config = exportKindConfig[kind];
+    if (!config) {
+      res.status(404).json({ error: "Unsupported export kind." });
+      return;
+    }
+
+    // 1.2 校验 scene
     const validation = validateSceneForExport(req.body?.scene);
     if (!validation.ok) {
       res.status(400).json({ error: "Invalid scene.", issues: validation.issues });
@@ -274,84 +347,15 @@ apiRouter.post("/export/svg", express.json({ limit: "20mb" }), async (req, res, 
     }
     const scene = validation.scene;
 
-    // 1.2 生成并保存 SVG
-    const svg = await sceneToSvg(scene);
-    const fileName = `${sanitizeFileBase(scene.metadata?.id || randomUUID())}.svg`;
+    // 1.3 写入导出文件
+    const fileName = `${sanitizeFileBase(scene.metadata?.id || randomUUID())}.${config.ext}`;
     const outputPath = path.join(exportDir, fileName);
-    await fs.writeFile(outputPath, svg, "utf-8");
+    await config.write(scene, outputPath);
 
-    logger.info("导出 SVG 完成", { outputPath });
+    logger.info("导出 scene 完成", { kind, outputPath });
     res.json({ url: `/exports/${fileName}` });
   } catch (error) {
-    logger.error("导出 SVG 失败", { error: String(error) });
-    next(error);
-  }
-});
-
-apiRouter.post("/export/pptx", express.json({ limit: "20mb" }), async (req, res, next) => {
-  /*
-   * ========================================================================
-   * 步骤1：导出 PPTX
-   * ========================================================================
-   * 目标：
-   *   1) 接收前端当前 scene
-   *   2) 转换成可编辑 PowerPoint
-   *   3) 返回下载地址
-   */
-  logger.info("开始导出 PPTX...");
-
-  try {
-    // 1.1 获取 scene
-    const validation = validateSceneForExport(req.body?.scene);
-    if (!validation.ok) {
-      res.status(400).json({ error: "Invalid scene.", issues: validation.issues });
-      return;
-    }
-    const scene = validation.scene;
-
-    // 1.2 生成 PPTX
-    const fileName = `${sanitizeFileBase(scene.metadata?.id || randomUUID())}.pptx`;
-    const outputPath = path.join(exportDir, fileName);
-    await sceneToPptx(scene, outputPath);
-
-    logger.info("导出 PPTX 完成", { outputPath });
-    res.json({ url: `/exports/${fileName}` });
-  } catch (error) {
-    logger.error("导出 PPTX 失败", { error: String(error) });
-    next(error);
-  }
-});
-
-apiRouter.post("/export/json", express.json({ limit: "20mb" }), async (req, res, next) => {
-  /*
-   * ========================================================================
-   * 步骤1：导出 JSON
-   * ========================================================================
-   * 目标：
-   *   1) 接收前端当前 scene
-   *   2) 保存为中间协议文件
-   *   3) 返回下载地址
-   */
-  logger.info("开始导出 JSON...");
-
-  try {
-    // 1.1 获取 scene
-    const validation = validateSceneForExport(req.body?.scene);
-    if (!validation.ok) {
-      res.status(400).json({ error: "Invalid scene.", issues: validation.issues });
-      return;
-    }
-    const scene = validation.scene;
-
-    // 1.2 保存 JSON
-    const fileName = `${sanitizeFileBase(scene.metadata?.id || randomUUID())}.scene.json`;
-    const outputPath = path.join(exportDir, fileName);
-    await fs.writeFile(outputPath, JSON.stringify(scene, null, 2), "utf-8");
-
-    logger.info("导出 JSON 完成", { outputPath });
-    res.json({ url: `/exports/${fileName}` });
-  } catch (error) {
-    logger.error("导出 JSON 失败", { error: String(error) });
+    logger.error("导出 scene 失败", { error: String(error), kind: req.params.kind });
     next(error);
   }
 });
