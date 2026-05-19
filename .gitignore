@@ -3,6 +3,9 @@
 /tsconfig.tsbuildinfo
 /.env
 /.env.*
+/data/uploads/
 /data/exports/
 /data/evaluation/
+/data/scenes/
+/data/test-*
 /data/*.log
