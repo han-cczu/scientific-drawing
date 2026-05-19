@@ -5,7 +5,12 @@ export type ReconstructionMode = "color" | "mono";
 
 export type AppConfig = {
   aiReconstructionAvailable: boolean;
+  provider: "openai-compatible";
+  baseUrl: string;
   reconstructModel: string;
+  reconstructModels: string[];
+  modelListAvailable: boolean;
+  modelListError: string | null;
 };
 
 export async function loadAppConfig(): Promise<AppConfig> {
@@ -62,7 +67,7 @@ export async function analyzeImage(file: File): Promise<AnalyzeResponse> {
   return payload;
 }
 
-export async function reconstructImage(file: File, mode: ReconstructionMode): Promise<AnalyzeResponse> {
+export async function reconstructImage(file: File, mode: ReconstructionMode, model: string): Promise<AnalyzeResponse> {
   /*
    * ========================================================================
    * 步骤1：上传图片并请求 AI 重建
@@ -71,13 +76,14 @@ export async function reconstructImage(file: File, mode: ReconstructionMode): Pr
    *   1) 把论文图提交给后端多模态接口
    *   2) 获取可编辑 scene.json
    */
-  logger.info("开始上传图片并请求 AI 重建...", { fileName: file.name, mode });
+  logger.info("开始上传图片并请求 AI 重建...", { fileName: file.name, mode, model });
 
   // 1.1 构造上传表单
   const form = new FormData();
   form.append("image", file);
   form.append("title", file.name);
   form.append("mode", mode);
+  form.append("model", model);
 
   // 1.2 请求 AI 重建接口
   const response = await fetch("/api/reconstruct", {

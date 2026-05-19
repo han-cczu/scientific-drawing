@@ -6,6 +6,7 @@ import multer from "multer";
 import { logger } from "../logger";
 import { exportDir, sceneDir, uploadDir } from "../paths";
 import { analyzeImage } from "../scene/analyzeImage";
+import { buildSafeAiProviderConfig, fetchOpenAiCompatibleModels, readAiRuntimeConfig } from "../scene/aiProviderConfig";
 import { sceneToPptx } from "../scene/pptx";
 import { repairScene } from "../scene/repairScene";
 import { reconstructWithOpenAI } from "../scene/reconstructWithOpenAI";
@@ -234,14 +235,16 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
     imagePath = path.join(uploadDir, fileName);
     await fs.rename(req.file.path, imagePath);
 
-    // 1.3 读取重建模式
+    // 1.3 读取重建模式和模型
     const mode = reconstructionModeValue(req.body?.mode);
+    const model = reconstructModelValue(req.body?.model);
 
     // 1.4 调用 AI 并保存 scene
     const rawScene = await reconstructWithOpenAI({
       imagePath,
       mimeType: req.file.mimetype,
-      mode
+      mode,
+      model
     });
     const sourceUrl = `/uploads/${fileName}`;
     const validation = repairAndValidateSceneForPersistence(normalizeImportedScene(rawScene), { id, sourceUrl });
@@ -250,7 +253,7 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
       return;
     }
     const scene = validation.scene;
-    scene.metadata.notes = [...scene.metadata.notes, `Reconstruction mode: ${mode}.`];
+    scene.metadata.notes = [...scene.metadata.notes, `Reconstruction mode: ${mode}.`, `Reconstruction model: ${model || "default"}.`];
     const scenePath = path.join(sceneDir, `${id}.scene.json`);
     await fs.writeFile(scenePath, JSON.stringify(scene, null, 2), "utf-8");
 
@@ -267,26 +270,36 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
   }
 });
 
-apiRouter.get("/config", (_req, res) => {
+apiRouter.get("/config", async (_req, res) => {
   /*
    * ========================================================================
    * 步骤1：返回前端运行配置
    * ========================================================================
    * 目标：
    *   1) 暴露 AI 重建是否可用
-   *   2) 避免前端在缺少 API Key 时盲目调用重建接口
+   *   2) 返回 OpenAI 兼容模型列表
    */
   logger.info("开始返回前端运行配置...");
 
-  // 1.1 读取服务端环境变量
-  const aiReconstructionAvailable = Boolean(process.env.OPENAI_API_KEY);
+  // 1.1 读取服务端 AI 配置
+  const runtimeConfig = readAiRuntimeConfig();
 
-  // 1.2 返回安全配置
-  logger.info("返回前端运行配置完成", { aiReconstructionAvailable });
-  res.json({
-    aiReconstructionAvailable,
-    reconstructModel: process.env.OPENAI_RECONSTRUCT_MODEL || "gpt-5.4"
+  // 1.2 获取模型列表
+  const modelList = await fetchOpenAiCompatibleModels(runtimeConfig);
+
+  // 1.3 返回安全配置
+  const config = buildSafeAiProviderConfig({
+    apiKey: runtimeConfig.apiKey,
+    baseUrl: runtimeConfig.baseUrl,
+    defaultModel: runtimeConfig.defaultModel,
+    models: modelList.models,
+    modelListError: modelList.error
   });
+  logger.info("返回前端运行配置完成", {
+    aiReconstructionAvailable: config.aiReconstructionAvailable,
+    modelCount: config.reconstructModels.length
+  });
+  res.json(config);
 });
 
 apiRouter.get("/scenes/:id", async (req, res, next) => {
@@ -369,6 +382,26 @@ function reconstructionModeValue(value: unknown): ReconstructionMode {
     return "mono";
   }
   return "color";
+}
+
+function reconstructModelValue(value: unknown) {
+  /*
+   * ========================================================================
+   * 步骤1：读取重建模型名
+   * ========================================================================
+   * 目标：
+   *   1) 允许前端从模型列表选择模型
+   *   2) 限制异常输入长度和类型
+   */
+  logger.info("开始读取重建模型名...", { value });
+
+  // 1.1 校验模型名
+  const model = typeof value === "string" && value.trim().length > 0 && value.length <= 120
+    ? value.trim()
+    : undefined;
+
+  logger.info("读取重建模型名完成", { model });
+  return model;
 }
 
 export function isAllowedImageMime(mime: string) {

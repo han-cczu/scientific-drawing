@@ -11,9 +11,12 @@ type ToolbarProps = {
   hasSelection: boolean;
   aiReconstructionAvailable: boolean;
   reconstructionMode: ReconstructionMode;
+  reconstructionModel: string;
+  reconstructionModels: string[];
   onToolChange: (tool: Tool) => void;
   onFileChange: (file: File) => void;
   onModeChange: (mode: ReconstructionMode) => void;
+  onModelChange: (model: string) => void;
   onReconstruct: (file: File) => void;
   onSceneImport: (file: File) => void;
   onPromptExport: () => void;
@@ -39,9 +42,12 @@ export function Toolbar({
   hasSelection,
   aiReconstructionAvailable,
   reconstructionMode,
+  reconstructionModel,
+  reconstructionModels,
   onToolChange,
   onFileChange,
   onModeChange,
+  onModelChange,
   onReconstruct,
   onSceneImport,
   onPromptExport,
@@ -58,7 +64,7 @@ export function Toolbar({
    *   1) 提供上传、选择和绘制工具
    *   2) 提供删除、复制和导出命令
    */
-  logger.info("开始渲染编辑工具栏...", { tool, busy, hasSelection, aiReconstructionAvailable });
+  logger.info("开始渲染编辑工具栏...", { tool, busy, hasSelection, aiReconstructionAvailable, reconstructionModel });
 
   // 1.1 处理文件选择
   const handleInput = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,6 +121,17 @@ export function Toolbar({
           <Contrast size={18} />
         </button>
       </div>
+      <select
+        className="model-select"
+        title="AI模型"
+        value={reconstructionModel}
+        onChange={(event) => onModelChange(event.target.value)}
+        disabled={busy || !aiReconstructionAvailable}
+      >
+        {reconstructionModels.map((model) => (
+          <option key={model} value={model}>{model}</option>
+        ))}
+      </select>
 
       <label className={aiReconstructionAvailable ? "icon-button upload-button" : "icon-button upload-button disabled"} title={aiReconstructionAvailable ? `AI重建 · ${reconstructionMode === "color" ? "彩色" : "黑白"}` : "AI重建需要 OPENAI_API_KEY"}>
         <BrainCircuit size={18} />

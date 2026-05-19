@@ -129,12 +129,14 @@ npm run dev          # 同启前端 5173 + 后端 8787
 
 ```powershell
 $env:OPENAI_API_KEY            = "你的 key"
-$env:OPENAI_BASE_URL           = "https://api.openai.com/v1"  # 可选
-$env:OPENAI_RECONSTRUCT_MODEL  = "gpt-5.4"                    # 可选
+$env:OPENAI_BASE_URL           = "https://api.openai.com/v1"  # 可选，可填兼容网关根地址
+$env:OPENAI_RECONSTRUCT_MODEL  = "gpt-4o"                     # 可选，模型列表失败时的兜底模型
 npm run dev
 ```
 
-未配置 `OPENAI_API_KEY` 时，**普通分析、手工编辑、导入导出依旧可用**，只是工具栏的「AI 重建」按钮被禁用。`OPENAI_BASE_URL` 支持写网关根地址，程序会自动补齐 `/v1/responses`。
+未配置 `OPENAI_API_KEY` 时，**普通分析、手工编辑、导入导出依旧可用**，只是工具栏的「AI 重建」按钮被禁用。`OPENAI_BASE_URL` 支持写网关根地址，程序会自动补齐 `/v1/responses` 和 `/v1/models`。
+
+`GET /api/config` 会由后端携带 API Key 请求 `/v1/models`，只把模型 id 列表返回给前端。前端不会接触 `OPENAI_API_KEY`。
 
 ### 2.3 日志与文件保留
 
@@ -317,7 +319,15 @@ raw ──▶ normalizeImportedScene ──▶ repairScene ──▶ validateSce
 ### `GET /api/config`
 
 ```json
-{ "aiReconstructionAvailable": true, "reconstructModel": "gpt-5.4" }
+{
+  "aiReconstructionAvailable": true,
+  "provider": "openai-compatible",
+  "baseUrl": "https://api.openai.com/v1",
+  "reconstructModel": "gpt-4o",
+  "reconstructModels": ["gpt-4o", "gpt-4o-mini"],
+  "modelListAvailable": true,
+  "modelListError": null
+}
 ```
 
 ### `POST /api/analyze`

@@ -35,6 +35,8 @@ export default function App() {
   const [pendingEdgeFromId, setPendingEdgeFromId] = useState<string | null>(null);
   const [aiReconstructionAvailable, setAiReconstructionAvailable] = useState(false);
   const [reconstructionMode, setReconstructionMode] = useState<ReconstructionMode>("color");
+  const [reconstructionModel, setReconstructionModel] = useState("");
+  const [reconstructionModels, setReconstructionModels] = useState<string[]>([]);
   const [message, setMessage] = useState("上传论文图，先生成高保真复刻底图，再叠加可编辑辅助层。");
 
   // 1.2 计算选中节点
@@ -63,6 +65,11 @@ export default function App() {
           return;
         }
         setAiReconstructionAvailable(config.aiReconstructionAvailable);
+        setReconstructionModel(config.reconstructModel);
+        setReconstructionModels(config.reconstructModels);
+        if (config.modelListError) {
+          logger.warn("读取模型列表失败", { error: config.modelListError });
+        }
         if (!config.aiReconstructionAvailable) {
           setMessage("普通分析可用。AI 重建需要先设置 OPENAI_API_KEY。");
         }
@@ -137,7 +144,7 @@ export default function App() {
     setBusy(true);
     setMessage("正在调用 AI 重建 scene.json...");
     try {
-      const payload = await reconstructImage(file, reconstructionMode);
+      const payload = await reconstructImage(file, reconstructionMode, reconstructionModel);
       setScene(payload.scene);
       applyEditorReset();
       setMessage(`AI 重建完成：${payload.scene.nodes.length} 个节点，${payload.scene.edges.length} 条连线。`);
@@ -347,7 +354,10 @@ export default function App() {
         onFileChange={handleFile}
         aiReconstructionAvailable={aiReconstructionAvailable}
         reconstructionMode={reconstructionMode}
+        reconstructionModel={reconstructionModel}
+        reconstructionModels={reconstructionModels}
         onModeChange={setReconstructionMode}
+        onModelChange={setReconstructionModel}
         onReconstruct={handleReconstruct}
         onSceneImport={handleSceneImport}
         onPromptExport={handlePromptExport}

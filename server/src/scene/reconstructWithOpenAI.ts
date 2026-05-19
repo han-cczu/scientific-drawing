@@ -1,12 +1,14 @@
 import { promises as fs } from "node:fs";
 import sharp from "sharp";
 import { logger } from "../logger";
+import { readAiRuntimeConfig, resolveOpenAiCompatibleUrls } from "./aiProviderConfig";
 import { buildServerReconstructionPrompt, type ReconstructionMode } from "./reconstructionPrompt";
 
 type ReconstructInput = {
   imagePath: string;
   mimeType: string;
   mode: ReconstructionMode;
+  model?: string;
 };
 
 export async function reconstructWithOpenAI(input: ReconstructInput): Promise<Record<string, unknown>> {
@@ -22,13 +24,14 @@ export async function reconstructWithOpenAI(input: ReconstructInput): Promise<Re
   logger.info("开始准备多模态重建请求...", { imagePath: input.imagePath });
 
   // 1.1 检查 API Key
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  const runtimeConfig = readAiRuntimeConfig();
+  if (!runtimeConfig.apiKey) {
     throw new Error("OPENAI_API_KEY is not set.");
   }
 
   // 1.2 解析 API 地址
-  const responsesUrl = resolveResponsesUrl();
+  const { responsesUrl } = resolveOpenAiCompatibleUrls(runtimeConfig.baseUrl);
+  const model = input.model || runtimeConfig.defaultModel;
 
   // 1.3 读取图片尺寸和 base64
   const metadata = await sharp(input.imagePath).metadata();
@@ -37,7 +40,7 @@ export async function reconstructWithOpenAI(input: ReconstructInput): Promise<Re
   const imageBytes = await fs.readFile(input.imagePath);
   const dataUrl = `data:${normalizeMimeType(input.mimeType)};base64,${imageBytes.toString("base64")}`;
   const prompt = buildServerReconstructionPrompt(width, height, input.mode);
-  logger.info("准备多模态重建请求完成", { width, height, mode: input.mode });
+  logger.info("准备多模态重建请求完成", { width, height, mode: input.mode, model });
 
   /*
    * ========================================================================
@@ -53,11 +56,11 @@ export async function reconstructWithOpenAI(input: ReconstructInput): Promise<Re
   const response = await fetch(responsesUrl, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${apiKey}`,
+      "Authorization": `Bearer ${runtimeConfig.apiKey}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_RECONSTRUCT_MODEL || "gpt-5.4",
+      model,
       input: [
         {
           role: "user",
@@ -148,29 +151,6 @@ function normalizeMimeType(mimeType: string) {
     return mimeType;
   }
   return "image/png";
-}
-
-function resolveResponsesUrl() {
-  /*
-   * ========================================================================
-   * 步骤1：解析 Responses API 地址
-   * ========================================================================
-   * 目标：
-   *   1) 支持官方 OpenAI 地址
-   *   2) 支持兼容网关自定义 OPENAI_BASE_URL
-   */
-  logger.info("开始解析 Responses API 地址...");
-
-  // 1.1 读取基础地址
-  const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-
-  // 1.2 规范化 /v1 路径
-  const trimmed = baseUrl.replace(/\/+$/, "");
-  const apiRoot = trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
-  const responsesUrl = `${apiRoot}/responses`;
-
-  logger.info("解析 Responses API 地址完成", { responsesUrl });
-  return responsesUrl;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
