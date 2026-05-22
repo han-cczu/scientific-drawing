@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "./editor/Canvas";
 import { Inspector } from "./editor/Inspector";
-import { LayersPanel } from "./editor/LayersPanel";
-import { Toolbar, type Tool } from "./editor/Toolbar";
+import { type Tool } from "./editor/Toolbar";
+import { SideNav } from "./editor/SideNav";
+import { TopBar } from "./editor/TopBar";
+import { RightPanel } from "./editor/RightPanel";
 import { resetEditorState, selectedIdFromIds } from "./editor/appState";
 import { canRedoHistory, canUndoHistory, commitHistoryPresent, createHistoryState, pushHistory, redoHistory, replaceHistoryPresent, undoHistory } from "./editor/history";
 import { getEditorShortcutAction, isEditableKeyboardTarget } from "./editor/keyboardShortcuts";
 import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodeLayer, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked, updateNode, updateNodeStyle, type LayerMoveDirection, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
-import { clientPointToScene, type Viewport } from "./editor/viewport";
+import { clampViewportScale, clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
 import { normalizeImportedScene } from "./editor/visiomasterAdapter";
 import { analyzeImage, exportScene, loadAppConfig, reconstructImage, reconstructRegion, type ReconstructionMode, type RegionMergeMode } from "./lib/api";
@@ -561,42 +563,64 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Toolbar
-        tool={tool}
+      <TopBar
+        title="Scientific Drawing"
         busy={busy}
-        hasSelection={selectedIds.some((id) => scene.nodes.some((node) => node.id === id && !node.locked && !node.hidden))}
-        onToolChange={(nextTool) => {
-          setTool(nextTool);
-          setPendingEdgeFromId(null);
-          setPendingRegion(null);
-        }}
-        onFileChange={handleFile}
-        aiReconstructionAvailable={aiReconstructionAvailable}
-        reconstructionMode={reconstructionMode}
-        reconstructionModel={reconstructionModel}
-        reconstructionModels={reconstructionModels}
-        onModeChange={setReconstructionMode}
-        onModelChange={setReconstructionModel}
-        onReconstruct={handleReconstruct}
-        onSceneImport={handleSceneImport}
-        onPromptExport={handlePromptExport}
-        onExport={handleExport}
-        onDelete={handleDelete}
-        onDuplicate={handleDuplicate}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        zoom={viewport.scale}
+        onZoomChange={(next) => setViewport({ scale: clampViewportScale(next), offset: viewport.offset })}
+        isSelectMode={tool === "select"}
+        isPanMode={false}
+        onActivateSelect={() => {
+          setTool("select");
+          setPendingEdgeFromId(null);
+          setPendingRegion(null);
+        }}
+        onActivatePan={() => {
+          /* 平移 chip 当前为占位：通过空格/中键拖拽空白处可平移画布 */
+        }}
+        onImportImage={handleFile}
+        onExport={handleExport}
         onResetView={() => setViewport({ scale: 1, offset: { x: 0, y: 0 } })}
+        aiReconstructionAvailable={aiReconstructionAvailable}
+        reconstructionMode={reconstructionMode}
+        onReconstructionModeChange={setReconstructionMode}
+        reconstructionModel={reconstructionModel}
+        reconstructionModels={reconstructionModels}
+        onReconstructionModelChange={setReconstructionModel}
+        onReconstructImage={handleReconstruct}
+        onSceneImport={handleSceneImport}
+        onPromptExport={handlePromptExport}
       />
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <div className="app-title">Scientific Drawing</div>
-            <div className="status-line">{message}</div>
-          </div>
+      <SideNav
+        isSelectMode={tool === "select"}
+        isRegionMode={tool === "region-reconstruct"}
+        aiReconstructionAvailable={aiReconstructionAvailable}
+        onActivateSelect={() => {
+          setTool("select");
+          setPendingEdgeFromId(null);
+          setPendingRegion(null);
+        }}
+        onActivateRegionReconstruct={() => {
+          setTool("region-reconstruct");
+          setPendingEdgeFromId(null);
+          setPendingRegion(null);
+        }}
+        nodes={scene.nodes}
+        selectedIds={selectedIds}
+        onSelectNodes={handleSelect}
+        onToggleHidden={handleLayerHiddenToggle}
+        onToggleLocked={handleLayerLockedToggle}
+        onMoveLayer={handleLayerMove}
+      />
+      <main className="canvas-area">
+        <div className="canvas-status">
+          <div className="status-text">{message}</div>
           <div className="scene-meta">{scene.page.width} × {scene.page.height}px · {scene.nodes.length} objects</div>
-        </header>
+        </div>
         <div className={tool === "select" ? "canvas-hit-area" : "canvas-hit-area drawing"} onClick={handleCanvasClick}>
           <Canvas
             scene={scene}
@@ -613,21 +637,13 @@ export default function App() {
           />
         </div>
       </main>
-      <aside className="right-panel">
-        <LayersPanel
-          nodes={scene.nodes}
-          selectedIds={selectedIds}
-          onSelect={handleSelect}
-          onToggleHidden={handleLayerHiddenToggle}
-          onToggleLocked={handleLayerLockedToggle}
-          onMoveLayer={handleLayerMove}
-        />
+      <RightPanel>
         <Inspector
           node={selectedNode}
           onChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
           onStyleChange={(patch) => selectedId && applySceneChange((current) => updateNodeStyle(current, selectedId, patch))}
         />
-      </aside>
+      </RightPanel>
       {pendingRegion ? (
         <div className="region-confirm" role="dialog" aria-label="局部 AI 重建方式">
           <div>
