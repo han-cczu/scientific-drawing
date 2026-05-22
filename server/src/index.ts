@@ -1,3 +1,6 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import express from "express";
 import cors from "cors";
 import { logger } from "./logger";
@@ -35,14 +38,37 @@ app.use("/uploads", express.static(uploadDir));
 app.use("/exports", express.static(exportDir));
 app.use("/api", apiRouter);
 
-// 1.4 注册错误处理
+// 1.4 注册前端静态资源（生产形态）
+//   runtime 时 server/src/index.ts 位于 /app/server/src/，dist/ 位于 /app/dist/
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distDir = path.resolve(__dirname, "../../dist");
+const distIndex = path.join(distDir, "index.html");
+const distAvailable = existsSync(distIndex);
+logger.info("前端静态资源目录检测完成", { distDir, distAvailable });
+
+if (distAvailable) {
+  // 必须放在 /api /uploads /exports 中间件之后，避免拦截 API
+  app.use(express.static(distDir));
+  // SPA fallback：非 API 路径全部回退到 index.html
+  app.get(/^\/(?!api\/|uploads\/|exports\/).*/, (_req, res) => {
+    try {
+      res.sendFile(distIndex);
+    } catch (error) {
+      logger.warn("发送前端 index.html 失败", { error: String(error) });
+      res.status(404).send("Not Found");
+    }
+  });
+}
+
+// 1.5 注册错误处理
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error("HTTP 请求处理失败", { error: String(error) });
   const message = error instanceof Error ? error.message : "Internal server error.";
   res.status(500).json({ error: message });
 });
 
-// 1.5 启动监听
+// 1.6 启动监听
 const port = Number(process.env.PORT || 8787);
 app.listen(port, () => {
   logger.info("HTTP 服务启动完成", { port });

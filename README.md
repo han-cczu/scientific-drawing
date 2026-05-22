@@ -34,6 +34,18 @@ npm run dev
 
 需要 Node.js 20 或更高版本。CI（`.github/workflows/ci.yml`）会跑 `npm ci`、`typecheck`、`test`、`build` 与 `evaluate`，并对评估指标做严格 delta 门禁。
 
+## Docker 部署
+
+单机自部署（VPS / 内网 Linux），用容器同时锁定字体环境：
+
+```bash
+cp .env.example .env          # 编辑 .env，按需填入 OPENAI_API_KEY（可选）
+docker compose up -d          # 首次会自动 build
+# 浏览器打开 http://<host>:8787
+```
+
+详细部署、反代示例、备份策略见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+
 ## How it works
 
 ```mermaid

@@ -14,6 +14,8 @@ Whenever a backend pipeline produces a JSON/SVG artifact that is checked into gi
 
 The three patterns below are the project's standard answers. Apply them whenever you add a new artifact-producing path.
 
+> **Runtime prerequisite**: these patterns assume the container base image and font set described in `../deployment/container-image.md`. A wrong base image (Alpine instead of Debian-slim) or missing `fonts-noto-cjk` will drift the baseline regardless of how clean the application-level code is.
+
 ---
 
 ## Pattern: Content-Hashed IDs Instead of Random UUIDs

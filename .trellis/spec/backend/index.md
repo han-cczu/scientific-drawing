@@ -20,6 +20,9 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 | [Deterministic Output Patterns](./deterministic-output.md) | Content-hashed IDs, `stripVolatileFields`, CI-strict gating for diffable artifacts | Filled |
+| [HTTP Routing Conventions](./http-routing.md) | Middleware order, SPA fallback RegExp (Express 5 / path-to-regexp v6), `existsSync` guard | Filled |
+
+See also `../deployment/index.md` for runtime/container conventions that the deterministic output and routing specs depend on.
 
 ---
 

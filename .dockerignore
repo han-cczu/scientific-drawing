@@ -1,0 +1,41 @@
+# Node 产物
+node_modules
+dist
+*.log
+tsconfig.tsbuildinfo
+
+# 本地环境
+.env
+.env.*
+
+# 数据目录：runtime 用 bind mount 注入，不进镜像
+# 但保留 data/eval-suite（D5：与 CI 同源样本要 COPY 进镜像）
+data/uploads
+data/exports
+data/scenes
+data/evaluation
+data/test-*
+data/*.log
+
+# 版本控制 & IDE
+.git
+.gitignore
+.github
+
+# 本地 agent / IDE 工具
+.claude
+.cursor
+.trellis
+AGENTS.md
+
+# 文档与测试（runtime 不需要，CI 在 host 跑）
+docs
+tests
+README.md
+LICENSE
+
+# Docker 文件本身不需要进 build context
+Dockerfile
+docker-compose.yml
+docker-compose.dev.yml
+.dockerignore

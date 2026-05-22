@@ -1,0 +1,28 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: scientific-drawing:dev
+    command: ["npm", "run", "dev"]
+    ports:
+      - "5173:5173"
+      - "8787:8787"
+    env_file:
+      - .env
+    # dev 形态：mount 源码以便热重载；anonymous volume 保护容器内 node_modules
+    # 不被宿主机（Windows / 不同 OS）的 node_modules 覆盖（典型坑）。
+    volumes:
+      - ./src:/app/src
+      - ./server:/app/server
+      - ./tests:/app/tests
+      - ./vite.config.ts:/app/vite.config.ts:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./package.json:/app/package.json:ro
+      - ./index.html:/app/index.html:ro
+      - ./data/uploads:/app/data/uploads
+      - ./data/scenes:/app/data/scenes
+      - ./data/exports:/app/data/exports
+      - ./data/evaluation:/app/data/evaluation
+      - /app/node_modules
+    restart: unless-stopped

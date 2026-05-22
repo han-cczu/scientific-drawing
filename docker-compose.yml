@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: scientific-drawing:latest
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    # bind mount 按子目录挂载（D6 关键风险点）：
+    # 避免整目录 ./data:/app/data 遮盖镜像内的 /app/data/eval-suite。
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/scenes:/app/data/scenes
+      - ./data/exports:/app/data/exports
+      - ./data/evaluation:/app/data/evaluation
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8787/api/config"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
