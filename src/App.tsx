@@ -8,6 +8,7 @@ import { BottomDrawer } from "./editor/BottomDrawer";
 import { CanvasViewTabs, type CanvasViewMode } from "./editor/CanvasViewTabs";
 import { ThumbnailRail } from "./editor/ThumbnailRail";
 import { SelectionFloatingBar } from "./editor/SelectionFloatingBar";
+import { SettingsDialog } from "./editor/SettingsDialog";
 import { resetEditorState, selectedIdFromIds } from "./editor/appState";
 import { canRedoHistory, canUndoHistory, commitHistoryPresent, createHistoryState, pushHistory, redoHistory, replaceHistoryPresent, undoHistory } from "./editor/history";
 import { getEditorShortcutAction, isEditableKeyboardTarget } from "./editor/keyboardShortcuts";
@@ -15,7 +16,7 @@ import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, mo
 import { clampViewportScale, clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
 import { normalizeImportedScene } from "./editor/visiomasterAdapter";
-import { analyzeImage, exportScene, loadAppConfig, reconstructImage, reconstructRegion, type ReconstructionMode, type RegionMergeMode } from "./lib/api";
+import { analyzeImage, deleteAppConfig, exportScene, loadAppConfig, reconstructImage, reconstructRegion, saveAppConfig, testAppConfig, type AppConfig, type ReconstructionMode, type RegionMergeMode } from "./lib/api";
 import { logger } from "./lib/logger";
 import type { Scene } from "./shared/scene";
 import { validateScene } from "./shared/sceneValidation";
@@ -45,7 +46,9 @@ export default function App() {
   const [aiReconstructionAvailable, setAiReconstructionAvailable] = useState(false);
   const [reconstructionMode, setReconstructionMode] = useState<ReconstructionMode>("color");
   const [reconstructionModel, setReconstructionModel] = useState("");
-  const [reconstructionModels, setReconstructionModels] = useState<string[]>([]);
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsAutoOpenedRef = useRef(false);
   const [message, setMessage] = useState("上传论文图，先生成高保真复刻底图，再叠加可编辑辅助层。");
   const [viewMode, setViewMode] = useState<CanvasViewMode>("result");
 
@@ -66,7 +69,25 @@ export default function App() {
    *   2) 把不可用原因反馈到工具栏
    */
 
-  // 2.1 加载配置
+  // 2.1 把后端返回的 AppConfig 同步到本地 state
+  const applyAppConfig = (config: AppConfig) => {
+    /*
+     * ========================================================================
+     * 步骤1：应用后端配置
+     * ========================================================================
+     * 目标：
+     *   1) 刷新 AI 能力开关与默认模型
+     *   2) 把 AppConfig 缓存到 state 供 SettingsDialog 读取（来源/末四位）
+     */
+    setAppConfig(config);
+    setAiReconstructionAvailable(config.aiReconstructionAvailable);
+    setReconstructionModel(config.reconstructModel);
+    if (config.modelListError) {
+      logger.warn("读取模型列表失败", { error: config.modelListError });
+    }
+  };
+
+  // 2.2 加载配置 + 首次未配置自动弹出设置对话框
   useEffect(() => {
     let cancelled = false;
     loadAppConfig()
@@ -74,14 +95,13 @@ export default function App() {
         if (cancelled) {
           return;
         }
-        setAiReconstructionAvailable(config.aiReconstructionAvailable);
-        setReconstructionModel(config.reconstructModel);
-        setReconstructionModels(config.reconstructModels);
-        if (config.modelListError) {
-          logger.warn("读取模型列表失败", { error: config.modelListError });
-        }
+        applyAppConfig(config);
         if (!config.aiReconstructionAvailable) {
-          setMessage("普通分析可用。AI 重建需要先设置 OPENAI_API_KEY。");
+          setMessage("普通分析可用。AI 重建需要先在右上角配置 API Key。");
+          if (!settingsAutoOpenedRef.current && config.source === "none") {
+            settingsAutoOpenedRef.current = true;
+            setSettingsOpen(true);
+          }
         }
       })
       .catch((error) => {
@@ -91,6 +111,25 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  // 2.3 保存/清空配置后热刷新
+  const handleSettingsSave = async (payload: { apiKey: string; baseUrl: string; reconstructModel: string }) => {
+    const next = await saveAppConfig(payload);
+    applyAppConfig(next);
+    setMessage(next.aiReconstructionAvailable ? "AI 配置已更新，立即生效。" : "AI 配置已保存但仍不可用。");
+    return next;
+  };
+
+  const handleSettingsClear = async () => {
+    const next = await deleteAppConfig();
+    applyAppConfig(next);
+    setMessage(
+      next.aiReconstructionAvailable
+        ? "已回退到环境变量配置，AI 重建仍可用。"
+        : "已清空 UI 配置，AI 重建当前不可用。"
+    );
+    return next;
+  };
 
   // 2.2 完成配置读取绑定
 
@@ -582,6 +621,8 @@ export default function App() {
         onResetView={() => setViewport({ scale: 1, offset: { x: 0, y: 0 } })}
         onSceneImport={handleSceneImport}
         onPromptExport={handlePromptExport}
+        onOpenSettings={() => setSettingsOpen(true)}
+        settingsAttention={appConfig ? !appConfig.aiReconstructionAvailable : false}
       />
       <SideNav
         isSelectMode={tool === "select"}
@@ -656,6 +697,15 @@ export default function App() {
         applySceneChange={applySceneChange}
         onNodeChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
         onStyleChange={(patch) => selectedId && applySceneChange((current) => updateNodeStyle(current, selectedId, patch))}
+      />
+      <SettingsDialog
+        open={settingsOpen}
+        busy={busy}
+        config={appConfig}
+        onClose={() => setSettingsOpen(false)}
+        onSave={handleSettingsSave}
+        onClear={handleSettingsClear}
+        onTest={testAppConfig}
       />
       {pendingRegion ? (
         <div className="region-confirm" role="dialog" aria-label="局部 AI 重建方式">

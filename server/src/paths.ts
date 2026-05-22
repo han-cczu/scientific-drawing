@@ -14,6 +14,7 @@ export const dataDir = path.join(rootDir, "data");
 export const uploadDir = path.join(dataDir, "uploads");
 export const exportDir = path.join(dataDir, "exports");
 export const sceneDir = path.join(dataDir, "scenes");
+export const configPath = path.join(dataDir, "config.json");
 
 export function ensureDataDirs(logger: { info: (message: string, meta?: Record<string, unknown>) => void }) {
   /*

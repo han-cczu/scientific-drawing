@@ -7,7 +7,15 @@ import sharp from "sharp";
 import { logger } from "../logger";
 import { exportDir, sceneDir, uploadDir } from "../paths";
 import { analyzeImage } from "../scene/analyzeImage";
-import { buildSafeAiProviderConfig, fetchOpenAiCompatibleModels, readAiRuntimeConfig } from "../scene/aiProviderConfig";
+import {
+  buildSafeAiProviderConfig,
+  ConfigValidationError,
+  deletePersistedConfig,
+  fetchOpenAiCompatibleModels,
+  readAiRuntimeConfig,
+  validateWritableConfig,
+  writePersistedConfig
+} from "../scene/aiProviderConfig";
 import { sceneToPptx } from "../scene/pptx";
 import { repairScene } from "../scene/repairScene";
 import { mergeRegionReconstruction, sceneRegionToImageExtract, sourceImageUrlFromScene, type RegionMergeMode, type SceneBox } from "../scene/regionReconstruction";
@@ -366,6 +374,7 @@ apiRouter.get("/config", async (_req, res) => {
    * 目标：
    *   1) 暴露 AI 重建是否可用
    *   2) 返回 OpenAI 兼容模型列表
+   *   3) 永不返回 apiKey 明文
    */
   logger.info("开始返回前端运行配置...");
 
@@ -381,13 +390,134 @@ apiRouter.get("/config", async (_req, res) => {
     baseUrl: runtimeConfig.baseUrl,
     defaultModel: runtimeConfig.defaultModel,
     models: modelList.models,
+    source: runtimeConfig.source,
     modelListError: modelList.error
   });
   logger.info("返回前端运行配置完成", {
     aiReconstructionAvailable: config.aiReconstructionAvailable,
+    source: config.source,
     modelCount: config.reconstructModels.length
   });
   res.json(config);
+});
+
+apiRouter.post("/config", express.json({ limit: "16kb" }), async (req, res) => {
+  /*
+   * ========================================================================
+   * 步骤1：保存 AI 配置到 data/config.json
+   * ========================================================================
+   * 目标：
+   *   1) 接收 UI 写入的 apiKey/baseUrl/reconstructModel
+   *   2) 校验白名单字段后落盘，文件权限 0o600
+   *   3) 写入后立即返回新的安全配置（包括 hasApiKey/source/maskedTail）
+   */
+  logger.info("开始保存 AI 配置...");
+
+  try {
+    // 1.1 校验并写入文件
+    writePersistedConfig(req.body);
+
+    // 1.2 立刻读回，构造安全响应
+    const runtimeConfig = readAiRuntimeConfig();
+    const modelList = await fetchOpenAiCompatibleModels(runtimeConfig);
+    const config = buildSafeAiProviderConfig({
+      apiKey: runtimeConfig.apiKey,
+      baseUrl: runtimeConfig.baseUrl,
+      defaultModel: runtimeConfig.defaultModel,
+      models: modelList.models,
+      source: runtimeConfig.source,
+      modelListError: modelList.error
+    });
+    logger.info("保存 AI 配置完成", { source: config.source });
+    res.json(config);
+  } catch (error) {
+    // 1.3 字段非法返回 400
+    if (error instanceof ConfigValidationError) {
+      logger.warn("保存 AI 配置失败，字段非法", { error: error.message });
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    // 1.4 落盘失败返回 500
+    logger.error("保存 AI 配置失败", { error: String(error) });
+    res.status(500).json({ error: "Failed to persist config." });
+  }
+});
+
+apiRouter.delete("/config", async (_req, res) => {
+  /*
+   * ========================================================================
+   * 步骤1：清空 UI 写入的 AI 配置
+   * ========================================================================
+   * 目标：
+   *   1) 删除 data/config.json，让运行时 fallback env
+   *   2) 返回清空后新的安全配置
+   */
+  logger.info("开始清空 AI 配置...");
+
+  try {
+    // 1.1 删除持久化文件
+    const removed = deletePersistedConfig();
+
+    // 1.2 读回 fallback 后的配置
+    const runtimeConfig = readAiRuntimeConfig();
+    const modelList = await fetchOpenAiCompatibleModels(runtimeConfig);
+    const config = buildSafeAiProviderConfig({
+      apiKey: runtimeConfig.apiKey,
+      baseUrl: runtimeConfig.baseUrl,
+      defaultModel: runtimeConfig.defaultModel,
+      models: modelList.models,
+      source: runtimeConfig.source,
+      modelListError: modelList.error
+    });
+    logger.info("清空 AI 配置完成", { removed, source: config.source });
+    res.json(config);
+  } catch (error) {
+    logger.error("清空 AI 配置失败", { error: String(error) });
+    res.status(500).json({ error: "Failed to delete config." });
+  }
+});
+
+apiRouter.post("/config/test", express.json({ limit: "16kb" }), async (req, res) => {
+  /*
+   * ========================================================================
+   * 步骤1：测试未保存的 AI 配置
+   * ========================================================================
+   * 目标：
+   *   1) 接收表单值不落盘，调 /v1/models 验证
+   *   2) 区分 AUTH / NETWORK / UNKNOWN 错误码给前端
+   */
+  logger.info("开始测试 AI 配置...");
+
+  // 1.1 校验字段
+  const validation = validateWritableConfig(req.body);
+  if (!validation.ok) {
+    logger.warn("测试 AI 配置失败，字段非法", { error: validation.error });
+    res.status(400).json({ ok: false, code: "VALIDATION", error: validation.error });
+    return;
+  }
+
+  // 1.2 调模型列表
+  try {
+    const result = await fetchOpenAiCompatibleModels({
+      apiKey: validation.value.apiKey,
+      baseUrl: validation.value.baseUrl
+    });
+    if (result.error) {
+      // 1.3 优先用 HTTP 状态码区分 AUTH，兜底用关键词匹配
+      const isAuthByStatus = result.status === 401 || result.status === 403;
+      const isAuthByText = /401|403|unauthorized|forbidden|invalid[\s_-]?api[\s_-]?key|authentication/i.test(result.error);
+      const code = isAuthByStatus || isAuthByText ? "AUTH" : "UNKNOWN";
+      logger.warn("测试 AI 配置失败", { code, status: result.status, error: result.error });
+      res.json({ ok: false, code, error: result.error });
+      return;
+    }
+    logger.info("测试 AI 配置完成", { modelCount: result.models.length });
+    res.json({ ok: true, modelCount: result.models.length });
+  } catch (error) {
+    // 1.4 网络层失败
+    logger.warn("测试 AI 配置失败，网络错误", { error: String(error) });
+    res.json({ ok: false, code: "NETWORK", error: String(error) });
+  }
 });
 
 apiRouter.get("/scenes/:id", async (req, res, next) => {

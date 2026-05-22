@@ -16,13 +16,23 @@ npm run dev      # 同启前端 5173 + 后端 8787
 # 浏览器打开 http://localhost:5173
 ```
 
-可选：配置 AI 重建（未配置时启发式分析、编辑与导出依旧可用）。
+可选：配置 AI 重建（未配置时启发式分析、编辑与导出依旧可用）。两种方式二选一：
+
+**方式 A：UI 配置（推荐，热生效无需重启）**
+
+启动后点击右上角齿轮按钮 → 填写 API Key / Base URL / 模型 → 测试连接 → 保存。配置写入
+`data/config.json`（仅服务端持有，文件权限 `0o600`），下次 AI 调用立即生效。
+首次未配置时打开页面会自动弹出该对话框。点对话框里的「清空 / 回退 env」可回到环境变量。
+
+**方式 B：环境变量（适合 CI / 容器编排）**
 
 ```bash
 export OPENAI_API_KEY="your-key"
 export OPENAI_RECONSTRUCT_MODEL="gpt-4o"    # 兜底模型
 npm run dev
 ```
+
+`data/config.json` 一旦存在即覆盖 env；删掉文件即可回退。
 
 常用脚本：
 

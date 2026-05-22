@@ -11,6 +11,8 @@ export type ApiSceneBox = {
   h: number;
 };
 
+export type ConfigSource = "env" | "file" | "none";
+
 export type AppConfig = {
   aiReconstructionAvailable: boolean;
   provider: "openai-compatible";
@@ -19,7 +21,20 @@ export type AppConfig = {
   reconstructModels: string[];
   modelListAvailable: boolean;
   modelListError: string | null;
+  hasApiKey: boolean;
+  source: ConfigSource;
+  maskedTail: string | null;
 };
+
+export type WritableAppConfig = {
+  apiKey: string;
+  baseUrl: string;
+  reconstructModel: string;
+};
+
+export type TestConfigResult =
+  | { ok: true; modelCount: number }
+  | { ok: false; code: "AUTH" | "NETWORK" | "VALIDATION" | "UNKNOWN"; error: string };
 
 export async function loadAppConfig(): Promise<AppConfig> {
   /*
@@ -42,6 +57,82 @@ export async function loadAppConfig(): Promise<AppConfig> {
   const payload = await response.json() as AppConfig;
   logger.info("读取应用配置完成", payload);
   return payload;
+}
+
+export async function saveAppConfig(payload: WritableAppConfig): Promise<AppConfig> {
+  /*
+   * ========================================================================
+   * 步骤1：保存 AI 配置到后端
+   * ========================================================================
+   * 目标：
+   *   1) 把 UI 表单写入 data/config.json
+   *   2) 返回新的安全配置以便前端刷新 state
+   */
+  logger.info("开始保存 AI 配置...", { baseUrl: payload.baseUrl, model: payload.reconstructModel });
+
+  // 1.1 提交请求
+  const response = await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  // 1.2 解析响应
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Save config failed: ${response.status} ${text}`);
+  }
+  const config = await response.json() as AppConfig;
+  logger.info("保存 AI 配置完成", { source: config.source });
+  return config;
+}
+
+export async function deleteAppConfig(): Promise<AppConfig> {
+  /*
+   * ========================================================================
+   * 步骤1：清空 UI 写入的 AI 配置
+   * ========================================================================
+   * 目标：
+   *   1) 删除 data/config.json，让运行时 fallback env
+   *   2) 返回清空后的新配置
+   */
+  logger.info("开始清空 AI 配置...");
+
+  // 1.1 提交请求
+  const response = await fetch("/api/config", { method: "DELETE" });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Delete config failed: ${response.status} ${text}`);
+  }
+
+  // 1.2 返回新配置
+  const config = await response.json() as AppConfig;
+  logger.info("清空 AI 配置完成", { source: config.source });
+  return config;
+}
+
+export async function testAppConfig(payload: WritableAppConfig): Promise<TestConfigResult> {
+  /*
+   * ========================================================================
+   * 步骤1：测试 AI 配置但不落盘
+   * ========================================================================
+   * 目标：
+   *   1) 让用户在保存前确认 key/baseUrl 有效
+   *   2) 区分 AUTH / NETWORK / VALIDATION / UNKNOWN 错误码
+   */
+  logger.info("开始测试 AI 配置...");
+
+  // 1.1 提交请求
+  const response = await fetch("/api/config/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  // 1.2 即便 400 也是受控的 VALIDATION 响应
+  const data = await response.json() as TestConfigResult;
+  logger.info("测试 AI 配置完成", { ok: data.ok });
+  return data;
 }
 
 export async function analyzeImage(file: File): Promise<AnalyzeResponse> {

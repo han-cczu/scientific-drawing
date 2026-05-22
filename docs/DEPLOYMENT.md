@@ -18,6 +18,7 @@ git clone <repo-url> scientific-drawing
 cd scientific-drawing
 
 # 2) 准备宿主机 data/ 子目录，并交给 uid=1000（容器内 node 用户）
+#    data/config.json 会在用户通过 UI 保存 AI 配置时由容器写入，目录权限给够即可
 mkdir -p data/uploads data/scenes data/exports data/evaluation
 sudo chown -R 1000:1000 data/
 
@@ -39,7 +40,8 @@ curl -fsS http://localhost:8787/api/config
 
 - **`data/` 子目录 chown 1000:1000**：容器内以非 root `node` 用户（uid=1000）运行；bind mount 会沿用宿主机文件权限，宿主机不预先 chown 容器会写不进去。
 - **bind mount 按子目录挂载**：`docker-compose.yml` 故意不整目录挂 `./data:/app/data`，因为镜像内 `/app/data/eval-suite` 是构建时拷进去的，整挂会被宿主机空目录遮盖，导致 `npm run evaluate` 找不到样本。
-- **未配 `OPENAI_API_KEY`**：容器仍能正常启动，前端 AI 重建按钮自动禁用，启发式分析与编辑导出全功能可用。
+- **未配 `OPENAI_API_KEY`**：容器仍能正常启动，前端 AI 重建按钮自动禁用，启发式分析与编辑导出全功能可用。首次打开页面会自动弹出 AI 设置对话框，可直接在 UI 配置（写入 `data/config.json`，与 `.env` 二选一）。
+- **`data/config.json` 优先级 > `.env`**：UI 一旦保存就覆盖环境变量，重启容器后仍生效（前提是 `data/` 是持久化 bind mount）。不希望 UI 写入生效时：① 后端进程对应的用户不应有写权限——目前默认就有；② 通过对话框「清空 / 回退 env」或 `docker compose exec app rm data/config.json` 删除文件即可回退。该行为是有意为之的设计——浏览器谁能访问页面谁能改后端配置，与「能 `docker compose exec` 进容器」是同级风险。多用户共享部署应通过反代加身份认证。
 
 ## 3. 常用运维命令
 

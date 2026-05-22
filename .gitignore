@@ -10,6 +10,7 @@
 /data/scenes/
 /data/test-*
 /data/*.log
+/data/config.json
 
 # Local agent tooling
 /.claude/

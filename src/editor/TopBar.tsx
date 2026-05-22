@@ -9,9 +9,9 @@ import {
   MousePointer2,
   Plus,
   Redo2,
+  Settings as SettingsIcon,
   Undo2,
-  Upload,
-  UserCircle
+  Upload
 } from "lucide-react";
 
 type ExportKind = "svg" | "pptx" | "json";
@@ -35,6 +35,9 @@ type TopBarProps = {
   /** 剩余高级动作：导入 scene.json + 提示词下载留在"更多"菜单 */
   onSceneImport: (file: File) => void;
   onPromptExport: () => void;
+  /** AI 设置入口 */
+  onOpenSettings: () => void;
+  settingsAttention?: boolean;
 };
 
 export function TopBar({
@@ -54,7 +57,9 @@ export function TopBar({
   onExport,
   onResetView,
   onSceneImport,
-  onPromptExport
+  onPromptExport,
+  onOpenSettings,
+  settingsAttention = false
 }: TopBarProps) {
   /*
    * ========================================================================
@@ -291,11 +296,12 @@ export function TopBar({
 
       <button
         type="button"
-        className="icon-btn"
-        title="个人中心（占位）"
-        aria-label="个人中心"
+        className={settingsAttention ? "icon-btn settings-attention" : "icon-btn"}
+        title="AI 设置"
+        aria-label="AI 设置"
+        onClick={onOpenSettings}
       >
-        <UserCircle size={20} />
+        <SettingsIcon size={18} />
       </button>
     </header>
   );
