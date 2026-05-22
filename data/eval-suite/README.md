@@ -53,14 +53,16 @@ should be added before drawing any confident "robustness" conclusions.
 `npm run evaluate`。GitHub Actions 默认会注入 `CI=true`，`evaluate.ts` 在该环境下
 会调用 `assertEvaluationBaseline`：对每个样本如果
 
-- `normalizedMeanDiffDelta > 0`（视觉差异比基线变大），或
-- `ssimDelta < 0`（结构相似度比基线下降）
+- `normalizedMeanDiffDelta > MAX_NORMALIZED_MEAN_DIFF_DELTA`（视觉差异比基线变大），或
+- `ssimDelta < MIN_SSIM_DELTA`（结构相似度比基线下降）
 
 任一成立，则收集所有违规项后 `console.error` 并 `process.exit(1)`，使 PR 状态变红。
 delta 为 `null`（基线无对应项）只 `logger.warn`，不视为违规。
 
 阈值常量定义在 `server/src/evaluate.ts` 顶部
-（`MAX_NORMALIZED_MEAN_DIFF_DELTA = 0`，`MIN_SSIM_DELTA = 0`），未来要放宽阈值
+（`MAX_NORMALIZED_MEAN_DIFF_DELTA = 0.005`，`MIN_SSIM_DELTA = -0.005`），
+非 0 是因为 sharp/libvips 在 Windows 开发机与 Ubuntu CI 上栅格化 SVG 时
+存在第 4 位小数级别的浮点漂移，零容差会让 CI 永远红。未来要调整阈值
 集中改这一处即可。
 
 本地（非 CI）跑 `npm run evaluate` 不会触发断言，仅打印 summary 摘要，便于开发者

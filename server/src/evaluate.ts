@@ -84,9 +84,12 @@ export type EvaluationModeResult = {
 const SAMPLE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const MAX_EVAL_WIDTH = 900;
 
-// CI delta 阈值：任一样本超出即视为视觉指标 regression，集中在此处便于未来调整
-const MAX_NORMALIZED_MEAN_DIFF_DELTA = 0;
-const MIN_SSIM_DELTA = 0;
+// CI delta 阈值：任一样本超出即视为视觉指标 regression，集中在此处便于未来调整。
+// 阈值非 0 是因为 sharp/libvips 在不同平台（Windows 开发机 vs Ubuntu CI）栅格化 SVG 时
+// 抗锯齿与亚像素插值会产生第 4 位小数级别的浮点漂移，零容差会让 CI 永远红；
+// 当前阈值（≈ 1.3/255 像素均值、0.005 SSIM 跌幅）远低于人眼可感知的视觉 regression。
+const MAX_NORMALIZED_MEAN_DIFF_DELTA = 0.005;
+const MIN_SSIM_DELTA = -0.005;
 
 // Resolve a sourceUrl that sceneToSvg.localPathFromUrl can map back to disk.
 // imagePath under data/<dir>/foo.png becomes /<dir>/foo.png; anything else
