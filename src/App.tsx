@@ -5,6 +5,10 @@ import { type Tool } from "./editor/Toolbar";
 import { SideNav } from "./editor/SideNav";
 import { TopBar } from "./editor/TopBar";
 import { RightPanel } from "./editor/RightPanel";
+import { BottomDrawer } from "./editor/BottomDrawer";
+import { CanvasViewTabs, type CanvasViewMode } from "./editor/CanvasViewTabs";
+import { ThumbnailRail } from "./editor/ThumbnailRail";
+import { SelectionFloatingBar } from "./editor/SelectionFloatingBar";
 import { resetEditorState, selectedIdFromIds } from "./editor/appState";
 import { canRedoHistory, canUndoHistory, commitHistoryPresent, createHistoryState, pushHistory, redoHistory, replaceHistoryPresent, undoHistory } from "./editor/history";
 import { getEditorShortcutAction, isEditableKeyboardTarget } from "./editor/keyboardShortcuts";
@@ -45,6 +49,7 @@ export default function App() {
   const [reconstructionModel, setReconstructionModel] = useState("");
   const [reconstructionModels, setReconstructionModels] = useState<string[]>([]);
   const [message, setMessage] = useState("上传论文图，先生成高保真复刻底图，再叠加可编辑辅助层。");
+  const [viewMode, setViewMode] = useState<CanvasViewMode>("result");
 
   // 1.2 计算选中节点
   const selectedNode = useMemo(
@@ -561,6 +566,26 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedIds, scene, pendingEdgeFromId, canUndo, canRedo]);
 
+  // 2.20 计算原图模式下的过滤 scene（仅保留锁定底图）
+  const displayScene = useMemo(
+    () => viewMode === "original"
+      ? { ...scene, nodes: scene.nodes.filter((node) => node.type === "image" && node.locked) }
+      : scene,
+    [scene, viewMode]
+  );
+
+  // 2.21 切到原图模式时清空选择和挂起状态
+  useEffect(() => {
+    if (viewMode === "original") {
+      setSelectedIds([]);
+      setPendingEdgeFromId(null);
+      setPendingRegion(null);
+    }
+  }, [viewMode]);
+
+  // 2.22 计算 displayScene 派生的 selectedId
+  const displaySelectedId = viewMode === "original" ? null : selectedId;
+
   return (
     <div className="app-shell">
       <TopBar
@@ -585,13 +610,6 @@ export default function App() {
         onImportImage={handleFile}
         onExport={handleExport}
         onResetView={() => setViewport({ scale: 1, offset: { x: 0, y: 0 } })}
-        aiReconstructionAvailable={aiReconstructionAvailable}
-        reconstructionMode={reconstructionMode}
-        onReconstructionModeChange={setReconstructionMode}
-        reconstructionModel={reconstructionModel}
-        reconstructionModels={reconstructionModels}
-        onReconstructionModelChange={setReconstructionModel}
-        onReconstructImage={handleReconstruct}
         onSceneImport={handleSceneImport}
         onPromptExport={handlePromptExport}
       />
@@ -617,15 +635,20 @@ export default function App() {
         onMoveLayer={handleLayerMove}
       />
       <main className="canvas-area">
+        <CanvasViewTabs
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          hasSourceImage={Boolean(scene.metadata.sourceImage)}
+        />
         <div className="canvas-status">
           <div className="status-text">{message}</div>
           <div className="scene-meta">{scene.page.width} × {scene.page.height}px · {scene.nodes.length} objects</div>
         </div>
         <div className={tool === "select" ? "canvas-hit-area" : "canvas-hit-area drawing"} onClick={handleCanvasClick}>
           <Canvas
-            scene={scene}
-            selectedId={selectedId}
-            selectedIds={selectedIds}
+            scene={displayScene}
+            selectedId={displaySelectedId}
+            selectedIds={viewMode === "original" ? [] : selectedIds}
             viewport={viewport}
             onSelect={handleSelect}
             onMove={handleMove}
@@ -636,7 +659,26 @@ export default function App() {
             onViewportChange={setViewport}
           />
         </div>
+        <ThumbnailRail sourceImage={scene.metadata.sourceImage} />
+        <SelectionFloatingBar
+          visible={viewMode === "result" && selectedIds.length > 0}
+          onDuplicate={handleDuplicate}
+          onToggleLock={() => {
+            if (selectedIds.length === 0) {
+              return;
+            }
+            selectedIds.forEach((id) => handleLayerLockedToggle(id));
+          }}
+          onDelete={handleDelete}
+        />
       </main>
+      <BottomDrawer
+        busy={busy}
+        aiReconstructionAvailable={aiReconstructionAvailable}
+        reconstructionMode={reconstructionMode}
+        onReconstructionModeChange={setReconstructionMode}
+        onReconstructImage={handleReconstruct}
+      />
       <RightPanel>
         <Inspector
           node={selectedNode}

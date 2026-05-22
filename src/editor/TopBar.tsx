@@ -14,7 +14,6 @@ import {
   UserCircle
 } from "lucide-react";
 import { logger } from "../lib/logger";
-import type { ReconstructionMode } from "../lib/api";
 
 type ExportKind = "svg" | "pptx" | "json";
 
@@ -34,14 +33,7 @@ type TopBarProps = {
   onImportImage: (file: File) => void;
   onExport: (kind: ExportKind) => void;
   onResetView: () => void;
-  /** 高级动作（收纳到"更多"溢出菜单，保证既有交互不破） */
-  aiReconstructionAvailable: boolean;
-  reconstructionMode: ReconstructionMode;
-  onReconstructionModeChange: (mode: ReconstructionMode) => void;
-  reconstructionModel: string;
-  reconstructionModels: string[];
-  onReconstructionModelChange: (model: string) => void;
-  onReconstructImage: (file: File) => void;
+  /** 剩余高级动作：导入 scene.json + 提示词下载留在"更多"菜单 */
   onSceneImport: (file: File) => void;
   onPromptExport: () => void;
 };
@@ -62,13 +54,6 @@ export function TopBar({
   onImportImage,
   onExport,
   onResetView,
-  aiReconstructionAvailable,
-  reconstructionMode,
-  onReconstructionModeChange,
-  reconstructionModel,
-  reconstructionModels,
-  onReconstructionModelChange,
-  onReconstructImage,
   onSceneImport,
   onPromptExport
 }: TopBarProps) {
@@ -79,7 +64,7 @@ export function TopBar({
    * 目标：
    *   1) 复用现有撤销/重做、缩放、导入、导出业务回调
    *   2) 提供标题、保存指示、平移工具、全屏入口
-   *   3) 在"更多"溢出菜单里保留 AI 重建 / 导入 JSON / 提示词 / 重置视图入口
+   *   3) "更多"菜单保留重置视图 / 导入 scene.json / 下载提示词
    */
   logger.info("开始渲染顶栏...", { canUndo, canRedo, zoom, isSelectMode, isPanMode });
 
@@ -88,7 +73,6 @@ export function TopBar({
   const [moreOpen, setMoreOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
-  const reconstructInputRef = useRef<HTMLInputElement | null>(null);
   const sceneImportInputRef = useRef<HTMLInputElement | null>(null);
 
   // 1.2 点击外部关闭浮层
@@ -138,17 +122,7 @@ export function TopBar({
     onExport(kind);
   };
 
-  // 1.7 处理 AI 重建图片选择（来自"更多"菜单）
-  const handleReconstructChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      onReconstructImage(file);
-      setMoreOpen(false);
-    }
-    event.target.value = "";
-  };
-
-  // 1.8 处理 scene.json 导入（来自"更多"菜单）
+  // 1.7 处理 scene.json 导入（来自"更多"菜单）
   const handleSceneImportChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -160,7 +134,7 @@ export function TopBar({
 
   const zoomLabel = `${Math.round(zoom * 100)}%`;
 
-  // 1.9 输出顶栏
+  // 1.8 输出顶栏
   logger.info("渲染顶栏完成");
   return (
     <header className="top-bar" role="banner">
@@ -295,14 +269,6 @@ export function TopBar({
           <div className="export-menu-list" role="menu">
             <button
               type="button"
-              disabled={busy || !aiReconstructionAvailable}
-              title={aiReconstructionAvailable ? "AI 重建（全图）" : "AI 重建需要 OPENAI_API_KEY"}
-              onClick={() => reconstructInputRef.current?.click()}
-            >
-              AI 全图重建
-            </button>
-            <button
-              type="button"
               disabled={busy}
               onClick={() => sceneImportInputRef.current?.click()}
             >
@@ -314,47 +280,6 @@ export function TopBar({
             <button type="button" onClick={() => { onResetView(); setMoreOpen(false); }} disabled={busy}>
               重置视图
             </button>
-            <div className="more-config" role="group" aria-label="重建模式">
-              <span className="more-config-label">重建模式</span>
-              <div className="btn-group">
-                <button
-                  type="button"
-                  className={reconstructionMode === "color" ? "icon-btn active" : "icon-btn"}
-                  title="彩色重建"
-                  onClick={() => onReconstructionModeChange("color")}
-                  disabled={busy}
-                >彩</button>
-                <button
-                  type="button"
-                  className={reconstructionMode === "mono" ? "icon-btn active" : "icon-btn"}
-                  title="黑白重建"
-                  onClick={() => onReconstructionModeChange("mono")}
-                  disabled={busy}
-                >黑</button>
-              </div>
-            </div>
-            {reconstructionModels.length > 0 ? (
-              <div className="more-config">
-                <span className="more-config-label">AI 模型</span>
-                <select
-                  value={reconstructionModel}
-                  onChange={(event) => onReconstructionModelChange(event.target.value)}
-                  disabled={busy || !aiReconstructionAvailable}
-                >
-                  {reconstructionModels.map((model) => (
-                    <option key={model} value={model}>{model}</option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-            <input
-              ref={reconstructInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleReconstructChange}
-              disabled={busy || !aiReconstructionAvailable}
-              hidden
-            />
             <input
               ref={sceneImportInputRef}
               type="file"

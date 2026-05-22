@@ -81,10 +81,11 @@ button:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: var(--sidenav-w) minmax(0, 1fr) var(--rightpanel-w);
-  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto;
   grid-template-areas:
-    "topbar topbar topbar"
-    "sidenav canvas rightpanel";
+    "topbar  topbar  topbar"
+    "sidenav canvas  rightpanel"
+    "sidenav bottom  rightpanel";
   min-height: 100vh;
   background: var(--color-bg);
 }
@@ -553,7 +554,7 @@ button:disabled {
 .right-panel {
   grid-area: rightpanel;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
@@ -841,12 +842,360 @@ button:disabled {
     grid-template-areas:
       "topbar topbar"
       "sidenav canvas"
+      "sidenav bottom"
       "rightpanel rightpanel";
-    grid-template-rows: var(--topbar-h) minmax(0, 1fr) minmax(180px, 40vh);
+    grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto minmax(180px, 40vh);
   }
 
   .right-panel {
     border-top: 1px solid var(--color-border);
     border-left: 0;
   }
+}
+
+/* ====================================================================
+ * BottomDrawer (底部 AI 矢量化抽屉)
+ * ==================================================================== */
+
+.bottom-drawer {
+  grid-area: bottom;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-muted);
+  border-top: 1px solid var(--color-border);
+}
+
+.drawer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 156px;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.drawer-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.drawer-card-drop {
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.drawer-card-drop:hover {
+  border-color: var(--color-accent);
+}
+
+.drawer-card-drop-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.drawer-card-drop-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.drop-zone {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  text-align: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.drop-zone-primary {
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.drop-zone-secondary {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.drop-zone-hint {
+  margin-top: var(--space-1);
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
+}
+
+.drawer-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.drawer-row-label {
+  flex: 0 0 56px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.chip-row {
+  display: inline-flex;
+  flex: 1 1 auto;
+  gap: var(--space-1);
+}
+
+.chip-select {
+  flex: 1 1 0;
+  height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.chip-select:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.chip-select-active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-surface);
+}
+
+.chip-select-active:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  color: var(--color-surface);
+}
+
+.drawer-select {
+  flex: 1 1 auto;
+  height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  font-size: var(--font-size-xs);
+}
+
+.drawer-select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.drawer-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+}
+
+.drawer-check input {
+  accent-color: var(--color-accent);
+}
+
+.drawer-primary-btn {
+  margin-top: auto;
+  height: 32px;
+  padding: 0 var(--space-3);
+  color: var(--color-surface);
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.drawer-primary-btn:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* ====================================================================
+ * CanvasViewTabs (画布上方 tab)
+ * ==================================================================== */
+
+.canvas-view-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: var(--space-1);
+  margin: var(--space-2) var(--space-4) 0;
+  padding: var(--space-1);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.canvas-view-tab {
+  height: 26px;
+  padding: 0 var(--space-3);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.canvas-view-tab:hover:not(:disabled) {
+  color: var(--color-accent);
+}
+
+.canvas-view-tab-active {
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ====================================================================
+ * ThumbnailRail (画布左上缩略图浮层)
+ * ==================================================================== */
+
+.thumbnail-rail {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: 8;
+  display: grid;
+  gap: var(--space-2);
+  width: 140px;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.thumbnail-rail-title {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.thumbnail-rail-image {
+  display: flex;
+  width: 100%;
+  height: 80px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.thumbnail-rail-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.thumbnail-rail-btn {
+  height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.thumbnail-rail-btn:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-surface);
+}
+
+/* ====================================================================
+ * SelectionFloatingBar (画布底部居中操作条)
+ * ==================================================================== */
+
+.selection-floating-bar {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  z-index: 9;
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  transform: translateX(-50%);
+}
+
+/* ====================================================================
+ * UsageTipsCard (右栏底部使用提示)
+ * ==================================================================== */
+
+.usage-tips-card {
+  margin: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+}
+
+.usage-tips-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.usage-tips-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.usage-tips-close {
+  width: 22px;
+  height: 22px;
+}
+
+.usage-tips-list {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-4);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+}
+
+.usage-tips-list li {
+  margin-bottom: var(--space-1);
+}
+
+.usage-tips-link {
+  height: 28px;
+  padding: 0 var(--space-3);
+  color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
 }
