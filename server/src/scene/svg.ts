@@ -115,14 +115,21 @@ async function imageHref(source: string) {
   }
 }
 
+// Whitelist of /data/<dir>/ subtrees that are safe to resolve when a scene
+// references an image by absolute-looking URL ("/uploads/foo.png", "/eval-suite/bar.jpg").
+// Adding a new directory here lets sceneToSvg embed images from it as data URLs.
+const LOCAL_URL_DIRS = ["uploads", "eval-suite"] as const;
+
 function localPathFromUrl(url: string) {
   const normalized = url.replaceAll("\\", "/");
-  const marker = "/uploads/";
-  const index = normalized.indexOf(marker);
-  if (index < 0) {
-    return url;
+  for (const dir of LOCAL_URL_DIRS) {
+    const marker = `/${dir}/`;
+    const index = normalized.indexOf(marker);
+    if (index >= 0) {
+      return `data/${dir}/${normalized.slice(index + marker.length)}`;
+    }
   }
-  return `data/uploads/${normalized.slice(index + marker.length)}`;
+  return url;
 }
 
 function mimeFromPath(filePath: string) {

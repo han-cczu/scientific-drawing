@@ -1,5 +1,5 @@
+import { createHash } from "node:crypto";
 import sharp from "sharp";
-import { v4 as uuidv4 } from "uuid";
 import { logger } from "../logger";
 import { findComponents, scaleBox } from "./analysis/components";
 import {
@@ -128,14 +128,23 @@ export async function analyzeImage(input: AnalyzeInput): Promise<Scene> {
   const starterElements = dedupeElements([...primaryElements, ...componentElements]).slice(0, MAX_HELPER_ELEMENTS);
 
   // 3.3 写入候选节点
-  for (const [index, element] of starterElements.entries()) {
+  for (const element of starterElements) {
+    // 节点 id 使用类型 + 几何 SHA1 短摘要，保证同图多次运行 scene.json 字节级一致
+    const x = round(element.x);
+    const y = round(element.y);
+    const w = round(element.w);
+    const h = round(element.h);
+    const idDigest = createHash("sha1")
+      .update(`${element.type}:${x}:${y}:${w}:${h}`)
+      .digest("hex")
+      .slice(0, 8);
     nodes.push({
-      id: `${element.type}-${index + 1}-${uuidv4().slice(0, 8)}`,
+      id: `${element.type}-${idDigest}`,
       type: element.type,
-      x: round(element.x),
-      y: round(element.y),
-      w: round(element.w),
-      h: round(element.h),
+      x,
+      y,
+      w,
+      h,
       text: element.text,
       points: element.points?.map((point) => ({ x: round(point.x), y: round(point.y) })),
       style: element.style

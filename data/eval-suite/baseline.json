@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "results": [
+    { "file": "figure-2col-paper.png",      "normalizedMeanDiff": 0.0044, "ssim": 0.9987 },
+    { "file": "module-small-2rect.png",     "normalizedMeanDiff": 0.0006, "ssim": 0.9969 },
+    { "file": "module-text-heavy.png",      "normalizedMeanDiff": 0.0011, "ssim": 0.9965 },
+    { "file": "module-complex-40nodes.png", "normalizedMeanDiff": 0.0265, "ssim": 0.9717 },
+    { "file": "module-43nodes.png",         "normalizedMeanDiff": 0.0212, "ssim": 0.9779 },
+    { "file": "module-56nodes.jpg",         "normalizedMeanDiff": 0.0202, "ssim": 0.9784 },
+    { "file": "module-53nodes.jpg",         "normalizedMeanDiff": 0.0223, "ssim": 0.9810 }
+  ]
+}

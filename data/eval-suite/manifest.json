@@ -1,4 +1,61 @@
 {
   "version": 1,
-  "samples": []
+  "samples": [
+    {
+      "file": "figure-2col-paper.png",
+      "category": "paper_figure",
+      "expectedNodes": 2,
+      "expectedEdges": 0,
+      "sourceMd5": "4900f092aa",
+      "notes": "1 image + 1 text. From uploads/9d323e4e-66a5-45c2-934b-51aa230ba8e4.png"
+    },
+    {
+      "file": "module-small-2rect.png",
+      "category": "module",
+      "expectedNodes": 5,
+      "expectedEdges": 0,
+      "sourceMd5": "f0a25505c1",
+      "notes": "5 nodes. From uploads/6dca1c25-...png (was duplicated 6x in uploads)"
+    },
+    {
+      "file": "module-text-heavy.png",
+      "category": "module",
+      "expectedNodes": 19,
+      "expectedEdges": 0,
+      "sourceMd5": "878ff7ff6d",
+      "notes": "15 text + 3 rect. From uploads/7ffe226a-...png (was duplicated 2x in uploads)"
+    },
+    {
+      "file": "module-complex-40nodes.png",
+      "category": "module",
+      "expectedNodes": 40,
+      "expectedEdges": 0,
+      "sourceMd5": "ad2cd3c243",
+      "notes": "Large 2752x1536 image, 40 nodes. From uploads/02f2e3b3-...png (was duplicated 8x in uploads, main contamination source)"
+    },
+    {
+      "file": "module-43nodes.png",
+      "category": "module",
+      "expectedNodes": 43,
+      "expectedEdges": 0,
+      "sourceMd5": "0cbcbe5868",
+      "notes": "From uploads/7c49e623-...png"
+    },
+    {
+      "file": "module-56nodes.jpg",
+      "category": "module",
+      "expectedNodes": 56,
+      "expectedEdges": 0,
+      "sourceMd5": "1917d1b415",
+      "notes": "JPEG input. From uploads/9769a140-...jpg"
+    },
+    {
+      "file": "module-53nodes.jpg",
+      "category": "module",
+      "expectedNodes": 53,
+      "expectedEdges": 0,
+      "sourceMd5": "f8d2737278",
+      "notes": "JPEG input. From uploads/d87ffca6-...jpg"
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { computePsnr, computeSsimApprox, deltaFromBaseline, normalizeMeanDiff } from "../server/src/evaluate";
+import { PSNR_CAP, computePsnr, computeSsimApprox, deltaFromBaseline, normalizeMeanDiff } from "../server/src/evaluate";
 
 describe("visual evaluation metrics", () => {
   it("normalizes meanDiff to 0..1", () => {
@@ -28,9 +28,11 @@ describe("visual evaluation metrics", () => {
      *   2) SSIM 近似值落在合法范围
      */
 
-    // 1.1 校验 PSNR
-    assert.equal(computePsnr(0), Infinity);
+    // 1.1 校验 PSNR：零误差截到上界而非 Infinity，避免 JSON 静默丢失
+    assert.equal(computePsnr(0), PSNR_CAP);
+    assert.equal(JSON.parse(JSON.stringify({ psnr: computePsnr(0) })).psnr, PSNR_CAP);
     assert.ok(computePsnr(100) > 20);
+    assert.ok(computePsnr(100) <= PSNR_CAP);
 
     // 1.2 校验 SSIM 近似范围
     const ssim = computeSsimApprox(Buffer.from([0, 10, 20]), Buffer.from([0, 10, 25]));

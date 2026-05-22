@@ -49,6 +49,8 @@ type EvaluationManifest = {
     category?: string;
     expectedNodes?: number;
     expectedEdges?: number;
+    sourceMd5?: string;
+    notes?: string;
   }>;
 };
 
@@ -81,6 +83,22 @@ export type EvaluationModeResult = {
 
 const SAMPLE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const MAX_EVAL_WIDTH = 900;
+
+// CI delta 阈值：任一样本超出即视为视觉指标 regression，集中在此处便于未来调整
+const MAX_NORMALIZED_MEAN_DIFF_DELTA = 0;
+const MIN_SSIM_DELTA = 0;
+
+// Resolve a sourceUrl that sceneToSvg.localPathFromUrl can map back to disk.
+// imagePath under data/<dir>/foo.png becomes /<dir>/foo.png; anything else
+// falls back to /uploads/<basename> for compatibility with older callers.
+export function sourceUrlFromImagePath(imagePath: string) {
+  const normalized = imagePath.replaceAll("\\", "/");
+  const match = normalized.match(/\/data\/([^/]+)\/([^/]+)$/);
+  if (match) {
+    return `/${match[1]}/${match[2]}`;
+  }
+  return `/uploads/${path.basename(imagePath)}`;
+}
 
 export async function runEvaluation() {
   /*
@@ -117,6 +135,75 @@ export async function runEvaluation() {
   await fs.writeFile(reportPath, JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 2), "utf-8");
   logger.info("运行实验评估完成", { samples: results.length, reportPath });
   printSummary(results);
+
+  // 1.4 CI 环境下断言基线，本地仅打印摘要不阻塞
+  if (process.env.CI === "true") {
+    assertEvaluationBaseline(results);
+  }
+}
+
+export function stripVolatileFields(scene: Scene): Scene {
+  /*
+   * ========================================================================
+   * 步骤1：去除评估产物中的易变字段
+   * ========================================================================
+   * 目标：
+   *   1) 深拷贝 scene 避免污染调用方
+   *   2) 移除 metadata.createdAt，让 scene.json 同图多次跑字节级一致
+   */
+
+  // 1.1 深拷贝
+  const cloned = JSON.parse(JSON.stringify(scene)) as Scene;
+
+  // 1.2 删除易变字段
+  if (cloned.metadata && "createdAt" in cloned.metadata) {
+    delete (cloned.metadata as { createdAt?: string }).createdAt;
+  }
+
+  return cloned;
+}
+
+export function assertEvaluationBaseline(results: SampleResult[]): void {
+  /*
+   * ========================================================================
+   * 步骤1：基于基线 delta 阈值断言评估结果
+   * ========================================================================
+   * 目标：
+   *   1) 收集所有违反阈值的样本，给出完整违规清单
+   *   2) 缺失基线对应项时仅 warn，不视为违规
+   *   3) 存在违规时 console.error 并 process.exit(1)，让 CI PR 变红
+   */
+  logger.info("开始基于基线 delta 阈值断言评估结果...", { samples: results.length });
+
+  // 1.1 收集违规和缺失项
+  const violations: string[] = [];
+  for (const result of results) {
+    if (result.normalizedMeanDiffDelta == null && result.ssimDelta == null) {
+      logger.warn("样本缺失基线对应项，跳过 delta 断言", { file: result.file });
+      continue;
+    }
+    if (result.normalizedMeanDiffDelta != null && result.normalizedMeanDiffDelta > MAX_NORMALIZED_MEAN_DIFF_DELTA) {
+      violations.push(
+        `${result.file}: normalizedMeanDiffDelta=${result.normalizedMeanDiffDelta} > ${MAX_NORMALIZED_MEAN_DIFF_DELTA}`
+      );
+    }
+    if (result.ssimDelta != null && result.ssimDelta < MIN_SSIM_DELTA) {
+      violations.push(`${result.file}: ssimDelta=${result.ssimDelta} < ${MIN_SSIM_DELTA}`);
+    }
+  }
+
+  // 1.2 无违规时直接返回
+  if (violations.length === 0) {
+    logger.info("基于基线 delta 阈值断言评估结果完成", { violations: 0 });
+    return;
+  }
+
+  // 1.3 有违规时 exit 1
+  console.error("Evaluation baseline assertion failed:");
+  for (const violation of violations) {
+    console.error(`  - ${violation}`);
+  }
+  process.exit(1);
 }
 
 export async function listEvaluationSamples(rootDir: string, options?: { suiteDir?: string; fallbackDir?: string }) {
@@ -147,7 +234,11 @@ export async function listEvaluationSamples(rootDir: string, options?: { suiteDi
 
   // 1.3 回退运行上传目录
   const samples = await listSamples(fallbackDir);
-  logger.info("读取评估样本入口完成", { source: "uploads", samples: samples.length });
+  logger.warn("manifest 为空，回退读取 uploads 目录（非稳定 benchmark，结果可能含重复样本）", {
+    source: "uploads",
+    samples: samples.length,
+    manifestPath
+  });
   return samples;
 }
 
@@ -251,15 +342,16 @@ export async function evaluateSample(imagePath: string, reportDir: string): Prom
   const scene = await analyzeImage({
     id,
     imagePath,
-    sourceUrl: `/uploads/${path.basename(imagePath)}`,
+    sourceUrl: sourceUrlFromImagePath(imagePath),
     title: path.basename(imagePath)
   });
 
   // 1.2 导出评估产物
+  // scene.json 写入前去除易变字段（如 metadata.createdAt），便于结构性 diff；svg 渲染仍用原 scene
   const scenePath = path.join(reportDir, `${id}.scene.json`);
   const svgPath = path.join(reportDir, `${id}.svg`);
   const svg = await sceneToSvg(scene);
-  await fs.writeFile(scenePath, JSON.stringify(scene, null, 2), "utf-8");
+  await fs.writeFile(scenePath, JSON.stringify(stripVolatileFields(scene), null, 2), "utf-8");
   await fs.writeFile(svgPath, svg, "utf-8");
 
   // 1.3 计算视觉差异和对象统计
@@ -534,6 +626,11 @@ export function normalizeMeanDiff(meanDiff: number | null) {
   return result;
 }
 
+// PSNR 上界。8bit 像素的理论 PSNR 无上限，零误差时数学上为 Infinity；
+// 但 JSON.stringify(Infinity) === "null" 会让指标静默丢失，
+// 这里截到 99（对应 mse≈0.0066，远低于任何真实评估能区分的精度）。
+export const PSNR_CAP = 99;
+
 export function computePsnr(mse: number) {
   /*
    * ========================================================================
@@ -541,18 +638,19 @@ export function computePsnr(mse: number) {
    * ========================================================================
    * 目标：
    *   1) 用均方误差衡量像素级保真度
-   *   2) 零误差返回 Infinity
+   *   2) 零误差截到 PSNR_CAP，避免 JSON 序列化丢失
    */
   logger.info("开始计算 PSNR...", { mse });
 
   // 1.1 处理零误差
   if (mse === 0) {
-    logger.info("计算 PSNR 完成", { result: Infinity });
-    return Infinity;
+    logger.info("计算 PSNR 完成", { result: PSNR_CAP });
+    return PSNR_CAP;
   }
 
-  // 1.2 计算并保留两位小数
-  const result = Math.round(10 * Math.log10((255 * 255) / mse) * 100) / 100;
+  // 1.2 计算并保留两位小数，截到上界
+  const raw = Math.round(10 * Math.log10((255 * 255) / mse) * 100) / 100;
+  const result = Math.min(raw, PSNR_CAP);
   logger.info("计算 PSNR 完成", { result });
   return result;
 }

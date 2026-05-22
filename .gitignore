@@ -9,3 +9,12 @@
 /data/scenes/
 /data/test-*
 /data/*.log
+
+# Local agent tooling
+/.claude/
+/.cursor/
+/AGENTS.md
+
+# Trellis runtime state (spec/ is tracked)
+/.trellis/tasks/
+/.trellis/workspace/
