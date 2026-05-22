@@ -1,5 +1,4 @@
 import { Lightbulb, X } from "lucide-react";
-import { logger } from "../lib/logger";
 
 type UsageTipsCardProps = {
   visible: boolean;
@@ -21,13 +20,11 @@ export function UsageTipsCard({ visible, onClose }: UsageTipsCardProps) {
    *   1) 在右栏底部展示 3 条静态提示
    *   2) 用户关闭后本 session 不再显示
    */
-  logger.info("开始渲染使用提示卡片...", { visible });
 
   if (!visible) {
     return null;
   }
 
-  logger.info("渲染使用提示卡片完成");
   return (
     <div className="usage-tips-card" role="note" aria-label="使用提示">
       <div className="usage-tips-header">

@@ -1,6 +1,5 @@
 import { useRef, useState, type DragEvent } from "react";
 import { Sparkles, Sliders, Wand2, Upload } from "lucide-react";
-import { logger } from "../lib/logger";
 import type { ReconstructionMode } from "../lib/api";
 
 type PrecisionLevel = "low" | "medium" | "high" | "ultra";
@@ -37,7 +36,6 @@ export function BottomDrawer({
    *   2) 卡片 2 提供精度 / 颜色模式（仅"单色"接 reconstructionMode）
    *   3) 卡片 3 提供占位优化选项
    */
-  logger.info("开始渲染底部抽屉...", { aiReconstructionAvailable });
 
   // 1.1 维护本地 UI state
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -81,7 +79,6 @@ export function BottomDrawer({
     }
   };
 
-  logger.info("渲染底部抽屉完成");
   return (
     <section className="bottom-drawer" aria-label="AI 矢量化抽屉">
       <div

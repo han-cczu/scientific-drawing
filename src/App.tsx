@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "./editor/Canvas";
-import { Inspector } from "./editor/Inspector";
 import { type Tool } from "./editor/Toolbar";
 import { SideNav } from "./editor/SideNav";
 import { TopBar } from "./editor/TopBar";
@@ -31,7 +30,6 @@ export default function App() {
    *   1) 维护当前 scene、工具和选中对象
    *   2) 维护上传和导出状态
    */
-  logger.info("开始初始化应用状态...");
 
   // 1.1 初始化核心状态
   const [history, setHistory] = useState(() => createHistoryState<Scene>(createBlankScene()));
@@ -58,7 +56,6 @@ export default function App() {
   );
   const canUndo = canUndoHistory(history);
   const canRedo = canRedoHistory(history);
-  logger.info("初始化应用状态完成", { selectedId, tool, canUndo, canRedo });
 
   /*
    * ========================================================================
@@ -68,7 +65,6 @@ export default function App() {
    *   1) 判断 AI 重建是否可用
    *   2) 把不可用原因反馈到工具栏
    */
-  logger.info("开始读取后端能力配置...");
 
   // 2.1 加载配置
   useEffect(() => {
@@ -97,7 +93,6 @@ export default function App() {
   }, []);
 
   // 2.2 完成配置读取绑定
-  logger.info("读取后端能力配置完成", { aiReconstructionAvailable });
 
   useEffect(() => {
     /*
@@ -108,15 +103,12 @@ export default function App() {
      *   1) 撤销、重做或删除后移除失效选中项
      *   2) 保持 Inspector 指向真实可编辑节点
      */
-    logger.info("开始同步选择状态...");
 
     // 1.1 过滤已不存在或锁定节点
     setSelectedIds((current) => {
       const next = current.filter((id) => scene.nodes.some((node) => node.id === id && !node.locked && !node.hidden));
       return next.length === current.length ? current : next;
     });
-
-    logger.info("同步选择状态完成");
   }, [scene.nodes]);
 
   /*
@@ -127,7 +119,6 @@ export default function App() {
    *   1) 支持图片分析、节点编辑和导出
    *   2) 保证所有修改都回写 scene
    */
-  logger.info("开始绑定业务动作...");
 
   const applyEditorReset = () => {
     /*
@@ -138,7 +129,6 @@ export default function App() {
      *   1) 上传、AI 重建、导入后统一清理交互状态
      *   2) 防止选择、视图和连线中间态遗漏
      */
-    logger.info("开始复位编辑器临时状态...");
 
     // 1.1 读取复位状态
     const next = resetEditorState();
@@ -149,8 +139,6 @@ export default function App() {
     setViewport(next.viewport);
     setPendingEdgeFromId(next.pendingEdgeFromId);
     setPendingRegion(null);
-
-    logger.info("复位编辑器临时状态完成");
   };
 
   const replaceSceneHistory = (nextScene: Scene) => {
@@ -162,13 +150,10 @@ export default function App() {
      *   1) 上传、导入或整图 AI 重建后重置撤销栈
      *   2) 避免跨文件撤销污染当前画布
      */
-    logger.info("开始替换 scene 历史...", { nodes: nextScene.nodes.length });
 
     // 1.1 创建新的历史状态
     setHistory(createHistoryState(nextScene));
     interactionBaselineRef.current = null;
-
-    logger.info("替换 scene 历史完成");
   };
 
   const applySceneChange = (updater: (current: Scene) => Scene) => {
@@ -180,12 +165,9 @@ export default function App() {
      *   1) 把一次业务动作记为一个撤销点
      *   2) 清理重做栈
      */
-    logger.info("开始提交普通 scene 修改...");
 
     // 1.1 推入历史快照
     setHistory((current) => pushHistory(current, updater(current.present)));
-
-    logger.info("提交普通 scene 修改完成");
   };
 
   const resetAfterRegionReconstruction = () => {
@@ -197,15 +179,12 @@ export default function App() {
      *   1) 关闭确认弹层
      *   2) 回到选择工具并清空选择
      */
-    logger.info("开始清理局部重建状态...");
 
     // 1.1 清理临时状态
     setPendingRegion(null);
     setTool("select");
     setPendingEdgeFromId(null);
     setSelectedIds([]);
-
-    logger.info("清理局部重建状态完成");
   };
 
   const replaceSceneDuringInteraction = (updater: (current: Scene) => Scene) => {
@@ -217,7 +196,6 @@ export default function App() {
      *   1) 拖拽和缩放时实时刷新画布
      *   2) 暂不产生逐帧撤销记录
      */
-    logger.info("开始更新连续交互预览...");
 
     // 1.1 记录交互开始前快照
     if (!interactionBaselineRef.current) {
@@ -226,8 +204,6 @@ export default function App() {
 
     // 1.2 替换当前快照
     setHistory((current) => replaceHistoryPresent(current, updater(current.present)));
-
-    logger.info("更新连续交互预览完成");
   };
 
   const commitSceneInteraction = () => {
@@ -239,14 +215,11 @@ export default function App() {
      *   1) 拖拽或缩放结束后只生成一个撤销点
      *   2) 保留最终位置或尺寸
      */
-    logger.info("开始提交连续交互历史...");
 
     // 1.1 提交交互基线
     const baseline = interactionBaselineRef.current;
     setHistory((current) => commitHistoryPresent(current, baseline));
     interactionBaselineRef.current = null;
-
-    logger.info("提交连续交互历史完成");
   };
 
   // 2.1 上传并分析图片
@@ -515,7 +488,6 @@ export default function App() {
     setPendingEdgeFromId(null);
     setMessage("已重做。");
   };
-  logger.info("绑定业务动作完成");
 
   useEffect(() => {
     /*
@@ -527,7 +499,6 @@ export default function App() {
      *   2) Ctrl+D 复制选中对象
      *   3) Escape 取消语义连线中间态并回到选择工具
      */
-    logger.info("开始绑定编辑器快捷键...");
 
     // 1.1 处理键盘事件
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -562,7 +533,6 @@ export default function App() {
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    logger.info("绑定编辑器快捷键完成");
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedIds, scene, pendingEdgeFromId, canUndo, canRedo]);
 
@@ -679,13 +649,14 @@ export default function App() {
         onReconstructionModeChange={setReconstructionMode}
         onReconstructImage={handleReconstruct}
       />
-      <RightPanel>
-        <Inspector
-          node={selectedNode}
-          onChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
-          onStyleChange={(patch) => selectedId && applySceneChange((current) => updateNodeStyle(current, selectedId, patch))}
-        />
-      </RightPanel>
+      <RightPanel
+        selectedNode={selectedNode}
+        scene={scene}
+        selectedIds={selectedIds}
+        applySceneChange={applySceneChange}
+        onNodeChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
+        onStyleChange={(patch) => selectedId && applySceneChange((current) => updateNodeStyle(current, selectedId, patch))}
+      />
       {pendingRegion ? (
         <div className="region-confirm" role="dialog" aria-label="局部 AI 重建方式">
           <div>

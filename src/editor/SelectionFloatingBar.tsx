@@ -1,5 +1,4 @@
 import { Copy, Lock, MoreHorizontal, Trash2 } from "lucide-react";
-import { logger } from "../lib/logger";
 
 type SelectionFloatingBarProps = {
   visible: boolean;
@@ -17,18 +16,16 @@ export function SelectionFloatingBar({ visible, onDuplicate, onToggleLock, onDel
    *   1) 选中节点时显示复制 / 锁定 / 删除 / 更多
    *   2) 没有选中时返回 null
    */
-  logger.info("开始渲染浮动操作条...", { visible });
 
   if (!visible) {
     return null;
   }
 
-  // 1.1 占位"更多"按钮（无菜单，console.warn 一次）
+  // 1.1 占位"更多"按钮
   const handleMore = () => {
-    logger.info("浮动操作条更多按钮（P3 实装）");
+    /* P4 实装：选中节点更多操作菜单 */
   };
 
-  logger.info("渲染浮动操作条完成");
   return (
     <div className="selection-floating-bar" role="toolbar" aria-label="选中节点操作">
       <button

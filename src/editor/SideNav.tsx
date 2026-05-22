@@ -12,7 +12,6 @@ import {
   Minus as LineIcon,
   Image as ImageIcon
 } from "lucide-react";
-import { logger } from "../lib/logger";
 import { LayersPanel } from "./LayersPanel";
 import { Logo } from "./Logo";
 import type { SceneNode } from "../shared/scene";
@@ -62,7 +61,6 @@ export function SideNav({
    *   1) 展示 Logo、工具列表、图层区
    *   2) 仅"选择"与"局部 AI 重建"挂业务回调，其余工具为占位
    */
-  logger.info("开始渲染侧栏...", { isSelectMode, isRegionMode, layers: nodes.length });
 
   // 1.1 构造工具条目（顺序固定，禁用项灰色）
   const tools: ToolEntry[] = [
@@ -96,7 +94,6 @@ export function SideNav({
   ];
 
   // 1.2 输出侧栏
-  logger.info("渲染侧栏完成");
   return (
     <aside className="side-nav" aria-label="侧栏">
       <Logo />

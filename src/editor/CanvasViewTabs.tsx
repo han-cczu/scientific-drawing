@@ -1,5 +1,3 @@
-import { logger } from "../lib/logger";
-
 export type CanvasViewMode = "original" | "result";
 
 type CanvasViewTabsProps = {
@@ -17,9 +15,7 @@ export function CanvasViewTabs({ viewMode, onViewModeChange, hasSourceImage }: C
    *   1) 提供"原图 / 矢量化结果"切换
    *   2) 没有 sourceImage 时禁用"原图"
    */
-  logger.info("开始渲染画布 tab...", { viewMode });
 
-  logger.info("渲染画布 tab 完成");
   return (
     <div className="canvas-view-tabs" role="tablist" aria-label="画布视图">
       <button

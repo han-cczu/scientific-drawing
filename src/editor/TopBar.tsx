@@ -13,7 +13,6 @@ import {
   Upload,
   UserCircle
 } from "lucide-react";
-import { logger } from "../lib/logger";
 
 type ExportKind = "svg" | "pptx" | "json";
 
@@ -66,7 +65,6 @@ export function TopBar({
    *   2) 提供标题、保存指示、平移工具、全屏入口
    *   3) "更多"菜单保留重置视图 / 导入 scene.json / 下载提示词
    */
-  logger.info("开始渲染顶栏...", { canUndo, canRedo, zoom, isSelectMode, isPanMode });
 
   // 1.1 维护本地 UI 状态：导出菜单 / 更多菜单展开
   const [exportOpen, setExportOpen] = useState(false);
@@ -135,7 +133,6 @@ export function TopBar({
   const zoomLabel = `${Math.round(zoom * 100)}%`;
 
   // 1.8 输出顶栏
-  logger.info("渲染顶栏完成");
   return (
     <header className="top-bar" role="banner">
       <div className="title">

@@ -1,5 +1,4 @@
 import { Download, FileJson, FileType2, ImageUp, MousePointer2, Square, Circle, Type, Minus, MoveRight, Trash2, Copy, Upload, WandSparkles, BrainCircuit, Palette, Contrast, RotateCcw, GitBranch, Undo2, Redo2, Crop } from "lucide-react";
-import { logger } from "../lib/logger";
 import type { SceneNodeType } from "../shared/scene";
 import type { ReconstructionMode } from "../lib/api";
 
@@ -73,7 +72,6 @@ export function Toolbar({
    *   1) 提供上传、选择和绘制工具
    *   2) 提供删除、复制和导出命令
    */
-  logger.info("开始渲染编辑工具栏...", { tool, busy, hasSelection, aiReconstructionAvailable, reconstructionModel, canUndo, canRedo });
 
   // 1.1 处理文件选择
   const handleInput = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,7 +101,6 @@ export function Toolbar({
   };
 
   // 1.4 渲染工具栏
-  logger.info("渲染编辑工具栏完成", { tool });
   return (
     <aside className="toolbar" aria-label="工具栏">
       <label className="icon-button upload-button" title="上传图片">

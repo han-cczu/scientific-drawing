@@ -1,5 +1,3 @@
-import { logger } from "../lib/logger";
-
 type ThumbnailRailProps = {
   sourceImage?: string;
   onAdjust?: () => void;
@@ -14,10 +12,8 @@ export function ThumbnailRail({ sourceImage, onAdjust }: ThumbnailRailProps) {
    *   1) 显示当前 scene 的源图缩略图
    *   2) 没有 sourceImage 时整个组件返回 null
    */
-  logger.info("开始渲染缩略图浮层...", { hasSource: Boolean(sourceImage) });
 
   if (!sourceImage) {
-    logger.info("缩略图浮层无 sourceImage，跳过渲染");
     return null;
   }
 
@@ -31,7 +27,6 @@ export function ThumbnailRail({ sourceImage, onAdjust }: ThumbnailRailProps) {
     drawer?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 
-  logger.info("渲染缩略图浮层完成");
   return (
     <div className="thumbnail-rail" aria-label="原图缩略图">
       <div className="thumbnail-rail-title">原图</div>
