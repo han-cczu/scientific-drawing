@@ -76,6 +76,7 @@ flowchart LR
 ## Highlights
 
 - **双路径重建**：sharp 启发式分析负责快速复刻 + 锁定底图；OpenAI Responses 多模态重建负责语义节点与连线。两条支路最终都过同一条 `repairScene` 修复链路。
+- **现代化编辑器界面**：SciDraw 风格五区布局（顶栏 + 工具侧栏 + 画布 + 属性面板 + 底部 AI 矢量化抽屉），右栏三 tab（样式 / 属性 / 排列），9 个内置 + 最多 12 个自定义快速样式（localStorage 持久化），画布上方可切原图 / 矢量化结果视图，选中节点底部浮出复制 / 锁定 / 删除浮动操作条。
 - **scene.json 作为协议中介**：前后端共享同一份类型与运行时校验（`src/shared/scene.ts` / `sceneValidation.ts`），Canvas、SVG、PPTX 三个渲染器共用 `geometry.ts`，导入失败不会污染当前画布。
 - **确定性输出 + CI 门禁**：`analyzeImage` 走确定性路径；`npm run evaluate` 输出 `meanDiff` / `psnr` / `ssim` 并与 `data/eval-suite/baseline.json` 比对，CI 跑严格 delta 阈值，回归即拦。
 - **运行产物自治**：后端启动时按 `DATA_RETENTION_DAYS` 清理 `data/uploads`、`data/exports`、`data/scenes`，只动已知后缀，不递归删目录。
@@ -89,10 +90,11 @@ flowchart LR
 - 差异闭环：导出 SVG 后反渲染，与原图自动对比定位差异
 - 视觉回归阈值化：把 `normalizedMeanDiff` / `ssimDelta` 接入更细粒度的测试断言
 - 撤销粒度细化：拆开拖拽、缩放、批量操作各自的历史栈
+- 阴影协议接入：scene.style 加 shadow 字段并接通 svg/pptx 渲染（当前 StyleTab 占位）
 
 ## Status
 
-仓库目前处于 `scientific-drawing-hardening` 分支：协议深校验、渲染一致性、AI 输出修复、文件治理、评估指标都已纳入回归测试。`private: true`，未发布到 npm，也未配置远端。
+仓库处于 `scientific-drawing-hardening` 分支，已完成的硬化方向：协议深校验、渲染一致性、AI 输出修复、文件治理、评估指标自动回归（CI 跑 evaluate + 严格 delta 门禁）、`analyzeImage` 确定性输出、`docker-compose` 单机部署、AI 配置可视化与持久化、编辑器界面全面重做（详见 Highlights）。`private: true`，未发布到 npm，也未配置远端，可通过 Docker 单机自部署到 VPS / 内网。
 
 ## License
 
