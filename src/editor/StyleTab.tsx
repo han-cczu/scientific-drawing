@@ -1,6 +1,13 @@
-import { useId, useRef } from "react";
+import { useCallback, useId, useRef, useState } from "react";
+import { X } from "lucide-react";
 import type { SceneNode, SceneStyle } from "../shared/scene";
 import { QUICK_STYLE_PRESETS } from "./quickStyles";
+import {
+  CUSTOM_PRESET_LIMIT,
+  deleteCustomPreset,
+  loadCustomPresets,
+  saveCustomPreset
+} from "../lib/customStyles";
 
 type StyleTabProps = {
   node: SceneNode | null;
@@ -41,6 +48,22 @@ export function StyleTab({ node, onStyleChange }: StyleTabProps) {
   const fillInputRef = useRef<HTMLInputElement | null>(null);
   const strokeInputRef = useRef<HTMLInputElement | null>(null);
   const shadowToggleId = useId();
+  const [customPresets, setCustomPresets] = useState(() => loadCustomPresets());
+
+  const handleSaveCustomPreset = useCallback(() => {
+    if (!node) return;
+    const fillValue = node.style.fill ?? "none";
+    const strokeValue = node.style.stroke ?? "none";
+    const result = saveCustomPreset(fillValue, strokeValue);
+    if (result) {
+      setCustomPresets((prev) => [...prev, result]);
+    }
+  }, [node]);
+
+  const handleDeleteCustomPreset = useCallback((id: string) => {
+    deleteCustomPreset(id);
+    setCustomPresets((prev) => prev.filter((p) => p.id !== id));
+  }, []);
 
   if (!node) {
     return (
@@ -238,10 +261,59 @@ export function StyleTab({ node, onStyleChange }: StyleTabProps) {
               />
             </button>
           ))}
+          {customPresets.map((preset, index) => (
+            <div key={preset.id ?? `custom-${index}`} className="quick-style-swatch-wrapper">
+              <button
+                type="button"
+                className="quick-style-swatch custom"
+                onClick={() => onStyleChange({ fill: preset.fill, stroke: preset.stroke })}
+                title={`自定义 ${index + 1}`}
+                aria-label={`应用自定义样式 ${index + 1}`}
+              >
+                <span
+                  className="quick-style-swatch-inner"
+                  style={{ background: preset.fill, borderColor: preset.stroke }}
+                />
+              </button>
+              <button
+                type="button"
+                className="quick-style-delete"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (preset.id) {
+                    handleDeleteCustomPreset(preset.id);
+                  }
+                }}
+                aria-label={`删除自定义样式 ${index + 1}`}
+                title="删除"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
         </div>
-        <button type="button" className="style-save-btn" disabled title="保存自定义样式（P4）">
-          保存为样式
-        </button>
+        {(() => {
+          const fillHasValue = node.style.fill !== undefined && node.style.fill !== null && node.style.fill !== "none";
+          const strokeHasValue =
+            node.style.stroke !== undefined && node.style.stroke !== null && node.style.stroke !== "none";
+          const hasStyleValue = fillHasValue || strokeHasValue;
+          const reachedLimit = customPresets.length >= CUSTOM_PRESET_LIMIT;
+          const saveDisabled = !hasStyleValue || reachedLimit;
+          const label = reachedLimit
+            ? `已达上限 (${CUSTOM_PRESET_LIMIT}/${CUSTOM_PRESET_LIMIT})`
+            : "保存为样式";
+          return (
+            <button
+              type="button"
+              className="style-save-btn"
+              onClick={handleSaveCustomPreset}
+              disabled={saveDisabled}
+              title={reachedLimit ? "自定义预设已达上限，删除后再保存" : "保存当前 fill/stroke 为自定义样式"}
+            >
+              {label}
+            </button>
+          );
+        })()}
       </div>
     </div>
   );

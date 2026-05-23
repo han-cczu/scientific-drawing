@@ -992,6 +992,45 @@ button:disabled {
   border-radius: 4px;
 }
 
+.quick-style-swatch-wrapper {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+}
+
+.quick-style-swatch.custom {
+  width: 100%;
+}
+
+.quick-style-delete {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--color-surface);
+  background: var(--color-danger);
+  border: 0;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  cursor: pointer;
+}
+
+.quick-style-swatch-wrapper:hover .quick-style-delete,
+.quick-style-swatch-wrapper:focus-within .quick-style-delete {
+  opacity: 1;
+}
+
+.quick-style-delete:hover:not(:disabled) {
+  background: var(--color-danger);
+  opacity: 1;
+}
+
 .style-save-btn {
   width: 100%;
   height: 32px;

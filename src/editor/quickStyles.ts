@@ -15,6 +15,9 @@ export type QuickStylePreset = {
   name: string;
   fill: string;
   stroke: string;
+  // 以下字段仅自定义预设带；hardcoded 不写以保持向后兼容
+  id?: string;
+  createdAt?: number;
 };
 
 export const QUICK_STYLE_PRESETS: QuickStylePreset[] = [
