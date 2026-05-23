@@ -1304,6 +1304,35 @@ button:disabled {
   box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
+.settings-field-with-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-field-with-action input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-field-with-action .icon-btn {
+  flex: 0 0 32px;
+  border: 1px solid var(--color-border-strong);
+}
+
+.settings-refresh-spin {
+  animation: settings-refresh-spin 800ms linear infinite;
+}
+
+@keyframes settings-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .settings-hint {
   color: var(--color-text-subtle);
   font-size: var(--font-size-xs);

@@ -283,7 +283,15 @@ export async function fetchOpenAiCompatibleModels(config: { apiKey: string; base
     }
   });
 
-  // 1.3 解析响应
+  // 1.3 校验响应 Content-Type，非 JSON 直接报协议错（避免 baseUrl 指错网关时拿到 HTML 还误判为 NETWORK）
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    const error = `Response was not JSON (Content-Type: ${contentType || "missing"})`;
+    logger.warn("获取模型列表失败，响应不是 JSON", { status: response.status, contentType });
+    return { models: [], error, status: -1 };
+  }
+
+  // 1.4 解析响应
   const payload = await response.json() as unknown;
   if (!response.ok) {
     const error = JSON.stringify(payload);
@@ -375,7 +383,10 @@ export class ConfigValidationError extends Error {
   }
 }
 
-export function validateWritableConfig(input: unknown):
+export function validateWritableConfig(
+  input: unknown,
+  options?: { allowEmptyKey?: boolean }
+):
   | { ok: true; value: WritableAiConfigInput }
   | { ok: false; error: string } {
   /*
@@ -385,13 +396,18 @@ export function validateWritableConfig(input: unknown):
    * 目标：
    *   1) 白名单 apiKey/baseUrl/reconstructModel
    *   2) 字段长度上限和 baseUrl scheme 限制
+   *   3) allowEmptyKey=true 时允许 apiKey 留空（路由层用 saved-key fallback）
    */
   if (!isRecord(input)) {
     return { ok: false, error: "Request body must be an object." };
   }
 
   // 1.1 apiKey
-  if (typeof input.apiKey !== "string" || input.apiKey.trim().length === 0) {
+  const allowEmptyKey = options?.allowEmptyKey === true;
+  if (typeof input.apiKey !== "string") {
+    return { ok: false, error: "apiKey is required." };
+  }
+  if (!allowEmptyKey && input.apiKey.trim().length === 0) {
     return { ok: false, error: "apiKey is required." };
   }
   if (input.apiKey.length > AI_CONFIG_LIMITS.apiKey) {

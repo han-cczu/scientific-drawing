@@ -13,6 +13,7 @@ import {
   deletePersistedConfig,
   fetchOpenAiCompatibleModels,
   readAiRuntimeConfig,
+  readPersistedConfig,
   validateWritableConfig,
   writePersistedConfig
 } from "../scene/aiProviderConfig";
@@ -409,15 +410,39 @@ apiRouter.post("/config", express.json({ limit: "16kb" }), async (req, res) => {
    * 目标：
    *   1) 接收 UI 写入的 apiKey/baseUrl/reconstructModel
    *   2) 校验白名单字段后落盘，文件权限 0o600
-   *   3) 写入后立即返回新的安全配置（包括 hasApiKey/source/maskedTail）
+   *   3) 表单 apiKey 留空且已有 saved key 时复用 saved（用户只改 baseUrl/model 不必重贴）
+   *   4) 写入后立即返回新的安全配置（包括 hasApiKey/source/maskedTail）
    */
   logger.info("开始保存 AI 配置...");
 
   try {
-    // 1.1 校验并写入文件
-    writePersistedConfig(req.body);
+    // 1.1 读取 saved key（用于空 apiKey 时的 fallback）
+    const savedKey = readPersistedConfig()?.apiKey ?? "";
 
-    // 1.2 立刻读回，构造安全响应
+    // 1.2 用 allowEmptyKey 软校验，apiKey 可空，其余字段严格
+    const validation = validateWritableConfig(req.body, { allowEmptyKey: Boolean(savedKey) });
+    if (!validation.ok) {
+      logger.warn("保存 AI 配置失败，字段非法", { error: validation.error });
+      res.status(400).json({ error: validation.error });
+      return;
+    }
+
+    // 1.3 合成 effectiveKey：表单非空 → 表单值；空 → 复用 saved
+    const effectiveKey = validation.value.apiKey || savedKey;
+    if (!effectiveKey) {
+      logger.warn("保存 AI 配置失败，缺少 apiKey");
+      res.status(400).json({ error: "apiKey is required." });
+      return;
+    }
+
+    // 1.4 用合成后的完整字段写盘（writePersistedConfig 内部仍严格校验，但此时 apiKey 必非空）
+    writePersistedConfig({
+      apiKey: effectiveKey,
+      baseUrl: validation.value.baseUrl,
+      reconstructModel: validation.value.reconstructModel
+    });
+
+    // 1.5 立刻读回，构造安全响应
     const runtimeConfig = readAiRuntimeConfig();
     const modelList = await fetchOpenAiCompatibleModels(runtimeConfig);
     const config = buildSafeAiProviderConfig({
@@ -431,13 +456,13 @@ apiRouter.post("/config", express.json({ limit: "16kb" }), async (req, res) => {
     logger.info("保存 AI 配置完成", { source: config.source });
     res.json(config);
   } catch (error) {
-    // 1.3 字段非法返回 400
+    // 1.6 字段非法返回 400
     if (error instanceof ConfigValidationError) {
       logger.warn("保存 AI 配置失败，字段非法", { error: error.message });
       res.status(400).json({ error: error.message });
       return;
     }
-    // 1.4 落盘失败返回 500
+    // 1.7 落盘失败返回 500
     logger.error("保存 AI 配置失败", { error: String(error) });
     res.status(500).json({ error: "Failed to persist config." });
   }
@@ -484,39 +509,60 @@ apiRouter.post("/config/test", express.json({ limit: "16kb" }), async (req, res)
    * ========================================================================
    * 目标：
    *   1) 接收表单值不落盘，调 /v1/models 验证
-   *   2) 区分 AUTH / NETWORK / UNKNOWN 错误码给前端
+   *   2) 表单 apiKey 留空且已有 saved key 时复用 saved
+   *   3) 返回 models 列表（成功）或空数组（失败）给前端 datalist
+   *   4) 区分 AUTH / NETWORK / INVALID_RESPONSE / UNKNOWN 错误码
    */
   logger.info("开始测试 AI 配置...");
 
-  // 1.1 校验字段
-  const validation = validateWritableConfig(req.body);
+  // 1.1 读 saved key 用于空 apiKey fallback
+  const savedKey = readPersistedConfig()?.apiKey ?? "";
+
+  // 1.2 软校验：apiKey 允许空
+  const validation = validateWritableConfig(req.body, { allowEmptyKey: Boolean(savedKey) });
   if (!validation.ok) {
     logger.warn("测试 AI 配置失败，字段非法", { error: validation.error });
-    res.status(400).json({ ok: false, code: "VALIDATION", error: validation.error });
+    res.status(400).json({ ok: false, code: "VALIDATION", error: validation.error, models: [] });
     return;
   }
 
-  // 1.2 调模型列表
+  // 1.3 合成 effectiveKey
+  const effectiveKey = validation.value.apiKey || savedKey;
+  if (!effectiveKey) {
+    logger.warn("测试 AI 配置失败，缺少 apiKey");
+    res.status(400).json({ ok: false, code: "VALIDATION", error: "apiKey is required.", models: [] });
+    return;
+  }
+
+  // 1.4 调模型列表
   try {
     const result = await fetchOpenAiCompatibleModels({
-      apiKey: validation.value.apiKey,
+      apiKey: effectiveKey,
       baseUrl: validation.value.baseUrl
     });
     if (result.error) {
-      // 1.3 优先用 HTTP 状态码区分 AUTH，兜底用关键词匹配
+      // 1.5 错误码分类优先级：INVALID_RESPONSE (status=-1) → AUTH (401/403) → AUTH (text) → UNKNOWN
+      const isInvalidResponse = result.status === -1;
       const isAuthByStatus = result.status === 401 || result.status === 403;
       const isAuthByText = /401|403|unauthorized|forbidden|invalid[\s_-]?api[\s_-]?key|authentication/i.test(result.error);
-      const code = isAuthByStatus || isAuthByText ? "AUTH" : "UNKNOWN";
+      let code: "INVALID_RESPONSE" | "AUTH" | "UNKNOWN";
+      if (isInvalidResponse) {
+        code = "INVALID_RESPONSE";
+      } else if (isAuthByStatus || isAuthByText) {
+        code = "AUTH";
+      } else {
+        code = "UNKNOWN";
+      }
       logger.warn("测试 AI 配置失败", { code, status: result.status, error: result.error });
-      res.json({ ok: false, code, error: result.error });
+      res.json({ ok: false, code, error: result.error, models: [] });
       return;
     }
     logger.info("测试 AI 配置完成", { modelCount: result.models.length });
-    res.json({ ok: true, modelCount: result.models.length });
+    res.json({ ok: true, modelCount: result.models.length, models: result.models });
   } catch (error) {
-    // 1.4 网络层失败
+    // 1.6 网络层失败（fetch 抛异常）
     logger.warn("测试 AI 配置失败，网络错误", { error: String(error) });
-    res.json({ ok: false, code: "NETWORK", error: String(error) });
+    res.json({ ok: false, code: "NETWORK", error: String(error), models: [] });
   }
 });
 

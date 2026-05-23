@@ -7,6 +7,7 @@ import {
   buildSafeAiProviderConfig,
   ConfigValidationError,
   deletePersistedConfig,
+  fetchOpenAiCompatibleModels,
   maskApiKeyTail,
   normalizeModelListPayload,
   readAiRuntimeConfig,
@@ -129,6 +130,184 @@ describe("OpenAI-compatible AI provider config", () => {
       assert.equal(ok.value.apiKey, "sk-1");
       assert.equal(ok.value.baseUrl, "https://x.com");
       assert.equal(ok.value.reconstructModel, "gpt-4o");
+    }
+  });
+
+  it("validateWritableConfig allowEmptyKey accepts empty apiKey but stays strict on other fields", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 allowEmptyKey=true 软校验语义
+     * ========================================================================
+     * 目标：
+     *   1) saved-key fallback 场景允许 apiKey 为空字符串
+     *   2) 其它字段（baseUrl scheme、长度）仍严格
+     */
+    // 1.1 apiKey 空字符串在 allowEmptyKey=true 时通过
+    const empty = validateWritableConfig(
+      { apiKey: "", baseUrl: "https://x.com", reconstructModel: "gpt-4o" },
+      { allowEmptyKey: true }
+    );
+    assert.equal(empty.ok, true);
+    if (empty.ok) {
+      assert.equal(empty.value.apiKey, "");
+      assert.equal(empty.value.baseUrl, "https://x.com");
+      assert.equal(empty.value.reconstructModel, "gpt-4o");
+    }
+
+    // 1.2 apiKey 全空白在 allowEmptyKey=true 时也通过（trim 后为空）
+    const blank = validateWritableConfig(
+      { apiKey: "   ", baseUrl: "https://x.com", reconstructModel: "gpt-4o" },
+      { allowEmptyKey: true }
+    );
+    assert.equal(blank.ok, true);
+
+    // 1.3 默认严格模式仍拒绝空 apiKey（向后兼容）
+    assert.equal(
+      validateWritableConfig({ apiKey: "", baseUrl: "https://x.com", reconstructModel: "gpt-4o" }).ok,
+      false
+    );
+    assert.equal(
+      validateWritableConfig(
+        { apiKey: "", baseUrl: "https://x.com", reconstructModel: "gpt-4o" },
+        { allowEmptyKey: false }
+      ).ok,
+      false
+    );
+  });
+
+  it("validateWritableConfig allowEmptyKey still rejects bad baseUrl and oversized fields", () => {
+    /*
+     * ========================================================================
+     * 步骤1：safety regression — allowEmptyKey 不能放过其它字段
+     * ========================================================================
+     * 目标：
+     *   1) 非 http(s) baseUrl 仍拒绝
+     *   2) 超长 baseUrl / reconstructModel 仍拒绝
+     *   3) 超长 apiKey（即便允许为空）仍拒绝
+     */
+    // 1.1 非 http(s) scheme
+    assert.equal(
+      validateWritableConfig(
+        { apiKey: "", baseUrl: "ftp://x", reconstructModel: "m" },
+        { allowEmptyKey: true }
+      ).ok,
+      false
+    );
+    assert.equal(
+      validateWritableConfig(
+        { apiKey: "", baseUrl: "javascript:alert(1)", reconstructModel: "m" },
+        { allowEmptyKey: true }
+      ).ok,
+      false
+    );
+
+    // 1.2 baseUrl 超长
+    assert.equal(
+      validateWritableConfig(
+        { apiKey: "", baseUrl: "https://" + "a".repeat(300), reconstructModel: "m" },
+        { allowEmptyKey: true }
+      ).ok,
+      false
+    );
+
+    // 1.3 reconstructModel 超长
+    assert.equal(
+      validateWritableConfig(
+        { apiKey: "", baseUrl: "https://x.com", reconstructModel: "m".repeat(200) },
+        { allowEmptyKey: true }
+      ).ok,
+      false
+    );
+
+    // 1.4 apiKey 超长（即便允许空也不允许超长）
+    assert.equal(
+      validateWritableConfig(
+        { apiKey: "a".repeat(600), baseUrl: "https://x.com", reconstructModel: "m" },
+        { allowEmptyKey: true }
+      ).ok,
+      false
+    );
+
+    // 1.5 reconstructModel 缺失/空仍拒绝
+    assert.equal(
+      validateWritableConfig(
+        { apiKey: "", baseUrl: "https://x.com", reconstructModel: "" },
+        { allowEmptyKey: true }
+      ).ok,
+      false
+    );
+  });
+
+  it("fetchOpenAiCompatibleModels returns models normally when Content-Type is application/json", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 Content-Type 检查不破坏正常 JSON 路径
+     * ========================================================================
+     * 目标：
+     *   1) application/json + 编码后缀仍走正常解析
+     *   2) status 透传 200 而非 sentinel -1
+     */
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => new Response(
+        JSON.stringify({ data: [{ id: "gpt-4o" }, { id: "gpt-4o-mini" }] }),
+        { status: 200, headers: { "content-type": "application/json; charset=utf-8" } }
+      )) as typeof fetch;
+
+      const result = await fetchOpenAiCompatibleModels({
+        apiKey: "sk-test",
+        baseUrl: "https://api.example.com"
+      });
+
+      assert.deepEqual(result.models, ["gpt-4o", "gpt-4o-mini"]);
+      assert.equal(result.status, 200);
+      assert.equal(result.error, null);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("fetchOpenAiCompatibleModels returns INVALID_RESPONSE sentinel when Content-Type is not JSON", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 Content-Type 非 JSON 时不调 .json() 且返 status=-1
+     * ========================================================================
+     * 目标：
+     *   1) baseUrl 指向错误网关返回 HTML 时不抛出 .json() 解析错
+     *   2) 上层据 status=-1 映射为 INVALID_RESPONSE 错误码
+     */
+    const originalFetch = globalThis.fetch;
+    try {
+      // 1.1 桩 fetch 返回 200 + text/html
+      globalThis.fetch = (async () => new Response("<html>not a json gateway</html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" }
+      })) as typeof fetch;
+
+      const result = await fetchOpenAiCompatibleModels({
+        apiKey: "sk-test",
+        baseUrl: "https://wrong-gateway.example.com"
+      });
+
+      assert.deepEqual(result.models, []);
+      assert.equal(result.status, -1);
+      assert.ok(result.error);
+      assert.match(result.error ?? "", /not JSON/i);
+      assert.match(result.error ?? "", /text\/html/i);
+
+      // 1.2 即便 Content-Type 为空也走 INVALID_RESPONSE
+      globalThis.fetch = (async () => new Response("plain body", {
+        status: 200,
+        headers: {}
+      })) as typeof fetch;
+      const noCt = await fetchOpenAiCompatibleModels({
+        apiKey: "sk-test",
+        baseUrl: "https://wrong-gateway.example.com"
+      });
+      assert.equal(noCt.status, -1);
+      assert.deepEqual(noCt.models, []);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

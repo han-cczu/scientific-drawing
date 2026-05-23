@@ -32,9 +32,16 @@ export type WritableAppConfig = {
   reconstructModel: string;
 };
 
+export type TestConfigErrorCode =
+  | "AUTH"
+  | "NETWORK"
+  | "INVALID_RESPONSE"
+  | "VALIDATION"
+  | "UNKNOWN";
+
 export type TestConfigResult =
-  | { ok: true; modelCount: number }
-  | { ok: false; code: "AUTH" | "NETWORK" | "VALIDATION" | "UNKNOWN"; error: string };
+  | { ok: true; modelCount: number; models: string[] }
+  | { ok: false; code: TestConfigErrorCode; error: string; models: string[] };
 
 export async function loadAppConfig(): Promise<AppConfig> {
   /*
@@ -118,7 +125,8 @@ export async function testAppConfig(payload: WritableAppConfig): Promise<TestCon
    * ========================================================================
    * 目标：
    *   1) 让用户在保存前确认 key/baseUrl 有效
-   *   2) 区分 AUTH / NETWORK / VALIDATION / UNKNOWN 错误码
+   *   2) 区分 AUTH / NETWORK / INVALID_RESPONSE / VALIDATION / UNKNOWN 错误码
+   *   3) 后端在 apiKey 留空且已有 saved key 时会复用 saved
    */
   logger.info("开始测试 AI 配置...");
 
