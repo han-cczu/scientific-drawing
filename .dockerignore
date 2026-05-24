@@ -22,12 +22,6 @@ data/*.log
 .gitignore
 .github
 
-# 本地 agent / IDE 工具
-.claude
-.cursor
-.trellis
-AGENTS.md
-
 # 文档与测试（runtime 不需要，CI 在 host 跑）
 docs
 tests
