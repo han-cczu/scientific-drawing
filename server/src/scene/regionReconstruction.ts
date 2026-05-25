@@ -111,7 +111,7 @@ export function mergeRegionReconstruction(
     .map((node) => translateNode(node, normalized.x, normalized.y, usedIds, idMap));
 
   // 1.3 平移局部边
-  const translatedEdges = regionScene.edges
+  const translatedEdges = (regionScene.edges ?? [])
     .map((edge) => translateEdge(edge, normalized.x, normalized.y, usedIds, idMap))
     .filter((edge): edge is SceneEdge => Boolean(edge));
 
@@ -121,7 +121,7 @@ export function mergeRegionReconstruction(
     ...translatedNodes
   ];
   const nextEdges = [
-    ...baseScene.edges.filter((edge) => !edgeTouchesAny(edge, removedNodeIds)),
+    ...(baseScene.edges ?? []).filter((edge) => !edgeTouchesAny(edge, removedNodeIds)),
     ...translatedEdges
   ];
   const next = {

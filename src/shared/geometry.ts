@@ -19,7 +19,8 @@ export function resolveEndpoint(endpoint: string, nodes: SceneNode[]) {
 
   // 1.2 计算端点坐标
   const [side, rawRatio] = (rawSide ?? "center").split("@");
-  const ratio = clampNumber(rawRatio === undefined ? 0.5 : Number(rawRatio), 0, 1);
+  const parsedRatio = rawRatio === undefined || rawRatio === "" ? 0.5 : Number(rawRatio);
+  const ratio = clampNumber(Number.isNaN(parsedRatio) ? 0.5 : parsedRatio, 0, 1);
   if (side === "left") {
     return { x: node.x, y: node.y + node.h * ratio };
   }

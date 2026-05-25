@@ -68,6 +68,29 @@ describe("scene validation", () => {
     assert.equal(result.ok, true);
   });
 
+  it("accepts short hex colors and rejects malformed uppercase non-hex", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证颜色校验边界
+     * ========================================================================
+     * 目标：
+     *   1) 合法 3 位短色（如 #abc）应通过
+     *   2) 全大写但非 hex（如 #GGGGGG）应被拒绝
+     */
+
+    // 1.1 合法短色通过
+    const ok = validScene();
+    ok.nodes[0].style.fill = "#abc";
+    assert.equal(validateScene(ok).ok, true);
+
+    // 1.2 畸形全大写色被拒绝
+    const bad = validScene();
+    bad.nodes[0].style.fill = "#GGGGGG";
+    const result = validateScene(bad);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_color"));
+  });
+
   it("rejects duplicate ids and invalid edge endpoints", () => {
     /*
      * ========================================================================

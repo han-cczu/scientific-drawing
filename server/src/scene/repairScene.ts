@@ -88,14 +88,15 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>):
   };
 
   // 1.2 修复附属字段
-  if (node.points !== undefined) {
-    repaired.points = node.points
+  //   非数组的 points/cells（畸形 AI 输出）一律清空，避免经 ...node 展开后残留导致下游渲染崩溃
+  repaired.points = Array.isArray(node.points)
+    ? node.points
       .filter((point) => typeof point?.x === "number" && typeof point?.y === "number")
-      .map((point) => ({ x: finite(point.x, repaired.x), y: finite(point.y, repaired.y) }));
-  }
-  if (node.cells !== undefined) {
-    repaired.cells = node.cells.flatMap((cell) => {
-      if (!Number.isInteger(cell.row) || !Number.isInteger(cell.col) || cell.row < 0 || cell.col < 0) {
+      .map((point) => ({ x: finite(point.x, repaired.x), y: finite(point.y, repaired.y) }))
+    : undefined;
+  repaired.cells = Array.isArray(node.cells)
+    ? node.cells.flatMap((cell) => {
+      if (!cell || !Number.isInteger(cell.row) || !Number.isInteger(cell.col) || cell.row < 0 || cell.col < 0) {
         return [];
       }
       return [{
@@ -103,7 +104,15 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>):
         fill: cell.fill === undefined ? undefined : safeColor(cell.fill, "#FFFFFF"),
         color: cell.color === undefined ? undefined : safeColor(cell.color, "#111111")
       }];
-    });
+    })
+    : undefined;
+
+  // 1.3 钳制网格维度，避免畸形 AI 输出（如 rows=100000）生成海量单元格
+  if (typeof node.rows === "number") {
+    repaired.rows = clampGridDimension(node.rows);
+  }
+  if (typeof node.cols === "number") {
+    repaired.cols = clampGridDimension(node.cols);
   }
   return repaired;
 }
@@ -214,7 +223,7 @@ function safeColor(value: unknown, fallback: string) {
     return fallback;
   }
   const normalized = normalizeHexColor(value);
-  return normalized === value.toUpperCase() ? normalized : fallback;
+  return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : fallback;
 }
 
 function nonEmpty(value: unknown, fallback: string) {
@@ -238,4 +247,9 @@ function nonNegative(value: unknown, fallback: number) {
 function clamp01(value: unknown) {
   const numberValue = finite(value, 1);
   return Math.max(0, Math.min(1, numberValue));
+}
+
+function clampGridDimension(value: unknown) {
+  const rounded = Math.round(finite(value, 1));
+  return Math.max(1, Math.min(256, rounded));
 }

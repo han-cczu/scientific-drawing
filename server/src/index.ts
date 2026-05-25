@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import express from "express";
-import cors from "cors";
 import { logger } from "./logger";
 import { apiRouter } from "./routes/api";
 import { cleanupDataFiles } from "./files/retention";
@@ -32,8 +31,9 @@ cleanupDataFiles({
 });
 
 // 1.3 注册中间件和路由
+//   前后端同源（dev 经 vite proxy，prod 由本服务同时托管前端与 API），无需开放 CORS；
+//   不再使用 cors()（默认 Access-Control-Allow-Origin: * 会让任意站点跨域读取本服务响应）。
 const app = express();
-app.use(cors());
 app.use("/uploads", express.static(uploadDir));
 app.use("/exports", express.static(exportDir));
 app.use("/api", apiRouter);
@@ -63,9 +63,9 @@ if (distAvailable) {
 
 // 1.5 注册错误处理
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // 内部错误细节只写日志，对外统一返回通用文案，避免泄露上游响应/内部异常信息
   logger.error("HTTP 请求处理失败", { error: String(error) });
-  const message = error instanceof Error ? error.message : "Internal server error.";
-  res.status(500).json({ error: message });
+  res.status(500).json({ error: "Internal server error." });
 });
 
 // 1.6 启动监听

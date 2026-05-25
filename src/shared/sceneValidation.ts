@@ -431,7 +431,7 @@ function validateColor(value: unknown, path: string, issues: ValidationIssue[], 
   if (value === "none") {
     return;
   }
-  if (normalizeHexColor(value) !== value.toUpperCase()) {
+  if (!/^#[0-9A-F]{6}$/.test(normalizeHexColor(value))) {
     addIssue(issues, path, "invalid_color", "Color must be a #RRGGBB hex color or none.");
   }
 }

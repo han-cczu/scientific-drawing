@@ -12,8 +12,9 @@ export function findComponents(mask: Uint8Array, width: number, height: number):
    */
   logger.info("开始扫描连通域...", { width, height });
 
-  // 1.1 初始化访问状态
+  // 1.1 初始化访问状态（队列缓冲复用，避免每个连通域重复分配）
   const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
   const boxes: ComponentBox[] = [];
 
   // 1.2 遍历所有像素
@@ -23,7 +24,7 @@ export function findComponents(mask: Uint8Array, width: number, height: number):
       if (!mask[index] || visited[index]) {
         continue;
       }
-      const box = flood(mask, visited, width, height, x, y);
+      const box = flood(mask, visited, width, height, x, y, queue);
       if (box.area >= 1) {
         boxes.push(box);
       }
@@ -64,8 +65,9 @@ export function findRawComponents(mask: Uint8Array, width: number, height: numbe
    */
   logger.info("开始扫描原始连通域...", { width, height });
 
-  // 1.1 初始化访问状态
+  // 1.1 初始化访问状态（队列缓冲复用，避免每个连通域重复分配）
   const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
   const boxes: ComponentBox[] = [];
 
   // 1.2 遍历所有像素
@@ -75,7 +77,7 @@ export function findRawComponents(mask: Uint8Array, width: number, height: numbe
       if (!mask[index] || visited[index]) {
         continue;
       }
-      const box = flood(mask, visited, width, height, x, y);
+      const box = flood(mask, visited, width, height, x, y, queue);
       if (box.area >= 4) {
         boxes.push(box);
       }
@@ -92,11 +94,19 @@ export function flood(
   width: number,
   height: number,
   startX: number,
-  startY: number
+  startY: number,
+  scratchQueue?: Int32Array
 ): ComponentBox {
   // 1.1 初始化队列和边界
-  const queue: Array<[number, number]> = [[startX, startY]];
-  visited[startY * width + startX] = 1;
+  //   用扁平索引队列（index = y*width+x）替代 [x,y] tuple，
+  //   并内联四邻扩展，避免每个像素分配 tuple/neighbors 数组带来的 GC 压力。
+  //   遍历顺序仍为 FIFO + 右/左/下/上，与原实现一致；bbox 与 area 本身也与顺序无关。
+  const queue = scratchQueue ?? new Int32Array(width * height);
+  const startIndex = startY * width + startX;
+  visited[startIndex] = 1;
+  queue[0] = startIndex;
+  let head = 0;
+  let tail = 1;
   let minX = startX;
   let maxX = startX;
   let minY = startY;
@@ -104,29 +114,47 @@ export function flood(
   let area = 0;
 
   // 1.2 广度优先扩展
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const [x, y] = queue[cursor];
+  while (head < tail) {
+    const index = queue[head];
+    head += 1;
+    const x = index % width;
+    const y = (index - x) / width;
     area += 1;
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
+    if (x < minX) { minX = x; }
+    if (x > maxX) { maxX = x; }
+    if (y < minY) { minY = y; }
+    if (y > maxY) { maxY = y; }
 
-    const neighbors: Array<[number, number]> = [
-      [x + 1, y],
-      [x - 1, y],
-      [x, y + 1],
-      [x, y - 1]
-    ];
-
-    for (const [nx, ny] of neighbors) {
-      if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
-        continue;
+    if (x + 1 < width) {
+      const next = index + 1;
+      if (mask[next] && !visited[next]) {
+        visited[next] = 1;
+        queue[tail] = next;
+        tail += 1;
       }
-      const nextIndex = ny * width + nx;
-      if (mask[nextIndex] && !visited[nextIndex]) {
-        visited[nextIndex] = 1;
-        queue.push([nx, ny]);
+    }
+    if (x - 1 >= 0) {
+      const next = index - 1;
+      if (mask[next] && !visited[next]) {
+        visited[next] = 1;
+        queue[tail] = next;
+        tail += 1;
+      }
+    }
+    if (y + 1 < height) {
+      const next = index + width;
+      if (mask[next] && !visited[next]) {
+        visited[next] = 1;
+        queue[tail] = next;
+        tail += 1;
+      }
+    }
+    if (y - 1 >= 0) {
+      const next = index - width;
+      if (mask[next] && !visited[next]) {
+        visited[next] = 1;
+        queue[tail] = next;
+        tail += 1;
       }
     }
   }

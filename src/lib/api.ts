@@ -137,7 +137,12 @@ export async function testAppConfig(payload: WritableAppConfig): Promise<TestCon
     body: JSON.stringify(payload)
   });
 
-  // 1.2 即便 400 也是受控的 VALIDATION 响应
+  // 1.2 即便 400 也是受控响应；但网关 5xx 可能返回 HTML，需先确认是 JSON 再解析
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    logger.warn("测试 AI 配置响应非 JSON", { status: response.status });
+    return { ok: false, code: "INVALID_RESPONSE", error: `服务返回异常（HTTP ${response.status}）。`, models: [] };
+  }
   const data = await response.json() as TestConfigResult;
   logger.info("测试 AI 配置完成", { ok: data.ok });
   return data;

@@ -485,7 +485,10 @@ export default function App() {
     if (!node) {
       return;
     }
-    applySceneChange((current) => setNodeHidden(current, nodeId, !node.hidden));
+    applySceneChange((current) => {
+      const target = current.nodes.find((item) => item.id === nodeId);
+      return setNodeHidden(current, nodeId, !target?.hidden);
+    });
     if (!node.hidden) {
       handleSelect(selectedIds.filter((id) => id !== nodeId));
     }
@@ -497,7 +500,10 @@ export default function App() {
     if (!node) {
       return;
     }
-    applySceneChange((current) => setNodeLocked(current, nodeId, !node.locked));
+    applySceneChange((current) => {
+      const target = current.nodes.find((item) => item.id === nodeId);
+      return setNodeLocked(current, nodeId, !target?.locked);
+    });
     if (!node.locked) {
       handleSelect(selectedIds.filter((id) => id !== nodeId));
     }
@@ -605,7 +611,7 @@ export default function App() {
         onUndo={handleUndo}
         onRedo={handleRedo}
         zoom={viewport.scale}
-        onZoomChange={(next) => setViewport({ scale: clampViewportScale(next), offset: viewport.offset })}
+        onZoomChange={(next) => setViewport((prev) => ({ scale: clampViewportScale(next), offset: prev.offset }))}
         isSelectMode={tool === "select"}
         isPanMode={false}
         onActivateSelect={() => {

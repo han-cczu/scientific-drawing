@@ -216,15 +216,32 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
   } : null;
 
   // 2.10 处理滚轮缩放
-  const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
-    if (!event.ctrlKey) {
+  //   React 对 onWheel 默认以 passive 方式注册，event.preventDefault() 会被忽略并告警；
+  //   改用原生非被动监听器，确保 Ctrl+滚轮缩放时阻止页面原生滚动。
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) {
       return;
     }
-    event.preventDefault();
-    const point = pointFromEvent(event);
-    const factor = event.deltaY > 0 ? 0.9 : 1.1;
-    onViewportChange(zoomViewportAt(viewport, point, viewport.scale * factor));
-  };
+    const handleWheelNative = (event: WheelEvent) => {
+      if (!event.ctrlKey) {
+        return;
+      }
+      event.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const point = clientPointToScene({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        rect,
+        page: scene.page,
+        viewport
+      });
+      const factor = event.deltaY > 0 ? 0.9 : 1.1;
+      onViewportChange(zoomViewportAt(viewport, point, viewport.scale * factor));
+    };
+    svg.addEventListener("wheel", handleWheelNative, { passive: false });
+    return () => svg.removeEventListener("wheel", handleWheelNative);
+  }, [viewport, scene.page, onViewportChange]);
 
   return (
     <div className="canvas-shell">
@@ -233,7 +250,6 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
         className="scene-canvas"
         viewBox={`0 0 ${scene.page.width} ${scene.page.height}`}
         style={{ aspectRatio }}
-        onWheel={handleWheel}
         onPointerMove={handleCanvasPointerMove}
         onPointerUp={handleCanvasPointerUp}
         onPointerLeave={handleCanvasPointerUp}

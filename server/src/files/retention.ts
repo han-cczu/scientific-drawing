@@ -26,9 +26,10 @@ export async function cleanupDataFiles(options: CleanupOptions) {
    */
   options.logger.info("开始清理过期运行产物...", { directories: options.directories, maxAgeDays: options.maxAgeDays });
 
-  // 1.1 计算过期时间
+  // 1.1 计算过期时间（非法/NaN 保留期回退默认 14 天，避免静默关闭清理）
   const now = options.now ?? new Date();
-  const maxAgeMs = Math.max(0, options.maxAgeDays) * 24 * 60 * 60 * 1000;
+  const safeMaxAgeDays = Number.isFinite(options.maxAgeDays) ? Math.max(0, options.maxAgeDays) : 14;
+  const maxAgeMs = safeMaxAgeDays * 24 * 60 * 60 * 1000;
   const removed: string[] = [];
 
   // 1.2 逐目录清理文件

@@ -65,6 +65,49 @@ describe("scene repair", () => {
     assert.equal(validateScene(repaired).ok, true);
   });
 
+  it("survives malformed array fields, clamps oversized grids, and normalizes short colors", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证畸形附属字段的兜底
+     * ========================================================================
+     * 目标：
+     *   1) 非数组 points/cells 不抛错且被清空
+     *   2) 超大 rows/cols 被钳制，3 位短色被规范化
+     */
+
+    // 1.1 构造畸形附属字段
+    const scene = {
+      version: "0.1",
+      page: { width: 320, height: 180, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        {
+          id: "g1",
+          type: "grid",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          rows: 100000,
+          cols: 5,
+          style: {},
+          points: "not-an-array",
+          cells: [null, { row: 0, col: 0, fill: "#abc" }]
+        }
+      ],
+      edges: []
+    } as unknown as Scene;
+
+    // 1.2 执行修复并校验兜底
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes[0].points, undefined);
+    assert.equal(repaired.nodes[0].cells?.length, 1);
+    assert.equal(repaired.nodes[0].cells?.[0].fill, "#AABBCC");
+    assert.equal(repaired.nodes[0].rows, 256);
+    assert.equal(repaired.nodes[0].cols, 5);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
   it("keeps replica base layer compatible with repaired scenes", () => {
     /*
      * ========================================================================

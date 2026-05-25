@@ -591,6 +591,10 @@ apiRouter.get("/scenes/:id", async (req, res, next) => {
     logger.info("读取 scene 文件完成", { scenePath });
     res.type("json").send(content);
   } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      res.status(404).json({ error: "Scene not found." });
+      return;
+    }
     logger.error("读取 scene 文件失败", { error: String(error) });
     next(error);
   }
