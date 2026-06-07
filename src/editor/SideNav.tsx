@@ -5,6 +5,7 @@ import {
   MousePointer2,
   Plus,
   Sigma,
+  Spline,
   Square,
   Table,
   Type,
@@ -14,14 +15,19 @@ import {
 } from "lucide-react";
 import { LayersPanel } from "./LayersPanel";
 import { Logo } from "./Logo";
+import type { Tool } from "./Toolbar";
 import type { SceneNode } from "../shared/scene";
 
 type SideNavProps = {
   isSelectMode: boolean;
   isRegionMode: boolean;
   aiReconstructionAvailable: boolean;
+  /** 当前激活工具：驱动创作工具项的 active 态 */
+  tool: Tool;
   onActivateSelect: () => void;
   onActivateRegionReconstruct: () => void;
+  /** 激活创作工具（text/rect/ellipse/line/arrow/connector） */
+  onActivateTool: (tool: Tool) => void;
   nodes: SceneNode[];
   selectedIds: string[];
   onSelectNodes: (ids: string[]) => void;
@@ -44,8 +50,10 @@ export function SideNav({
   isSelectMode,
   isRegionMode,
   aiReconstructionAvailable,
+  tool,
   onActivateSelect,
   onActivateRegionReconstruct,
+  onActivateTool,
   nodes,
   selectedIds,
   onSelectNodes,
@@ -59,10 +67,21 @@ export function SideNav({
    * ========================================================================
    * 目标：
    *   1) 展示 Logo、工具列表、图层区
-   *   2) 仅"选择"与"局部 AI 重建"挂业务回调，其余工具为占位
+   *   2) 创作工具（文本/矩形/椭圆/线条/箭头/连线）路由到 onActivateTool，
+   *      点击画布即创建对应节点；图片/公式/表格暂未实装，诚实禁用
    */
 
-  // 1.1 构造工具条目（顺序固定，禁用项灰色）
+  // 1.1 创作工具映射：SideNav 条目 → Tool 值（与 createNode/连线流程一一对应）
+  const authoringTools: Array<{ id: string; label: string; icon: React.ComponentType<{ size?: number }>; tool: Tool; title: string }> = [
+    { id: "text", label: "文本", icon: Type, tool: "text", title: "点击画布添加文本" },
+    { id: "shape", label: "矩形", icon: Square, tool: "rect", title: "点击画布添加矩形" },
+    { id: "ellipse", label: "椭圆", icon: Circle, tool: "ellipse", title: "点击画布添加椭圆" },
+    { id: "line", label: "线条", icon: LineIcon, tool: "line", title: "点击画布添加线条" },
+    { id: "arrow", label: "箭头", icon: ArrowRight, tool: "arrow", title: "点击画布添加箭头" },
+    { id: "connector", label: "语义连线", icon: Spline, tool: "connector", title: "依次点击两个节点创建连线" }
+  ];
+
+  // 1.2 构造工具条目（顺序固定，禁用项灰色）
   const tools: ToolEntry[] = [
     {
       id: "select",
@@ -81,16 +100,19 @@ export function SideNav({
       onClick: onActivateRegionReconstruct,
       title: aiReconstructionAvailable ? "框选区域调用 AI 重建" : "需要 OPENAI_API_KEY"
     },
-    { id: "canvas", label: "画布", icon: Square, enabled: false, active: false },
-    { id: "text", label: "文本", icon: Type, enabled: false, active: false },
-    { id: "shape", label: "形状", icon: Square, enabled: false, active: false },
-    { id: "line", label: "线条", icon: LineIcon, enabled: false, active: false },
-    { id: "arrow", label: "箭头", icon: ArrowRight, enabled: false, active: false },
-    { id: "icon", label: "图标", icon: Circle, enabled: false, active: false },
-    { id: "image", label: "图片", icon: ImageIcon, enabled: false, active: false },
-    { id: "formula", label: "公式", icon: Sigma, enabled: false, active: false },
-    { id: "table", label: "表格", icon: Table, enabled: false, active: false },
-    { id: "more", label: "更多", icon: MoreHorizontal, enabled: false, active: false }
+    ...authoringTools.map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      icon: entry.icon,
+      enabled: true,
+      active: tool === entry.tool,
+      onClick: () => onActivateTool(entry.tool),
+      title: entry.title
+    })),
+    { id: "image", label: "图片", icon: ImageIcon, enabled: false, active: false, title: "功能开发中，暂未开放" },
+    { id: "formula", label: "公式", icon: Sigma, enabled: false, active: false, title: "功能开发中，暂未开放" },
+    { id: "table", label: "表格", icon: Table, enabled: false, active: false, title: "功能开发中，暂未开放" },
+    { id: "more", label: "更多", icon: MoreHorizontal, enabled: false, active: false, title: "功能开发中，暂未开放" }
   ];
 
   // 1.2 输出侧栏
@@ -132,7 +154,7 @@ export function SideNav({
       </div>
 
       <div className="side-nav-footer">
-        <button type="button" className="new-layer-btn" disabled title="P2 阶段实装">
+        <button type="button" className="new-layer-btn" disabled title="功能开发中，暂未开放">
           <Plus size={14} />
           <span>新建图层</span>
         </button>

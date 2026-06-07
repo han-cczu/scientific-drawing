@@ -214,12 +214,13 @@ function styleToSvg(node: SceneNode, options: { includeFill?: boolean } = {}): s
   const fontSize = node.style.fontSize ?? 16;
   const fontWeight = node.style.fontWeight ?? "400";
 
-  // 1.2 生成属性字符串
+  // 1.2 生成属性字符串（节点级 dash 与 edgeStyleToSvg 同规则，保证编辑器/导出一致）
   const result = [
     includeFill ? `fill="${escapeAttr(fill)}"` : "",
     `stroke="${escapeAttr(stroke)}"`,
     `stroke-width="${strokeWidth}"`,
     `opacity="${opacity}"`,
+    node.style.dash ? `stroke-dasharray="${escapeAttr(node.style.dash)}"` : "",
     `color="${escapeAttr(color)}"`,
     `font-family="${escapeAttr(fontFamily)}"`,
     `font-size="${fontSize}"`,

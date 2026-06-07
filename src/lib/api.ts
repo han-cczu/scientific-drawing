@@ -39,6 +39,64 @@ export type TestConfigErrorCode =
   | "VALIDATION"
   | "UNKNOWN";
 
+export type ReconstructErrorCode =
+  | "AUTH"
+  | "TIMEOUT"
+  | "BAD_MODEL_OUTPUT"
+  | "INVALID_SCENE"
+  | "NETWORK"
+  | "UPSTREAM"
+  | "UNKNOWN";
+
+export class ReconstructApiError extends Error {
+  /*
+   * ========================================================================
+   * 步骤1：重建接口结构化错误
+   * ========================================================================
+   * 目标：
+   *   1) 透传服务端错误信封 {error:{code,message,hint}}
+   *   2) UI 据 code 给出中文恢复建议（复刻 describeTestError 模式）
+   */
+  constructor(
+    public readonly code: ReconstructErrorCode,
+    message: string,
+    public readonly hint?: string
+  ) {
+    super(message);
+    this.name = "ReconstructApiError";
+  }
+}
+
+async function parseReconstructError(response: Response): Promise<ReconstructApiError> {
+  /*
+   * ========================================================================
+   * 步骤1：解析重建错误响应
+   * ========================================================================
+   * 目标：
+   *   1) 新式对象信封与旧式 { error: string } 都能解析
+   *   2) 网关 HTML（非 JSON）归为 NETWORK
+   */
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return new ReconstructApiError("NETWORK", `服务返回异常（HTTP ${response.status}）。`);
+  }
+  try {
+    const body = await response.json() as { error?: unknown };
+    const raw = body?.error;
+    if (raw && typeof raw === "object") {
+      const envelope = raw as { code?: unknown; message?: unknown; hint?: unknown };
+      return new ReconstructApiError(
+        typeof envelope.code === "string" ? envelope.code as ReconstructErrorCode : "UNKNOWN",
+        typeof envelope.message === "string" ? envelope.message : `HTTP ${response.status}`,
+        typeof envelope.hint === "string" ? envelope.hint : undefined
+      );
+    }
+    return new ReconstructApiError("UNKNOWN", typeof raw === "string" ? raw : `HTTP ${response.status}`);
+  } catch {
+    return new ReconstructApiError("UNKNOWN", `HTTP ${response.status}`);
+  }
+}
+
 export type TestConfigResult =
   | { ok: true; modelCount: number; models: string[] }
   | { ok: false; code: TestConfigErrorCode; error: string; models: string[] };
@@ -179,14 +237,14 @@ export async function analyzeImage(file: File): Promise<AnalyzeResponse> {
   return payload;
 }
 
-export async function reconstructImage(file: File, mode: ReconstructionMode, model: string): Promise<AnalyzeResponse> {
+export async function reconstructImage(file: File, mode: ReconstructionMode, model: string, signal?: AbortSignal): Promise<AnalyzeResponse> {
   /*
    * ========================================================================
    * 步骤1：上传图片并请求 AI 重建
    * ========================================================================
    * 目标：
    *   1) 把论文图提交给后端多模态接口
-   *   2) 获取可编辑 scene.json
+   *   2) 获取可编辑 scene.json；失败时抛结构化 ReconstructApiError
    */
   logger.info("开始上传图片并请求 AI 重建...", { fileName: file.name, mode, model });
 
@@ -200,11 +258,11 @@ export async function reconstructImage(file: File, mode: ReconstructionMode, mod
   // 1.2 请求 AI 重建接口
   const response = await fetch("/api/reconstruct", {
     method: "POST",
-    body: form
+    body: form,
+    signal
   });
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Reconstruct failed: ${response.status} ${text}`);
+    throw await parseReconstructError(response);
   }
 
   // 1.3 解析响应
@@ -218,7 +276,8 @@ export async function reconstructRegion(
   region: ApiSceneBox,
   mode: ReconstructionMode,
   model: string,
-  mergeMode: RegionMergeMode
+  mergeMode: RegionMergeMode,
+  signal?: AbortSignal
 ): Promise<AnalyzeResponse> {
   /*
    * ========================================================================
@@ -226,7 +285,7 @@ export async function reconstructRegion(
    * ========================================================================
    * 目标：
    *   1) 把当前 scene 和框选区域提交给后端
-   *   2) 获取替换或叠加后的完整 scene
+   *   2) 获取替换或叠加后的完整 scene；失败时抛结构化 ReconstructApiError
    */
   logger.info("开始请求 AI 局部重建...", { region, mode, model, mergeMode });
 
@@ -236,11 +295,11 @@ export async function reconstructRegion(
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ scene, region, mode, model, mergeMode })
+    body: JSON.stringify({ scene, region, mode, model, mergeMode }),
+    signal
   });
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Region reconstruct failed: ${response.status} ${text}`);
+    throw await parseReconstructError(response);
   }
 
   // 1.2 解析响应
@@ -249,14 +308,19 @@ export async function reconstructRegion(
   return payload;
 }
 
-export async function exportScene(scene: Scene, kind: "svg" | "pptx" | "json"): Promise<string> {
+export type ExportDownload = {
+  blob: Blob;
+  filename: string;
+};
+
+export async function exportScene(scene: Scene, kind: "svg" | "pptx" | "json"): Promise<ExportDownload> {
   /*
    * ========================================================================
    * 步骤1：导出当前场景
    * ========================================================================
    * 目标：
-   *   1) 把编辑后的 scene 发送给后端
-   *   2) 获取导出文件地址
+   *   1) 把编辑后的 scene 发送给后端，拿回文件字节流
+   *   2) 从 Content-Disposition 解析下载文件名（优先 RFC 5987 filename*）
    */
   logger.info("开始导出当前场景...", { kind, nodes: scene.nodes.length });
 
@@ -272,8 +336,34 @@ export async function exportScene(scene: Scene, kind: "svg" | "pptx" | "json"): 
     throw new Error(`Export failed: ${response.status}`);
   }
 
-  // 1.2 返回下载地址
-  const payload = await response.json() as { url: string };
-  logger.info("导出当前场景完成", { kind, url: payload.url });
-  return payload.url;
+  // 1.2 取回字节流与文件名（header 缺失时按 kind 回退默认名）
+  const blob = await response.blob();
+  const fallbackName = kind === "json" ? "scene.scene.json" : `scene.${kind}`;
+  const filename = filenameFromContentDisposition(response.headers.get("content-disposition")) ?? fallbackName;
+  logger.info("导出当前场景完成", { kind, filename, bytes: blob.size });
+  return { blob, filename };
+}
+
+function filenameFromContentDisposition(header: string | null): string | null {
+  /*
+   * ========================================================================
+   * 步骤1：解析下载文件名
+   * ========================================================================
+   * 目标：
+   *   1) 优先 filename*=UTF-8''（中文标题）
+   *   2) 回退普通 filename="..."
+   */
+  if (!header) {
+    return null;
+  }
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      // 编码异常时回退普通 filename
+    }
+  }
+  const plain = /filename="([^"]+)"/i.exec(header);
+  return plain ? plain[1] : null;
 }

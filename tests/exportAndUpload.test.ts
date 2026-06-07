@@ -1,10 +1,7 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ensureReplicaBaseLayer, exportKindConfig, isAllowedImageMime, sanitizeFileBase, validateSceneForExport } from "../server/src/routes/api";
-import { sceneToPptx } from "../server/src/scene/pptx";
+import { ensureReplicaBaseLayer, exportKindConfig, isAllowedImageMime, sanitizeFileBase, sanitizeUnicodeFileBase, validateSceneForExport } from "../server/src/routes/api";
+import { dashToPptx, sceneToPptx } from "../server/src/scene/pptx";
 import { sceneToSvg } from "../server/src/scene/svg";
 import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
 import { shadeColor } from "../src/shared/geometry";
@@ -60,7 +57,8 @@ function sampleScene(): Scene {
         style: {
           fill: "#F3F4F6",
           stroke: "#111111",
-          strokeWidth: 1
+          strokeWidth: 1,
+          dash: "4 4"
         }
       },
       {
@@ -112,7 +110,8 @@ function sampleScene(): Scene {
         ],
         style: {
           stroke: "#111111",
-          strokeWidth: 1.5
+          strokeWidth: 1.5,
+          dash: "2 2"
         }
       }
     ],
@@ -188,7 +187,7 @@ describe("upload helpers", () => {
     assert.equal(valid.scene?.metadata.id, "test-scene");
   });
 
-  it("defines all supported export kinds in one table", () => {
+  it("defines all supported export kinds in one table", async () => {
     /*
      * ========================================================================
      * 步骤1：验证导出类型配置
@@ -205,6 +204,35 @@ describe("upload helpers", () => {
     assert.equal(exportKindConfig.svg.ext, "svg");
     assert.equal(exportKindConfig.pptx.ext, "pptx");
     assert.equal(exportKindConfig.json.ext, "scene.json");
+
+    // 1.3 校验 MIME 与内存渲染输出
+    assert.match(exportKindConfig.svg.contentType, /^image\/svg\+xml/);
+    assert.match(exportKindConfig.json.contentType, /^application\/json/);
+    assert.match(exportKindConfig.pptx.contentType, /presentationml/);
+    const svgOut = await exportKindConfig.svg.render(sampleScene());
+    assert.equal(typeof svgOut, "string");
+    assert.match(svgOut as string, /^<svg/);
+    const jsonOut = await exportKindConfig.json.render(sampleScene());
+    assert.doesNotThrow(() => JSON.parse(jsonOut as string));
+  });
+
+  it("keeps unicode download names safe while preserving CJK characters", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 Unicode 文件名清洗
+     * ========================================================================
+     * 目标：
+     *   1) 中文标题保留，路径/引号/控制字符被剥除
+     *   2) 空输入返回空串（由调用方回退 ASCII 名）
+     */
+
+    // 1.1 中文保留 + 危险字符剥除
+    assert.equal(sanitizeUnicodeFileBase("神经网络架构图"), "神经网络架构图");
+    assert.equal(sanitizeUnicodeFileBase('bad\\path:"图"?<>|'), "bad-path-图");
+
+    // 1.2 空输入回退
+    assert.equal(sanitizeUnicodeFileBase(""), "");
+    assert.equal(sanitizeUnicodeFileBase(undefined), "");
   });
 });
 
@@ -229,6 +257,28 @@ describe("scene export", () => {
     assert.match(svg, /fill="#FCA5A5"/);
     assert.match(svg, />1<\/text>/);
     assert.match(svg, />4<\/text>/);
+
+    // 1.3 节点级 dash 进入导出（矩形与折线节点）
+    assert.match(svg, /stroke-dasharray="4 4"/);
+    assert.match(svg, /stroke-dasharray="2 2"/);
+  });
+
+  it("maps dash presets to PPTX dashType", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 PPT dash 映射
+     * ========================================================================
+     * 目标：
+     *   1) 三个 StyleTab 预设各映射到最近的 prstDash
+     *   2) 缺省实线，未识别自定义值回落 dash
+     */
+
+    // 1.1 预设映射
+    assert.equal(dashToPptx(undefined), "solid");
+    assert.equal(dashToPptx("4 4"), "dash");
+    assert.equal(dashToPptx("2 2"), "sysDot");
+    assert.equal(dashToPptx("8 3 2 3"), "lgDash");
+    assert.equal(dashToPptx("9 9"), "dash");
   });
 
   it("uses shared endpoint and color rules in SVG export", async () => {
@@ -293,24 +343,12 @@ describe("scene export", () => {
      *   2) 确认生成文件非空
      */
 
-    // 1.1 准备临时输出路径
-    const tempDir = path.join(os.tmpdir(), `scientific-drawing-${Date.now()}`);
-    await mkdir(tempDir, { recursive: true });
-    const outputPath = path.join(tempDir, "scene.pptx");
+    // 1.1 内存渲染 PPTX 并校验大小
+    const output = await sceneToPptx(sampleScene());
+    assert.ok(output.byteLength > 0);
 
-    try {
-      // 1.2 写入 PPTX 并校验大小
-      await sceneToPptx(sampleScene(), outputPath);
-      const outputStat = await stat(outputPath);
-      assert.ok(outputStat.size > 0);
-
-      // 1.3 粗略确认 ZIP 文件头
-      const header = await readFile(outputPath);
-      assert.equal(header.subarray(0, 2).toString("utf8"), "PK");
-    } finally {
-      // 1.4 清理临时目录
-      await rm(tempDir, { recursive: true, force: true });
-    }
+    // 1.2 粗略确认 ZIP 文件头
+    assert.equal(output.subarray(0, 2).toString("utf8"), "PK");
   });
 });
 

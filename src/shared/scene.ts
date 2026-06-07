@@ -30,7 +30,6 @@ export type SceneNode = {
   y: number;
   w: number;
   h: number;
-  rotation?: number;
   text?: string;
   points?: Array<{ x: number; y: number }>;
   source?: string;

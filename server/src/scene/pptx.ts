@@ -13,7 +13,7 @@ const ShapeType = {
   line: "line" as pptxgenjs.ShapeType
 };
 
-export async function sceneToPptx(scene: Scene, outputPath: string) {
+export async function sceneToPptx(scene: Scene): Promise<Buffer> {
   /*
    * ========================================================================
    * 步骤1：初始化 PPTX 文档
@@ -64,9 +64,11 @@ export async function sceneToPptx(scene: Scene, outputPath: string) {
     addEdge(slide, edge, visibleNodes, scale);
   }
 
-  // 2.2 输出 PPTX 文件
-  await pptx.writeFile({ fileName: outputPath });
-  logger.info("写入可编辑节点完成", { outputPath });
+  // 2.2 输出 PPTX 字节流（由导出路由直接下发附件，不再写盘）
+  const output = await pptx.write({ outputType: "nodebuffer" });
+  const buffer = Buffer.from(output as Uint8Array);
+  logger.info("写入可编辑节点完成", { bytes: buffer.byteLength });
+  return buffer;
 }
 
 function addNode(slide: SlideLike, node: SceneNode, scale: number) {
@@ -165,7 +167,7 @@ function addEdge(slide: SlideLike, edge: SceneEdge, nodes: SceneNode[], scale: n
 
   // 1.2 写入线条
   const points = [start, ...(edge.points ?? []), end];
-  addSegmentedLine(slide, points, scale, edge.style.stroke ?? "#111111", edge.style.strokeWidth ?? 1, edge.type === "arrow" || edge.type === "fork");
+  addSegmentedLine(slide, points, scale, edge.style.stroke ?? "#111111", edge.style.strokeWidth ?? 1, edge.type === "arrow" || edge.type === "fork", edge.style.dash);
 
   logger.info("添加语义连线完成", { id: edge.id });
 }
@@ -187,7 +189,7 @@ function addLineNode(slide: SlideLike, node: SceneNode, scale: number) {
   const end = points[points.length - 1];
 
   // 1.2 写入线条
-  addSegmentedLine(slide, points, scale, node.style.stroke ?? "#111111", node.style.strokeWidth ?? 1, node.type === "arrow");
+  addSegmentedLine(slide, points, scale, node.style.stroke ?? "#111111", node.style.strokeWidth ?? 1, node.type === "arrow", node.style.dash);
 
   logger.info("添加线条节点完成", { id: node.id });
 }
@@ -198,7 +200,8 @@ function addSegmentedLine(
   scale: number,
   color: string,
   width: number,
-  arrowEnd: boolean
+  arrowEnd: boolean,
+  dash?: string
 ) {
   /*
    * ========================================================================
@@ -207,6 +210,7 @@ function addSegmentedLine(
    * 目标：
    *   1) 支持多段折线导出
    *   2) 只在最后一段保留箭头
+   *   3) dash 由调用方按节点/边样式传入（括号显式传 undefined 保持实线）
    */
   logger.info("开始添加分段线条...", { points: points.length, arrowEnd });
 
@@ -228,6 +232,7 @@ function addSegmentedLine(
       line: {
         color: normalizeColor(color),
         width,
+        dashType: dashToPptx(dash),
         beginArrowType: "none",
         endArrowType: arrowEnd && index === points.length - 2 ? "triangle" : "none"
       }
@@ -315,9 +320,9 @@ function addBracketNode(slide: SlideLike, node: SceneNode, scale: number) {
     ticks.forEach((tick) => segments.push([{ x: node.x, y: node.y + node.h * tick }, { x, y: node.y + node.h * tick }]));
   }
 
-  // 1.2 写入线段
+  // 1.2 写入线段（括号臂保持实线，显式不传 dash）
   for (const [start, end] of segments) {
-    addSegmentedLine(slide, [start, end], scale, node.style.stroke ?? "#111111", node.style.strokeWidth ?? 1, false);
+    addSegmentedLine(slide, [start, end], scale, node.style.stroke ?? "#111111", node.style.strokeWidth ?? 1, false, undefined);
   }
 
   logger.info("添加括号节点完成", { id: node.id, segments: segments.length });
@@ -339,14 +344,36 @@ function shapeStyle(node: SceneNode) {
     ? { color: normalizeColor(node.style.fill), transparency: opacityToTransparency(node.style.opacity ?? 1) }
     : { color: "FFFFFF", transparency: 100 };
 
-  // 1.2 生成线条配置
+  // 1.2 生成线条配置（dash 仅对真实描边有意义）
   const line = node.style.stroke && node.style.stroke !== "none"
-    ? { color: normalizeColor(node.style.stroke), width: node.style.strokeWidth ?? 1 }
+    ? { color: normalizeColor(node.style.stroke), width: node.style.strokeWidth ?? 1, dashType: dashToPptx(node.style.dash) }
     : { color: "FFFFFF", transparency: 100 };
 
   const result = { fill, line };
   logger.info("生成 PPT 形状样式完成", { id: node.id });
   return result;
+}
+
+export function dashToPptx(dash: string | undefined): "solid" | "dash" | "sysDot" | "lgDash" {
+  /*
+   * ========================================================================
+   * 步骤1：映射 dash 预设到 PPT dashType
+   * ========================================================================
+   * 目标：
+   *   1) 与 StyleTab 预设一一对应：'4 4'→dash / '2 2'→sysDot / '8 3 2 3'→lgDash
+   *   2) PowerPoint 无逐像素 dash 控制，双虚线取最接近的 lgDash 近似
+   *   3) 未识别的自定义 dash 与 StyleTab.dashToKind 同规则回落 dash
+   */
+  if (!dash) {
+    return "solid";
+  }
+  if (dash === "2 2") {
+    return "sysDot";
+  }
+  if (dash === "8 3 2 3") {
+    return "lgDash";
+  }
+  return "dash";
 }
 
 function normalizeColor(value: string) {

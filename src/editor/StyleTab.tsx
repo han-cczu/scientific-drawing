@@ -128,7 +128,7 @@ export function StyleTab({ node, onStyleChange }: StyleTabProps) {
               aria-label="填充不透明度"
             />
             <span className="style-unit">%</span>
-            <button type="button" className="style-add-btn" disabled title="添加新填充（P4）">+</button>
+            <button type="button" className="style-add-btn" disabled title="暂不支持多重填充">+</button>
           </div>
         </div>
       </div>
@@ -227,18 +227,18 @@ export function StyleTab({ node, onStyleChange }: StyleTabProps) {
         </div>
       </div>
 
-      {/* 阴影行（占位 disabled） */}
+      {/* 阴影行（协议未接入，禁用展示） */}
       <div className="style-section">
         <div className="style-section-title">阴影</div>
         <div className="style-row">
           <label className="style-toggle" htmlFor={shadowToggleId}>
-            <input id={shadowToggleId} type="checkbox" disabled aria-label="启用阴影（P4 占位）" />
+            <input id={shadowToggleId} type="checkbox" disabled aria-label="阴影（暂未开放）" />
             <span className="style-toggle-track">
               <span className="style-toggle-thumb" />
             </span>
             <span className="style-toggle-label">关闭</span>
           </label>
-          <span className="style-hint">P4</span>
+          <span className="style-hint">暂未开放</span>
         </div>
       </div>
 

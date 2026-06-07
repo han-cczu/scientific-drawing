@@ -139,6 +139,19 @@ button:disabled {
   border-radius: 50%;
 }
 
+/* 保存状态三态：saved=绿（已落盘）/ editing=琥珀（未落盘）/ restored=蓝（自本地草稿恢复） */
+.save-indicator .dot.saved {
+  background: var(--color-success);
+}
+
+.save-indicator .dot.editing {
+  background: #f59e0b;
+}
+
+.save-indicator .dot.restored {
+  background: var(--color-accent);
+}
+
 .top-bar .spacer {
   flex: 1 1 auto;
 }
@@ -484,8 +497,51 @@ button:disabled {
   overflow: hidden;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 状态行 tone：成败可分辨（同时保留 title 全文供悬停） */
+.canvas-status .status-text.status-success {
+  color: #047857;
+}
+
+.canvas-status .status-text.status-error {
+  color: var(--color-danger);
+}
+
+/* AI 重建执行期：已等待秒数 + 取消按钮 */
+.canvas-status .status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.canvas-status .status-elapsed {
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-status .status-cancel {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-danger);
+  border-radius: 4px;
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.canvas-status .status-cancel:hover {
+  background: var(--color-danger-soft);
+}
+
+/* AI 矢量化抽屉 busy 旋转（复用 settings 的 spin keyframe） */
+.drawer-card-drop.is-busy .drop-zone > svg {
+  animation: settings-refresh-spin 1s linear infinite;
 }
 
 .canvas-status .scene-meta {
@@ -504,6 +560,31 @@ button:disabled {
 
 .canvas-hit-area.drawing {
   cursor: crosshair;
+}
+
+/* 空画布 CTA：pointer-events 全透传，不阻挡画布点击/框选 */
+.canvas-empty-cta {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  pointer-events: none;
+  color: var(--color-text-subtle);
+  text-align: center;
+}
+
+.canvas-empty-cta .canvas-empty-title {
+  font-size: var(--font-size-lg, 18px);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.canvas-empty-cta .canvas-empty-hint {
+  font-size: var(--font-size-sm);
+  max-width: 360px;
 }
 
 .canvas-shell {

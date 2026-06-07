@@ -338,7 +338,7 @@ AI 局部重建。请求体为 JSON：
 
 ### `POST /api/export/{json|svg|pptx}`
 
-请求体：`{ "scene": Scene }`（最大 20 MB）。响应：`{ "url": "/exports/<file>" }`。
+请求体：`{ "scene": Scene }`（最大 20 MB）。响应：文件字节流，`Content-Disposition: attachment`（文件名取 `metadata.title`，中文走 RFC 5987 `filename*`）。导出不再写 `data/exports`，前端以 blob 触发浏览器下载。
 
 - **JSON**：原样持久化经过校验的 scene。
 - **SVG**：尽可能把 `/uploads/...` 图片内嵌为 data URL，便于单文件迁移；非本地源或文件不存在时保留原始引用。

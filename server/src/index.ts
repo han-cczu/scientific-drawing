@@ -35,7 +35,11 @@ cleanupDataFiles({
 //   不再使用 cors()（默认 Access-Control-Allow-Origin: * 会让任意站点跨域读取本服务响应）。
 const app = express();
 app.use("/uploads", express.static(uploadDir));
-app.use("/exports", express.static(exportDir));
+//   导出已改为内存渲染 + 附件直接下发，不再写 /exports；
+//   静态挂载仅服务历史残留文件，并强制以附件下载（避免 SVG/JSON 内联渲染）。
+app.use("/exports", express.static(exportDir, {
+  setHeaders: (res) => res.setHeader("Content-Disposition", "attachment")
+}));
 app.use("/api", apiRouter);
 
 // 1.4 注册前端静态资源（生产形态）

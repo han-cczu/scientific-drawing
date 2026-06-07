@@ -47,9 +47,6 @@ export function UsageTipsCard({ visible, onClose }: UsageTipsCardProps) {
           <li key={tip}>{tip}</li>
         ))}
       </ul>
-      <button type="button" className="usage-tips-link" disabled title="教程占位">
-        查看教程
-      </button>
     </div>
   );
 }

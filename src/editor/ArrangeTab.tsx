@@ -130,10 +130,10 @@ export function ArrangeTab({ scene, selectedIds, applySceneChange }: ArrangeTabP
       <div className="arrange-section">
         <div className="arrange-section-title">分布</div>
         <div className="arrange-grid">
-          <button type="button" className="arrange-btn" disabled title="水平等距（P4）">
+          <button type="button" className="arrange-btn" disabled title="功能开发中，暂未开放">
             水平等距
           </button>
-          <button type="button" className="arrange-btn" disabled title="垂直等距（P4）">
+          <button type="button" className="arrange-btn" disabled title="功能开发中，暂未开放">
             垂直等距
           </button>
         </div>

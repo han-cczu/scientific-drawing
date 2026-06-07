@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Settings as SettingsIcon,
   X,
@@ -21,6 +21,8 @@ type SettingsDialogProps = {
   onSave: (payload: WritableAppConfig) => Promise<AppConfig>;
   onClear: () => Promise<AppConfig>;
   onTest: (payload: WritableAppConfig) => Promise<TestConfigResult>;
+  /** 首跑自动弹出时提供：「跳过，先用基础分析」逃生通道 */
+  onSkip?: () => void;
 };
 
 type TestState =
@@ -45,7 +47,8 @@ export function SettingsDialog({
   onClose,
   onSave,
   onClear,
-  onTest
+  onTest,
+  onSkip
 }: SettingsDialogProps) {
   /*
    * ========================================================================
@@ -81,6 +84,32 @@ export function SettingsDialog({
     // 1.2.1 用 GET /api/config 已经拉到的模型列表作为下拉初值（零额外请求）
     setDataListModels(config?.reconstructModels ?? []);
   }, [open, config?.baseUrl, config?.reconstructModel, config?.reconstructModels]);
+
+  // 1.3 焦点管理：打开时聚焦首字段并支持 Escape 关闭，关闭后还原焦点
+  //   App 的全局快捷键被 isEditableKeyboardTarget 屏蔽（输入框聚焦时不触发），
+  //   故对话框需要自己的 Escape 监听。
+  const firstFieldRef = useRef<HTMLInputElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const restoreTarget = document.activeElement;
+    firstFieldRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (restoreTarget instanceof HTMLElement) {
+        restoreTarget.focus?.();
+      }
+    };
+  }, [open]);
 
   if (!open) {
     return null;
@@ -209,6 +238,7 @@ export function SettingsDialog({
           <label className="settings-field">
             <span className="settings-label"><KeyRound size={14} /> API Key</span>
             <input
+              ref={firstFieldRef}
               type="password"
               autoComplete="off"
               value={apiKey}
@@ -273,15 +303,27 @@ export function SettingsDialog({
         </div>
 
         <footer className="settings-footer">
-          <button
-            type="button"
-            className="chip-btn"
-            onClick={handleClear}
-            disabled={busy || config?.source !== "file"}
-            title={config?.source === "file" ? "删除 data/config.json，回退到环境变量" : "当前未使用 UI 配置"}
-          >
-            <Trash2 size={14} /> 清空 / 回退 env
-          </button>
+          {onSkip && config?.source === "none" ? (
+            <button
+              type="button"
+              className="chip-btn"
+              onClick={onSkip}
+              disabled={busy}
+              title="不配置 AI，先使用启发式分析与编辑导出"
+            >
+              跳过，先用基础分析
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="chip-btn"
+              onClick={handleClear}
+              disabled={busy || config?.source !== "file"}
+              title={config?.source === "file" ? "删除 data/config.json，回退到环境变量" : "当前未使用 UI 配置"}
+            >
+              <Trash2 size={14} /> 清空 / 回退 env
+            </button>
+          )}
           <div className="settings-footer-right">
             <button type="button" className="chip-btn" onClick={handleTest} disabled={busy || test.kind === "running"}>
               <Plug size={14} /> {test.kind === "running" ? "测试中..." : "测试连接"}

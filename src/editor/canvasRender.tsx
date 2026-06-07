@@ -3,11 +3,13 @@ import type { SceneEdge, SceneNode } from "../shared/scene";
 import { ResizeHandles } from "./canvasHandles";
 import type { ResizeHandle } from "./sceneOps";
 
-export function NodeView({ node, selected, onPointerDown, onResizePointerDown }: {
+export function NodeView({ node, selected, onPointerDown, onResizePointerDown, onDoubleClick }: {
   node: SceneNode;
   selected: boolean;
   onPointerDown: (event: React.PointerEvent<SVGGElement>) => void;
   onResizePointerDown: (event: React.PointerEvent<SVGElement>, handle: ResizeHandle) => void;
+  /** 双击进入文本/属性编辑（可选，由 Canvas 传入） */
+  onDoubleClick?: (event: React.MouseEvent<SVGGElement>) => void;
 }) {
   /*
    * ========================================================================
@@ -40,7 +42,7 @@ export function NodeView({ node, selected, onPointerDown, onResizePointerDown }:
   ) : null;
 
   return (
-    <g className={node.locked ? "node locked" : "node"} onPointerDown={onPointerDown}>
+    <g className={node.locked ? "node locked" : "node"} onPointerDown={onPointerDown} onDoubleClick={onDoubleClick}>
       {body}
       {selection}
     </g>
@@ -91,6 +93,7 @@ export function renderNodeBody(node: SceneNode) {
         fill={fill}
         stroke={stroke}
         strokeWidth={strokeWidth}
+        strokeDasharray={node.style.dash}
         opacity={opacity}
         vectorEffect="non-scaling-stroke"
       />
@@ -110,6 +113,7 @@ export function renderNodeBody(node: SceneNode) {
           fill={fill}
           stroke={stroke}
           strokeWidth={strokeWidth}
+          strokeDasharray={node.style.dash}
           opacity={opacity}
           vectorEffect="non-scaling-stroke"
         />
@@ -141,6 +145,7 @@ export function renderNodeBody(node: SceneNode) {
         fill="none"
         stroke={stroke}
         strokeWidth={strokeWidth}
+        strokeDasharray={node.style.dash}
         opacity={opacity}
         markerEnd={node.type === "arrow" ? "url(#arrow-head)" : undefined}
         vectorEffect="non-scaling-stroke"

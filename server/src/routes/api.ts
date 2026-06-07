@@ -5,7 +5,7 @@ import express from "express";
 import multer from "multer";
 import sharp from "sharp";
 import { logger } from "../logger";
-import { exportDir, sceneDir, uploadDir } from "../paths";
+import { sceneDir, uploadDir } from "../paths";
 import { analyzeImage } from "../scene/analyzeImage";
 import {
   buildSafeAiProviderConfig,
@@ -20,7 +20,7 @@ import {
 import { sceneToPptx } from "../scene/pptx";
 import { repairScene } from "../scene/repairScene";
 import { mergeRegionReconstruction, sceneRegionToImageExtract, sourceImageUrlFromScene, type RegionMergeMode, type SceneBox } from "../scene/regionReconstruction";
-import { reconstructWithOpenAI } from "../scene/reconstructWithOpenAI";
+import { ReconstructError, reconstructWithOpenAI, type ReconstructErrorCode } from "../scene/reconstructWithOpenAI";
 import type { ReconstructionMode } from "../scene/reconstructionPrompt";
 import { sceneToSvg } from "../scene/svg";
 import type { Scene } from "../scene/types";
@@ -98,67 +98,27 @@ export const apiRouter = express.Router();
 
 type ExportKind = "svg" | "pptx" | "json";
 
+//   导出统一走内存渲染 + 附件下发：不再写 data/exports（消除弹窗拦截、
+//   SVG/JSON 内联渲染与导出物 14 天保留期过期三类问题）。
 export const exportKindConfig: Record<ExportKind, {
   ext: string;
-  write: (scene: Scene, outputPath: string) => Promise<void>;
+  contentType: string;
+  render: (scene: Scene) => Promise<string | Buffer>;
 }> = {
   svg: {
     ext: "svg",
-    write: async (scene, outputPath) => {
-      /*
-       * ========================================================================
-       * 步骤1：写入 SVG 导出文件
-       * ========================================================================
-       * 目标：
-       *   1) 把 scene 转换为 SVG 字符串
-       *   2) 用 UTF-8 写入导出目录
-       */
-      logger.info("开始写入 SVG 导出文件...", { outputPath });
-
-      // 1.1 生成并写入 SVG
-      const svg = await sceneToSvg(scene);
-      await fs.writeFile(outputPath, svg, "utf-8");
-
-      logger.info("写入 SVG 导出文件完成", { outputPath });
-    }
+    contentType: "image/svg+xml; charset=utf-8",
+    render: async (scene) => sceneToSvg(scene)
   },
   pptx: {
     ext: "pptx",
-    write: async (scene, outputPath) => {
-      /*
-       * ========================================================================
-       * 步骤1：写入 PPTX 导出文件
-       * ========================================================================
-       * 目标：
-       *   1) 把 scene 转换为可编辑 PowerPoint
-       *   2) 写入导出目录
-       */
-      logger.info("开始写入 PPTX 导出文件...", { outputPath });
-
-      // 1.1 生成 PPTX
-      await sceneToPptx(scene, outputPath);
-
-      logger.info("写入 PPTX 导出文件完成", { outputPath });
-    }
+    contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    render: async (scene) => sceneToPptx(scene)
   },
   json: {
     ext: "scene.json",
-    write: async (scene, outputPath) => {
-      /*
-       * ========================================================================
-       * 步骤1：写入 JSON 导出文件
-       * ========================================================================
-       * 目标：
-       *   1) 保留 scene 中间协议
-       *   2) 用缩进格式便于人工检查
-       */
-      logger.info("开始写入 JSON 导出文件...", { outputPath });
-
-      // 1.1 写入 JSON
-      await fs.writeFile(outputPath, JSON.stringify(scene, null, 2), "utf-8");
-
-      logger.info("写入 JSON 导出文件完成", { outputPath });
-    }
+    contentType: "application/json; charset=utf-8",
+    render: async (scene) => JSON.stringify(scene, null, 2)
   }
 };
 
@@ -219,7 +179,33 @@ apiRouter.post("/analyze", uploadImage, async (req, res, next) => {
   }
 });
 
-apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
+//   重建错误信封：路由据 code 映射 HTTP 状态，客户端据 code 给出中文恢复建议。
+//   仅两条重建路由使用；其余路径维持旧式 { error: string } 契约。
+export function toReconstructEnvelope(error: unknown): {
+  status: number;
+  code: ReconstructErrorCode | "UNKNOWN";
+  message: string;
+  hint?: string;
+} {
+  if (error instanceof ReconstructError) {
+    const statusByCode: Record<ReconstructErrorCode, number> = {
+      AUTH: 401,
+      TIMEOUT: 504,
+      BAD_MODEL_OUTPUT: 502,
+      INVALID_SCENE: 500,
+      NETWORK: 502,
+      UPSTREAM: 502
+    };
+    return { status: statusByCode[error.code], code: error.code, message: error.message, hint: error.hint };
+  }
+  return { status: 500, code: "UNKNOWN", message: error instanceof Error ? error.message : String(error) };
+}
+
+function isClientAbort(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+apiRouter.post("/reconstruct", uploadImage, async (req, res) => {
   /*
    * ========================================================================
    * 步骤1：AI 重建图片
@@ -228,8 +214,21 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
    *   1) 接收论文图
    *   2) 调用多模态模型生成 Visiomaster 风格 scene
    *   3) 转换为编辑器内部 scene 并保存
+   *   4) 客户端断开（取消）时中止上游调用；错误以结构化信封返回
    */
   logger.info("开始 AI 重建图片...");
+
+  // 1.0 客户端断开 → 中止上游 fetch。
+  //   注意必须监听 res 而非 req：Node ≥16 在请求体被读完时就会触发 req 'close'
+  //   （并非连接断开），multer/express.json 之后挂 req.on('close') 会导致每个
+  //   请求自我中止。res 'close' 在响应正常结束时也触发，用 writableEnded 区分。
+  const clientAbort = new AbortController();
+  const onClose = () => {
+    if (!res.writableEnded) {
+      clientAbort.abort();
+    }
+  };
+  res.on("close", onClose);
 
   let imagePath: string | undefined;
   try {
@@ -255,12 +254,16 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
       imagePath,
       mimeType: req.file.mimetype,
       mode,
-      model
+      model,
+      signal: clientAbort.signal
     });
     const sourceUrl = `/uploads/${fileName}`;
     const validation = repairAndValidateSceneForPersistence(normalizeImportedScene(rawScene), { id, sourceUrl });
     if (!validation.ok) {
-      res.status(500).json({ error: "Generated scene is invalid.", issues: validation.issues });
+      res.status(500).json({
+        error: { code: "INVALID_SCENE", message: "Generated scene is invalid.", hint: "可重试或更换模型" },
+        issues: validation.issues
+      });
       return;
     }
     const scene = validation.scene;
@@ -275,13 +278,27 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res, next) => {
       sceneUrl: `/api/scenes/${id}`
     });
   } catch (error) {
-    logger.error("AI 重建图片失败", { error: String(error) });
     await cleanupUpload(req.file?.path, imagePath);
-    next(error);
+    // 客户端取消：连接已断，不写响应
+    if (isClientAbort(error)) {
+      logger.info("AI 重建已被客户端取消");
+      return;
+    }
+    if (res.writableEnded) {
+      return;
+    }
+    const envelope = toReconstructEnvelope(error);
+    logger.error("AI 重建图片失败", { error: String(error), code: envelope.code });
+    // 不再 next(error)：错误中间件会用通用文案覆盖结构化信封
+    res.status(envelope.status).json({
+      error: { code: envelope.code, message: envelope.message, hint: envelope.hint }
+    });
+  } finally {
+    res.off("close", onClose);
   }
 });
 
-apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (req, res, next) => {
+apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (req, res) => {
   /*
    * ========================================================================
    * 步骤1：AI 局部重建
@@ -290,8 +307,18 @@ apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (re
    *   1) 接收当前 scene 和框选区域
    *   2) 从原图裁剪局部图片并调用 AI 重建
    *   3) 按替换或叠加模式合并回 scene
+   *   4) 客户端断开（取消）时中止上游调用；错误以结构化信封返回
    */
   logger.info("开始 AI 局部重建...");
+
+  // 1.0 客户端断开 → 中止上游 fetch（同 /reconstruct：必须监听 res 而非 req）
+  const clientAbort = new AbortController();
+  const onClose = () => {
+    if (!res.writableEnded) {
+      clientAbort.abort();
+    }
+  };
+  res.on("close", onClose);
 
   let regionImagePath: string | undefined;
   try {
@@ -333,13 +360,17 @@ apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (re
       imagePath: regionImagePath,
       mimeType: "image/png",
       mode,
-      model
+      model,
+      signal: clientAbort.signal
     });
     const repairedRegionScene = repairScene(normalizeImportedScene(rawScene));
     const mergedScene = mergeRegionReconstruction(scene, repairedRegionScene, region, mergeMode);
     const validation = repairAndValidateSceneForPersistence(mergedScene, { id, sourceUrl });
     if (!validation.ok) {
-      res.status(500).json({ error: "Generated scene is invalid.", issues: validation.issues });
+      res.status(500).json({
+        error: { code: "INVALID_SCENE", message: "Generated scene is invalid.", hint: "可重试或更换模型" },
+        issues: validation.issues
+      });
       return;
     }
 
@@ -360,9 +391,21 @@ apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (re
       sceneUrl: `/api/scenes/${id}`
     });
   } catch (error) {
-    logger.error("AI 局部重建失败", { error: String(error) });
-    next(error);
+    // 客户端取消：连接已断，不写响应
+    if (isClientAbort(error)) {
+      logger.info("AI 局部重建已被客户端取消");
+      return;
+    }
+    if (res.writableEnded) {
+      return;
+    }
+    const envelope = toReconstructEnvelope(error);
+    logger.error("AI 局部重建失败", { error: String(error), code: envelope.code });
+    res.status(envelope.status).json({
+      error: { code: envelope.code, message: envelope.message, hint: envelope.hint }
+    });
   } finally {
+    res.off("close", onClose);
     await cleanupUpload(undefined, regionImagePath);
   }
 });
@@ -628,18 +671,46 @@ apiRouter.post("/export/:kind", express.json({ limit: "20mb" }), async (req, res
     }
     const scene = validation.scene;
 
-    // 1.3 写入导出文件
-    const fileName = `${sanitizeFileBase(scene.metadata?.id || randomUUID())}.${config.ext}`;
-    const outputPath = path.join(exportDir, fileName);
-    await config.write(scene, outputPath);
+    // 1.3 内存渲染并以附件下发（中文标题走 RFC 5987 filename*，ASCII 名兜底）
+    const asciiBase = sanitizeFileBase(scene.metadata?.title || scene.metadata?.id || randomUUID());
+    const asciiName = `${asciiBase}.${config.ext}`;
+    const unicodeBase = sanitizeUnicodeFileBase(scene.metadata?.title);
+    const downloadName = unicodeBase ? `${unicodeBase}.${config.ext}` : asciiName;
+    const content = await config.render(scene);
 
-    logger.info("导出 scene 完成", { kind, outputPath });
-    res.json({ url: `/exports/${fileName}` });
+    res.setHeader("Content-Type", config.contentType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`
+    );
+    logger.info("导出 scene 完成", { kind, downloadName, bytes: typeof content === "string" ? content.length : content.byteLength });
+    res.send(content);
   } catch (error) {
     logger.error("导出 scene 失败", { error: String(error), kind: req.params.kind });
     next(error);
   }
 });
+
+export function sanitizeUnicodeFileBase(value: unknown) {
+  /*
+   * ========================================================================
+   * 步骤1：清洗 Unicode 下载文件名
+   * ========================================================================
+   * 目标：
+   *   1) 保留中文等非 ASCII 标题字符（sanitizeFileBase 会全部剥掉）
+   *   2) 剥除路径分隔符、引号和控制字符，防止头注入与路径歧义
+   */
+
+  // 1.1 归一化并剥除危险字符
+  const raw = typeof value === "string" ? value.trim() : "";
+  const sanitized = raw
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+  // 1.2 返回结果（可为空串，由调用方回退 ASCII 名）
+  return sanitized;
+}
 
 function extensionFromMime(mime: string) {
   return IMAGE_EXTENSIONS_BY_MIME.get(mime) ?? ".png";

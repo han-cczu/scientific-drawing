@@ -11,6 +11,9 @@ type RightPanelProps = {
   selectedNode: SceneNode | null;
   scene: Scene;
   selectedIds: string[];
+  /** 受控 tab：双击节点可由外部切到属性 tab */
+  activeTab: TabKey;
+  onTabChange: (tab: TabKey) => void;
   applySceneChange: (updater: (current: Scene) => Scene) => void;
   onNodeChange: (patch: Partial<SceneNode>) => void;
   onStyleChange: (patch: SceneStyle) => void;
@@ -26,11 +29,12 @@ export function RightPanel({
   selectedNode,
   scene,
   selectedIds,
+  activeTab,
+  onTabChange,
   applySceneChange,
   onNodeChange,
   onStyleChange
 }: RightPanelProps) {
-  const [active, setActive] = useState<TabKey>("properties");
   const [tipsVisible, setTipsVisible] = useState(true);
 
   return (
@@ -41,22 +45,22 @@ export function RightPanel({
             key={tab.key}
             type="button"
             role="tab"
-            aria-selected={active === tab.key}
-            className={active === tab.key ? "tab active" : "tab"}
-            onClick={() => setActive(tab.key)}
+            aria-selected={activeTab === tab.key}
+            className={activeTab === tab.key ? "tab active" : "tab"}
+            onClick={() => onTabChange(tab.key)}
           >
             {tab.label}
           </button>
         ))}
       </div>
       <div className="tab-panel" role="tabpanel">
-        {active === "style" ? (
+        {activeTab === "style" ? (
           <StyleTab node={selectedNode} onStyleChange={onStyleChange} />
         ) : null}
-        {active === "properties" ? (
+        {activeTab === "properties" ? (
           <PropertiesTab node={selectedNode} onChange={onNodeChange} onStyleChange={onStyleChange} />
         ) : null}
-        {active === "arrange" ? (
+        {activeTab === "arrange" ? (
           <ArrangeTab scene={scene} selectedIds={selectedIds} applySceneChange={applySceneChange} />
         ) : null}
       </div>

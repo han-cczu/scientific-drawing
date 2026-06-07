@@ -16,8 +16,20 @@ import {
 
 type ExportKind = "svg" | "pptx" | "json";
 
+export type SaveStatus = "saved" | "editing" | "restored";
+
+//   editing 文案用「未保存」而非「保存中…」：它同时覆盖去抖等待窗口与
+//   写盘失败（配额满/隐私模式）两种情况，后者并没有“正在保存”
+const SAVE_STATUS_LABEL: Record<SaveStatus, string> = {
+  saved: "已保存到本地",
+  editing: "未保存",
+  restored: "已恢复本地草稿"
+};
+
 type TopBarProps = {
   title: string;
+  /** 真实保存状态：saved=已落盘 / editing=未落盘 / restored=自本地草稿恢复 */
+  saveStatus: SaveStatus;
   busy: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -42,6 +54,7 @@ type TopBarProps = {
 
 export function TopBar({
   title,
+  saveStatus,
   busy,
   canUndo,
   canRedo,
@@ -143,9 +156,9 @@ export function TopBar({
       <div className="title">
         <span className="title-main">{title}</span>
       </div>
-      <div className="save-indicator" aria-label="保存状态">
-        <span className="dot" />
-        <span>本地编辑中</span>
+      <div className="save-indicator" aria-label={`保存状态：${SAVE_STATUS_LABEL[saveStatus]}`}>
+        <span className={`dot ${saveStatus}`} />
+        <span>{SAVE_STATUS_LABEL[saveStatus]}</span>
       </div>
 
       <div className="spacer" />

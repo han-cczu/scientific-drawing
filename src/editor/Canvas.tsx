@@ -12,17 +12,21 @@ type CanvasProps = {
   selectedId: string | null;
   selectedIds: string[];
   viewport: Viewport;
+  /** 平移模式：与空格/中键共用同一套 pan 手势路径 */
+  panMode: boolean;
   onSelect: (ids: string[]) => void;
   onMove: (nodeIds: string[], dx: number, dy: number) => void;
   onResize: (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number) => void;
   onSceneInteractionCommit: () => void;
   onBoxSelect: (box: SceneBox) => void;
   onNodeActivate: (nodeId: string) => void;
+  /** 双击节点进入文本/属性编辑（锁定节点不触发） */
+  onNodeDoubleClick: (nodeId: string) => void;
   // 支持函数式更新：滚轮缩放需基于最新 viewport 计算，避免高频事件读到旧闭包值
   onViewportChange: (viewport: Viewport | ((previous: Viewport) => Viewport)) => void;
 };
 
-export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onMove, onResize, onSceneInteractionCommit, onBoxSelect, onNodeActivate, onViewportChange }: CanvasProps) {
+export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, onSelect, onMove, onResize, onSceneInteractionCommit, onBoxSelect, onNodeActivate, onNodeDoubleClick, onViewportChange }: CanvasProps) {
   /*
    * ========================================================================
    * 步骤1：初始化画布交互
@@ -97,9 +101,22 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
   // 2.2 启动拖拽
   const handlePointerDown = (event: React.PointerEvent, node: SceneNode) => {
     event.stopPropagation();
-    if (event.button === 1 || spacePressed) {
+    if (event.button === 1 || spacePressed || panMode) {
       setPan({ clientX: event.clientX, clientY: event.clientY });
       event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+    // Shift 点选：在选区中增删该节点，不启动拖拽；
+    // 锁定节点不可加选（与框选规则一致）；不调 onNodeActivate——
+    // 加减选区是选择操作，不应推进语义连线流程
+    if (event.shiftKey) {
+      if (!selectedIds.includes(node.id) && node.locked) {
+        return;
+      }
+      const next = selectedIds.includes(node.id)
+        ? selectedIds.filter((id) => id !== node.id)
+        : [...selectedIds, node.id];
+      onSelect(next);
       return;
     }
     const activeIds = selectedIds.includes(node.id) ? selectedIds : [node.id];
@@ -145,7 +162,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
     if (event.target !== event.currentTarget) {
       return;
     }
-    if (event.button === 1 || spacePressed) {
+    if (event.button === 1 || spacePressed || panMode) {
       setPan({ clientX: event.clientX, clientY: event.clientY });
       event.currentTarget.setPointerCapture(event.pointerId);
       return;
@@ -252,7 +269,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
         ref={svgRef}
         className="scene-canvas"
         viewBox={`0 0 ${scene.page.width} ${scene.page.height}`}
-        style={{ aspectRatio }}
+        style={{ aspectRatio, cursor: pan ? "grabbing" : panMode ? "grab" : undefined }}
         onPointerMove={handleCanvasPointerMove}
         onPointerUp={handleCanvasPointerUp}
         onPointerLeave={handleCanvasPointerUp}
@@ -275,6 +292,13 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
               selected={node.id === selectedId || selectedIds.includes(node.id)}
               onPointerDown={(event) => handlePointerDown(event, node)}
               onResizePointerDown={(event, handle) => handleResizePointerDown(event, node, handle)}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                // 平移模式下双击属于手势误触，不进入属性编辑
+                if (!node.locked && !panMode) {
+                  onNodeDoubleClick(node.id);
+                }
+              }}
             />
           ))}
           {selectionRect ? (
