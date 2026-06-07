@@ -1,6 +1,6 @@
 import pptxgenjs from "pptxgenjs";
 import { logger } from "../logger";
-import { resolveEndpoint, shadeColor } from "@shared/geometry";
+import { isNormalizedHexColor, normalizeHexColor, resolveEndpoint, shadeColor } from "@shared/geometry";
 import { visibleSceneEdges, visibleSceneNodes } from "@shared/sceneVisibility";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
@@ -360,11 +360,11 @@ function normalizeColor(value: string) {
    */
   logger.info("开始规范化 PPT 颜色...", { value });
 
-  // 1.1 清理颜色字符串
-  const normalized = value.replace("#", "").trim().toUpperCase();
+  // 1.1 清理颜色字符串（共用 normalizeHexColor，#RGB 短色展开为 RRGGBB）
+  const normalized = normalizeHexColor(value);
 
-  // 1.2 返回合法十六进制颜色
-  const result = /^[0-9A-F]{6}$/.test(normalized) ? normalized : "FFFFFF";
+  // 1.2 返回合法十六进制颜色（PPTXGenJS 颜色不带 # 前缀）
+  const result = isNormalizedHexColor(normalized) ? normalized.slice(1) : "FFFFFF";
   logger.info("规范化 PPT 颜色完成", { result });
   return result;
 }

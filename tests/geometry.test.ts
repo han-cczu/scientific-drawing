@@ -31,6 +31,11 @@ describe("shared geometry", () => {
 
     // 1.2 解析中心点
     assert.deepEqual(resolveEndpoint("box", [node]), { x: 60, y: 40 });
+
+    // 1.3 畸形 ratio（空串/纯空白/非数字）回退 0.5 而非 Number(" ")===0
+    assert.deepEqual(resolveEndpoint("box:right@", [node]), { x: 110, y: 40 });
+    assert.deepEqual(resolveEndpoint("box:right@ ", [node]), { x: 110, y: 40 });
+    assert.deepEqual(resolveEndpoint("box:right@abc", [node]), { x: 110, y: 40 });
   });
 
   it("checks endpoint ownership without false positives", () => {

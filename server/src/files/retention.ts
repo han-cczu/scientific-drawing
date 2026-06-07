@@ -15,6 +15,9 @@ type CleanupOptions = {
 
 const MANAGED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".img", ".svg", ".pptx", ".json"]);
 
+// 保留期默认值（天）：env 解析与 NaN 兜底共用，避免两处字面量漂移
+export const DEFAULT_RETENTION_DAYS = 14;
+
 export async function cleanupDataFiles(options: CleanupOptions) {
   /*
    * ========================================================================
@@ -26,9 +29,10 @@ export async function cleanupDataFiles(options: CleanupOptions) {
    */
   options.logger.info("开始清理过期运行产物...", { directories: options.directories, maxAgeDays: options.maxAgeDays });
 
-  // 1.1 计算过期时间（非法/NaN 保留期回退默认 14 天，避免静默关闭清理）
+  // 1.1 计算过期时间（非法/NaN 保留期回退默认值；NaN 若进入 ageMs <= maxAgeMs
+  //     比较会恒为 false，"保留"分支永不命中 → 误删全部受管文件）
   const now = options.now ?? new Date();
-  const safeMaxAgeDays = Number.isFinite(options.maxAgeDays) ? Math.max(0, options.maxAgeDays) : 14;
+  const safeMaxAgeDays = Number.isFinite(options.maxAgeDays) ? Math.max(0, options.maxAgeDays) : DEFAULT_RETENTION_DAYS;
   const maxAgeMs = safeMaxAgeDays * 24 * 60 * 60 * 1000;
   const removed: string[] = [];
 

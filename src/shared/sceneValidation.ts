@@ -1,5 +1,9 @@
-import { normalizeHexColor } from "./geometry";
+import { isNormalizedHexColor, normalizeHexColor } from "./geometry";
 import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneStyle } from "./scene";
+
+// 网格行列上界：与 repairScene 的钳制共用，校验层兜底防止超大网格在
+// 不经 repair 的导出/区域路径上触发 rows*cols 级渲染循环（DoS）。
+export const MAX_GRID_DIMENSION = 256;
 
 export type ValidationIssue = {
   path: string;
@@ -235,11 +239,11 @@ function validateNodeCollections(node: SceneNode, path: string, issues: Validati
   if (node.points !== undefined) {
     validatePoints(node.points, `${path}.points`, issues);
   }
-  if (node.rows !== undefined && (!Number.isInteger(node.rows) || node.rows < 1)) {
-    addIssue(issues, `${path}.rows`, "invalid_grid_rows", "Grid rows must be a positive integer.");
+  if (node.rows !== undefined && (!Number.isInteger(node.rows) || node.rows < 1 || node.rows > MAX_GRID_DIMENSION)) {
+    addIssue(issues, `${path}.rows`, "invalid_grid_rows", `Grid rows must be an integer between 1 and ${MAX_GRID_DIMENSION}.`);
   }
-  if (node.cols !== undefined && (!Number.isInteger(node.cols) || node.cols < 1)) {
-    addIssue(issues, `${path}.cols`, "invalid_grid_cols", "Grid cols must be a positive integer.");
+  if (node.cols !== undefined && (!Number.isInteger(node.cols) || node.cols < 1 || node.cols > MAX_GRID_DIMENSION)) {
+    addIssue(issues, `${path}.cols`, "invalid_grid_cols", `Grid cols must be an integer between 1 and ${MAX_GRID_DIMENSION}.`);
   }
 
   // 1.2 校验单元格
@@ -431,8 +435,10 @@ function validateColor(value: unknown, path: string, issues: ValidationIssue[], 
   if (value === "none") {
     return;
   }
-  if (!/^#[0-9A-F]{6}$/.test(normalizeHexColor(value))) {
-    addIssue(issues, path, "invalid_color", "Color must be a #RRGGBB hex color or none.");
+  // 必须带 # 前缀：裸 hex（如 "AABBCC"）虽可被 normalizeHexColor 规范化，
+  // 但校验只判不改值，放行会让非法 CSS paint 值直达 SVG 渲染端。
+  if (!value.startsWith("#") || !isNormalizedHexColor(normalizeHexColor(value))) {
+    addIssue(issues, path, "invalid_color", "Color must be a #RGB/#RRGGBB hex color or none.");
   }
 }
 

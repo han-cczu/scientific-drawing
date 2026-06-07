@@ -1,4 +1,5 @@
-import { normalizeHexColor } from "@shared/geometry";
+import { clampNumber, isNormalizedHexColor, normalizeHexColor } from "@shared/geometry";
+import { MAX_GRID_DIMENSION } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneStyle } from "./types";
 
 const NODE_TYPES = new Set<SceneNodeType>([
@@ -108,10 +109,12 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>):
     : undefined;
 
   // 1.3 钳制网格维度，避免畸形 AI 输出（如 rows=100000）生成海量单元格
-  if (typeof node.rows === "number") {
+  //   只要字段存在就钳制（含字符串/null 等非数字形态），否则畸形值会经
+  //   ...node 展开原样保留，导致 repair 后反被 validateScene 拒绝返回 500
+  if (node.rows !== undefined) {
     repaired.rows = clampGridDimension(node.rows);
   }
-  if (typeof node.cols === "number") {
+  if (node.cols !== undefined) {
     repaired.cols = clampGridDimension(node.cols);
   }
   return repaired;
@@ -223,7 +226,7 @@ function safeColor(value: unknown, fallback: string) {
     return fallback;
   }
   const normalized = normalizeHexColor(value);
-  return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : fallback;
+  return isNormalizedHexColor(normalized) ? normalized : fallback;
 }
 
 function nonEmpty(value: unknown, fallback: string) {
@@ -250,6 +253,7 @@ function clamp01(value: unknown) {
 }
 
 function clampGridDimension(value: unknown) {
-  const rounded = Math.round(finite(value, 1));
-  return Math.max(1, Math.min(256, rounded));
+  // 数字字符串（如 "6"）先转数保留原意，其余非数字回退 1
+  const numeric = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  return clampNumber(Math.round(finite(numeric, 1)), 1, MAX_GRID_DIMENSION);
 }

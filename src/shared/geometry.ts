@@ -17,9 +17,10 @@ export function resolveEndpoint(endpoint: string, nodes: SceneNode[]) {
     return undefined;
   }
 
-  // 1.2 计算端点坐标
+  // 1.2 计算端点坐标（空串/纯空白/非数字 ratio 一律回退 0.5，避免 Number(" ")===0 把端点钉到 0 位）
   const [side, rawRatio] = (rawSide ?? "center").split("@");
-  const parsedRatio = rawRatio === undefined || rawRatio === "" ? 0.5 : Number(rawRatio);
+  const trimmedRatio = rawRatio?.trim();
+  const parsedRatio = trimmedRatio === undefined || trimmedRatio === "" ? 0.5 : Number(trimmedRatio);
   const ratio = clampNumber(Number.isNaN(parsedRatio) ? 0.5 : parsedRatio, 0, 1);
   if (side === "left") {
     return { x: node.x, y: node.y + node.h * ratio };
@@ -77,6 +78,18 @@ export function normalizeHexColor(value: string) {
   return value;
 }
 
+export function isNormalizedHexColor(value: string) {
+  /*
+   * ========================================================================
+   * 步骤1：判断规范化十六进制颜色
+   * ========================================================================
+   * 目标：
+   *   1) 统一 validateColor、safeColor、shadeColor、pptx 的合法性判断
+   *   2) 只认 normalizeHexColor 的规范输出（#RRGGBB 大写）
+   */
+  return /^#[0-9A-F]{6}$/.test(value);
+}
+
 export function shadeColor(color: string, amount: number) {
   /*
    * ========================================================================
@@ -89,10 +102,10 @@ export function shadeColor(color: string, amount: number) {
 
   // 1.1 校验颜色格式
   const normalized = normalizeHexColor(color);
-  const body = normalized.startsWith("#") ? normalized.slice(1) : normalized;
-  if (!/^[0-9A-F]{6}$/.test(body)) {
+  if (!isNormalizedHexColor(normalized)) {
     return color;
   }
+  const body = normalized.slice(1);
 
   // 1.2 混合到黑色
   const factor = clampNumber(amount, 0, 1);

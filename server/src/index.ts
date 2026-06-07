@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import express from "express";
 import { logger } from "./logger";
 import { apiRouter } from "./routes/api";
-import { cleanupDataFiles } from "./files/retention";
+import { cleanupDataFiles, DEFAULT_RETENTION_DAYS } from "./files/retention";
 import { ensureDataDirs, exportDir, sceneDir, uploadDir } from "./paths";
 
 /*
@@ -24,7 +24,7 @@ ensureDataDirs(logger);
 // 1.2 清理过期运行产物
 cleanupDataFiles({
   directories: [uploadDir, exportDir, sceneDir],
-  maxAgeDays: Number(process.env.DATA_RETENTION_DAYS || 14),
+  maxAgeDays: Number(process.env.DATA_RETENTION_DAYS || DEFAULT_RETENTION_DAYS),
   logger
 }).catch((error) => {
   logger.warn("清理过期运行产物失败", { error: String(error) });

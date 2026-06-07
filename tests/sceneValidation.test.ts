@@ -89,6 +89,41 @@ describe("scene validation", () => {
     const result = validateScene(bad);
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.code === "invalid_color"));
+
+    // 1.3 裸 hex（无 # 前缀）被拒绝：校验只判不改值，放行会以非法 CSS 直达渲染端
+    const bare = validScene();
+    bare.nodes[0].style.fill = "AABBCC";
+    const bareResult = validateScene(bare);
+    assert.equal(bareResult.ok, false);
+    assert.ok(bareResult.issues.some((issue) => issue.code === "invalid_color"));
+  });
+
+  it("bounds grid rows/cols to prevent oversized render loops", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证网格维度上界
+     * ========================================================================
+     * 目标：
+     *   1) 上界内（256）通过
+     *   2) 超大 rows/cols 在校验层被拒，覆盖不经 repair 的导出/区域路径
+     */
+
+    // 1.1 上界内通过
+    const ok = validScene();
+    ok.nodes[0].type = "grid";
+    ok.nodes[0].rows = 256;
+    ok.nodes[0].cols = 1;
+    assert.equal(validateScene(ok).ok, true);
+
+    // 1.2 超界被拒绝
+    const bad = validScene();
+    bad.nodes[0].type = "grid";
+    bad.nodes[0].rows = 100000;
+    bad.nodes[0].cols = 100000;
+    const result = validateScene(bad);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_grid_rows"));
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_grid_cols"));
   });
 
   it("rejects duplicate ids and invalid edge endpoints", () => {

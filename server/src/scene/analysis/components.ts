@@ -24,10 +24,7 @@ export function findComponents(mask: Uint8Array, width: number, height: number):
       if (!mask[index] || visited[index]) {
         continue;
       }
-      const box = flood(mask, visited, width, height, x, y, queue);
-      if (box.area >= 1) {
-        boxes.push(box);
-      }
+      boxes.push(flood(mask, visited, width, height, x, y, queue));
     }
   }
   logger.info("扫描连通域完成", { boxes: boxes.length });
@@ -95,13 +92,17 @@ export function flood(
   height: number,
   startX: number,
   startY: number,
-  scratchQueue?: Int32Array
+  queue: Int32Array
 ): ComponentBox {
   // 1.1 初始化队列和边界
   //   用扁平索引队列（index = y*width+x）替代 [x,y] tuple，
   //   并内联四邻扩展，避免每个像素分配 tuple/neighbors 数组带来的 GC 压力。
   //   遍历顺序仍为 FIFO + 右/左/下/上，与原实现一致；bbox 与 area 本身也与顺序无关。
-  const queue = scratchQueue ?? new Int32Array(width * height);
+  //   queue 必须由调用方提供且能容纳整图：过短会导致 TypedArray 越界写被静默
+  //   丢弃而 visited 已标记，遍历被破坏返回错误结果，故此处显式校验。
+  if (queue.length < width * height) {
+    throw new Error("flood scratch queue must hold width * height entries.");
+  }
   const startIndex = startY * width + startX;
   visited[startIndex] = 1;
   queue[0] = startIndex;

@@ -108,6 +108,34 @@ describe("scene repair", () => {
     assert.equal(validateScene(repaired).ok, true);
   });
 
+  it("repairs non-number grid dimensions instead of leaking them to validation", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证非数字网格维度的修复
+     * ========================================================================
+     * 目标：
+     *   1) 数字字符串 rows 被转数后钳制（不修复会被 validateScene 拒绝返回 500）
+     *   2) 完全非法的 cols（null）回退为 1
+     */
+
+    // 1.1 构造字符串/null 维度
+    const scene = {
+      version: "0.1",
+      page: { width: 320, height: 180, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        { id: "g1", type: "grid", x: 0, y: 0, w: 100, h: 100, rows: "100000", cols: null, style: {} }
+      ],
+      edges: []
+    } as unknown as Scene;
+
+    // 1.2 字符串转数钳制、null 回退 1，修复结果可通过校验
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes[0].rows, 256);
+    assert.equal(repaired.nodes[0].cols, 1);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
   it("keeps replica base layer compatible with repaired scenes", () => {
     /*
      * ========================================================================

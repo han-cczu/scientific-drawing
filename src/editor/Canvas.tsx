@@ -18,7 +18,8 @@ type CanvasProps = {
   onSceneInteractionCommit: () => void;
   onBoxSelect: (box: SceneBox) => void;
   onNodeActivate: (nodeId: string) => void;
-  onViewportChange: (viewport: Viewport) => void;
+  // 支持函数式更新：滚轮缩放需基于最新 viewport 计算，避免高频事件读到旧闭包值
+  onViewportChange: (viewport: Viewport | ((previous: Viewport) => Viewport)) => void;
 };
 
 export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onMove, onResize, onSceneInteractionCommit, onBoxSelect, onNodeActivate, onViewportChange }: CanvasProps) {
@@ -76,7 +77,9 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
    */
 
   // 2.1 转换指针坐标
-  const pointFromEvent = (event: React.PointerEvent | React.WheelEvent) => {
+  //   结构化参数同时兼容 React 合成事件与原生 WheelEvent；
+  //   activeViewport 供函数式更新场景传入最新值，默认用当前渲染的 viewport
+  const pointFromEvent = (event: { clientX: number; clientY: number }, activeViewport: Viewport = viewport) => {
     const svg = svgRef.current;
     if (!svg) {
       return { x: 0, y: 0 };
@@ -87,7 +90,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
       clientY: event.clientY,
       rect,
       page: scene.page,
-      viewport
+      viewport: activeViewport
     });
   };
 
@@ -218,6 +221,9 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
   // 2.10 处理滚轮缩放
   //   React 对 onWheel 默认以 passive 方式注册，event.preventDefault() 会被忽略并告警；
   //   改用原生非被动监听器，确保 Ctrl+滚轮缩放时阻止页面原生滚动。
+  //   缩放走函数式更新：高频滚轮/捏合在同一帧内连发多次时，每次都基于
+  //   最新 viewport（previous）计算锚点与倍率，避免旧闭包值导致档位塌缩
+  //   与锚点漂移；依赖数组因此无需 viewport，不在手势进行中反复拆装监听器。
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) {
@@ -228,20 +234,17 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, onSelect, onM
         return;
       }
       event.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      const point = clientPointToScene({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        rect,
-        page: scene.page,
-        viewport
-      });
       const factor = event.deltaY > 0 ? 0.9 : 1.1;
-      onViewportChange(zoomViewportAt(viewport, point, viewport.scale * factor));
+      onViewportChange((previous) => {
+        const point = pointFromEvent(event, previous);
+        return zoomViewportAt(previous, point, previous.scale * factor);
+      });
     };
     svg.addEventListener("wheel", handleWheelNative, { passive: false });
     return () => svg.removeEventListener("wheel", handleWheelNative);
-  }, [viewport, scene.page, onViewportChange]);
+    // pointFromEvent 每次渲染新建，刻意不列入依赖：其闭包仅依赖 scene.page
+    // （已在依赖中）与 svgRef；viewport 经 previous 显式传入，不走闭包。
+  }, [scene.page, onViewportChange]);
 
   return (
     <div className="canvas-shell">
