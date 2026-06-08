@@ -56,12 +56,15 @@ if (distAvailable) {
   app.use(express.static(distDir));
   // SPA fallback：非 API 路径全部回退到 index.html
   app.get(/^\/(?!api\/|uploads\/|exports\/).*/, (_req, res) => {
-    try {
-      res.sendFile(distIndex);
-    } catch (error) {
-      logger.warn("发送前端 index.html 失败", { error: String(error) });
-      res.status(404).send("Not Found");
-    }
+    // sendFile 的错误经回调上报（异步），同步 try/catch 捕获不到，故用回调形式处理
+    res.sendFile(distIndex, (error) => {
+      if (error) {
+        logger.warn("发送前端 index.html 失败", { error: String(error) });
+        if (!res.headersSent) {
+          res.status(404).send("Not Found");
+        }
+      }
+    });
   });
 }
 

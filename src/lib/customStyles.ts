@@ -30,6 +30,9 @@ type StoredSchema = {
 
 // in-memory fallback when localStorage 不可用
 let memoryStore: StoredPreset[] = [];
+// 一旦任一次写入回退到内存（不可用或配额满），后续读取也必须从内存取，
+// 否则 readFromStorage 仍读 localStorage 旧值，刚保存的预设在重挂载/重读时凭空消失。
+let memoryFallbackActive = false;
 let storageWarned = false;
 let storageAvailableCache: boolean | null = null;
 
@@ -70,7 +73,7 @@ function isStoredPreset(value: unknown): value is StoredPreset {
 }
 
 function readFromStorage(): StoredPreset[] {
-  if (!isStorageAvailable()) {
+  if (memoryFallbackActive || !isStorageAvailable()) {
     return memoryStore.slice();
   }
   let raw: string | null = null;
@@ -113,6 +116,7 @@ function readFromStorage(): StoredPreset[] {
 function writeToStorage(presets: StoredPreset[]): void {
   if (!isStorageAvailable()) {
     memoryStore = presets.slice();
+    memoryFallbackActive = true;
     warnOnce("[customStyles] localStorage 不可用，已 fallback 内存模式（刷新会丢）");
     return;
   }
@@ -120,8 +124,9 @@ function writeToStorage(presets: StoredPreset[]): void {
   try {
     globalThis.localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(payload));
   } catch (err) {
-    // 写入失败（配额满等）：fallback 内存
+    // 写入失败（配额满等）：fallback 内存，并标记后续读取走内存（保证乐观 UI 与持久层一致）
     memoryStore = presets.slice();
+    memoryFallbackActive = true;
     warnOnce("[customStyles] 写入 localStorage 失败，已 fallback 内存模式", err);
   }
 }

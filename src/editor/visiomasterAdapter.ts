@@ -1,6 +1,7 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
 import { resolveEndpoint } from "../shared/geometry";
+import { MAX_GRID_DIMENSION } from "../shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "../shared/scene";
 
 type AnyRecord = Record<string, unknown>;
@@ -269,7 +270,12 @@ function numberOptional(value: unknown) {
 }
 
 function intOptional(value: unknown) {
-  return typeof value === "number" ? Math.max(1, Math.round(value)) : undefined;
+  // 钳到 [1, MAX_GRID_DIMENSION]（与服务端 repairScene.clampGridDimension 一致）：
+  // 否则前端导入(无 repair)的大网格会被 validateScene 拒绝，而服务端导入(有 repair)却接受，行为分叉。
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.min(MAX_GRID_DIMENSION, Math.max(1, Math.round(value)));
 }
 
 function stringArray(value: unknown) {

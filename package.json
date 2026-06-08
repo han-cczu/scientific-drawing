@@ -23,6 +23,7 @@
     "multer": "^2.0.2",
     "pptxgenjs": "^4.0.1",
     "sharp": "^0.34.5",
+    "tsx": "^4.20.6",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -34,8 +35,10 @@
     "concurrently": "^9.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^7.2.4"
+  },
+  "overrides": {
+    "qs": "^6.15.2"
   }
 }

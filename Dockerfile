@@ -33,6 +33,10 @@ COPY server ./server
 # 构建前端 dist/
 RUN npm run build
 
+# 构建完成后裁掉 devDependencies（vite/typescript/react 等），仅留生产依赖 + tsx（已移至 dependencies，
+# runtime 经 node --import tsx 运行 TS 源码需要）。runtime 直接 COPY 这份精简后的 node_modules。
+RUN npm prune --omit=dev
+
 # ============================================================================
 # Stage 2: runtime
 # ============================================================================
