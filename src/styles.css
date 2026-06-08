@@ -544,6 +544,109 @@ button:disabled {
   animation: settings-refresh-spin 1s linear infinite;
 }
 
+/* ===== 新手操作引导（spotlight tour） ===== */
+.tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+/* 遮罩拦截交互；高亮开窗由 spotlight 的环形 box-shadow 制造 */
+.tour-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.tour-spotlight {
+  position: fixed;
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55);
+  pointer-events: none;
+  transition: top 200ms ease, left 200ms ease, width 200ms ease, height 200ms ease;
+}
+
+/* 无目标（欢迎步）时整屏压暗 */
+.tour-overlay.tour-overlay-dim {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.tour-card {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.24);
+  outline: none;
+  /* 长文案步骤的兜底：内容超过定位估算高度时卡片内滚动而非溢出视口 */
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+
+.tour-card-step {
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.tour-card-title {
+  font-size: var(--font-size-md, 15px);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.tour-card-body {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 6px;
+  padding: var(--space-1) 0;
+}
+
+.tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-border);
+}
+
+.tour-dot.active {
+  background: var(--color-accent);
+}
+
+.tour-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.tour-card-actions-right {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.tour-skip {
+  border: none;
+  background: none;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tour-skip:hover {
+  color: var(--color-text-muted);
+  text-decoration: underline;
+}
+
 .canvas-status .scene-meta {
   flex: 0 0 auto;
   color: var(--color-text-subtle);

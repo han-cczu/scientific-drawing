@@ -3,6 +3,8 @@ import { Lightbulb, X } from "lucide-react";
 type UsageTipsCardProps = {
   visible: boolean;
   onClose: () => void;
+  /** 重新打开分步操作引导 */
+  onShowTour: () => void;
 };
 
 const TIPS = [
@@ -11,7 +13,7 @@ const TIPS = [
   "底部抽屉可重新调用 AI 矢量化并替换当前图层。"
 ];
 
-export function UsageTipsCard({ visible, onClose }: UsageTipsCardProps) {
+export function UsageTipsCard({ visible, onClose, onShowTour }: UsageTipsCardProps) {
   /*
    * ========================================================================
    * 步骤1：渲染使用提示卡片
@@ -47,6 +49,9 @@ export function UsageTipsCard({ visible, onClose }: UsageTipsCardProps) {
           <li key={tip}>{tip}</li>
         ))}
       </ul>
+      <button type="button" className="usage-tips-link" onClick={onShowTour}>
+        查看操作引导
+      </button>
     </div>
   );
 }

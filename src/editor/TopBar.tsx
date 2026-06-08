@@ -44,9 +44,10 @@ type TopBarProps = {
   onImportImage: (file: File) => void;
   onExport: (kind: ExportKind) => void;
   onResetView: () => void;
-  /** 剩余高级动作：导入 scene.json + 提示词下载留在"更多"菜单 */
+  /** 剩余高级动作：导入 scene.json + 提示词下载 + 操作引导留在"更多"菜单 */
   onSceneImport: (file: File) => void;
   onPromptExport: () => void;
+  onShowTour: () => void;
   /** AI 设置入口 */
   onOpenSettings: () => void;
   settingsAttention?: boolean;
@@ -71,6 +72,7 @@ export function TopBar({
   onResetView,
   onSceneImport,
   onPromptExport,
+  onShowTour,
   onOpenSettings,
   settingsAttention = false
 }: TopBarProps) {
@@ -236,13 +238,13 @@ export function TopBar({
         <Maximize2 size={14} />
       </button>
 
-      <label className="chip-btn upload-chip" title="导入图片">
+      <label className="chip-btn upload-chip" title="导入图片" data-tour="import">
         <Upload size={14} />
         <span>导入</span>
         <input type="file" accept="image/*" onChange={handleImportChange} disabled={busy} />
       </label>
 
-      <div className="export-menu" ref={exportMenuRef}>
+      <div className="export-menu" ref={exportMenuRef} data-tour="export">
         <button
           type="button"
           className={exportOpen ? "chip-btn active" : "chip-btn"}
@@ -295,6 +297,9 @@ export function TopBar({
             <button type="button" onClick={() => { onResetView(); setMoreOpen(false); }} disabled={busy}>
               重置视图
             </button>
+            <button type="button" onClick={() => { onShowTour(); setMoreOpen(false); }} disabled={busy}>
+              操作引导
+            </button>
             <input
               ref={sceneImportInputRef}
               type="file"
@@ -313,6 +318,7 @@ export function TopBar({
         title="AI 设置"
         aria-label="AI 设置"
         onClick={onOpenSettings}
+        data-tour="settings"
       >
         <SettingsIcon size={18} />
       </button>

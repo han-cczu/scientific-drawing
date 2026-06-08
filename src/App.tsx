@@ -9,6 +9,8 @@ import { CanvasViewTabs, type CanvasViewMode } from "./editor/CanvasViewTabs";
 import { ThumbnailRail } from "./editor/ThumbnailRail";
 import { SelectionFloatingBar } from "./editor/SelectionFloatingBar";
 import { SettingsDialog } from "./editor/SettingsDialog";
+import { OnboardingTour } from "./editor/OnboardingTour";
+import { hasSeenOnboarding, markOnboardingSeen } from "./lib/onboarding";
 import { resetEditorState, selectedIdFromIds } from "./editor/appState";
 import { canRedoHistory, canUndoHistory, commitHistoryPresent, createHistoryState, pushHistory, redoHistory, replaceHistoryPresent, undoHistory } from "./editor/history";
 import { getEditorShortcutAction, isEditableKeyboardTarget } from "./editor/keyboardShortcuts";
@@ -62,6 +64,35 @@ export default function App() {
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsAutoOpenedRef = useRef(false);
+  // 新手引导：首跑（未看过当前版本引导）自动启动；引导期间设置弹窗让位
+  const [tourOpen, setTourOpen] = useState(() => !hasSeenOnboarding());
+  const pendingSettingsAutoOpenRef = useRef(false);
+  const tourOpenRef = useRef(tourOpen);
+  tourOpenRef.current = tourOpen;
+
+  const handleShowTour = () => {
+    // 重建/导出进行中不开引导：遮罩会盖住状态行的取消按钮
+    if (busy) {
+      setMessage("当前有任务进行中，结束后再查看操作引导。");
+      setMessageTone("info");
+      return;
+    }
+    setTourOpen(true);
+  };
+
+  const handleTourClose = (completed: boolean) => {
+    markOnboardingSeen();
+    setTourOpen(false);
+    if (pendingSettingsAutoOpenRef.current) {
+      pendingSettingsAutoOpenRef.current = false;
+      setSettingsOpen(true);
+      return;
+    }
+    if (completed) {
+      setMessage("引导完成。上传论文图开始使用吧。");
+      setMessageTone("success");
+    }
+  };
   const [message, setMessage] = useState("上传论文图，先生成高保真复刻底图，再叠加可编辑辅助层。");
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [viewMode, setViewMode] = useState<CanvasViewMode>("result");
@@ -157,7 +188,12 @@ export default function App() {
           notify("普通分析可用。AI 重建需要先在右上角配置 API Key。");
           if (!settingsAutoOpenedRef.current && config.source === "none") {
             settingsAutoOpenedRef.current = true;
-            setSettingsOpen(true);
+            // 引导进行中则先挂起，引导结束后再弹设置，避免双弹窗叠加
+            if (tourOpenRef.current) {
+              pendingSettingsAutoOpenRef.current = true;
+            } else {
+              setSettingsOpen(true);
+            }
           }
         }
       })
@@ -689,9 +725,9 @@ export default function App() {
      *   3) Escape 取消语义连线中间态并回到选择工具
      */
 
-    // 1.1 处理键盘事件（设置弹窗打开时让位给弹窗自己的 Escape，避免双触发）
+    // 1.1 处理键盘事件（设置弹窗/引导打开时让位给它们自己的键盘处理，避免双触发）
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (settingsOpen) {
+      if (settingsOpen || tourOpen) {
         return;
       }
       const action = getEditorShortcutAction({
@@ -730,7 +766,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, scene, pendingEdgeFromId, canUndo, canRedo, settingsOpen, reconstructAbort]);
+  }, [selectedIds, scene, pendingEdgeFromId, canUndo, canRedo, settingsOpen, tourOpen, reconstructAbort]);
 
   // 2.20 计算原图模式下的过滤 scene（仅保留锁定底图）
   const displayScene = useMemo(
@@ -803,6 +839,7 @@ export default function App() {
         onResetView={() => setViewport({ scale: 1, offset: { x: 0, y: 0 } })}
         onSceneImport={handleSceneImport}
         onPromptExport={handlePromptExport}
+        onShowTour={handleShowTour}
         onOpenSettings={() => setSettingsOpen(true)}
         settingsAttention={appConfig ? !appConfig.aiReconstructionAvailable : false}
       />
@@ -864,7 +901,7 @@ export default function App() {
           ) : null}
           <div className="scene-meta">{scene.page.width} × {scene.page.height}px · {scene.nodes.length} 个对象</div>
         </div>
-        <div className={tool === "select" ? "canvas-hit-area" : "canvas-hit-area drawing"} onClick={handleCanvasClick}>
+        <div className={tool === "select" ? "canvas-hit-area" : "canvas-hit-area drawing"} onClick={handleCanvasClick} data-tour="canvas">
           <Canvas
             scene={displayScene}
             selectedId={displaySelectedId}
@@ -913,6 +950,7 @@ export default function App() {
         selectedIds={selectedIds}
         activeTab={rightPanelTab}
         onTabChange={setRightPanelTab}
+        onShowTour={handleShowTour}
         applySceneChange={applySceneChange}
         onNodeChange={(patch) => selectedId && applySceneChange((current) => updateNode(current, selectedId, patch))}
         onStyleChange={(patch) => {
@@ -940,6 +978,7 @@ export default function App() {
           notify("已跳过 AI 配置，普通分析可用；随时可在右上角设置中启用 AI 重建。");
         }}
       />
+      <OnboardingTour open={tourOpen} onClose={handleTourClose} />
       {pendingRegion ? (
         <div className="region-confirm" role="dialog" aria-modal="true" aria-label="局部 AI 重建方式">
           <div>

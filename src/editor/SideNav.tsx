@@ -120,7 +120,7 @@ export function SideNav({
     <aside className="side-nav" aria-label="侧栏">
       <Logo />
 
-      <div className="tools-group" role="group" aria-label="工具">
+      <div className="tools-group" role="group" aria-label="工具" data-tour="tools">
         <div className="side-section-title">工具</div>
         {tools.map((tool) => {
           const Icon = tool.icon;

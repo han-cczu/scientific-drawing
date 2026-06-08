@@ -14,6 +14,8 @@ type RightPanelProps = {
   /** 受控 tab：双击节点可由外部切到属性 tab */
   activeTab: TabKey;
   onTabChange: (tab: TabKey) => void;
+  /** 重新打开分步操作引导（透传给使用提示卡） */
+  onShowTour: () => void;
   applySceneChange: (updater: (current: Scene) => Scene) => void;
   onNodeChange: (patch: Partial<SceneNode>) => void;
   onStyleChange: (patch: SceneStyle) => void;
@@ -31,6 +33,7 @@ export function RightPanel({
   selectedIds,
   activeTab,
   onTabChange,
+  onShowTour,
   applySceneChange,
   onNodeChange,
   onStyleChange
@@ -38,7 +41,7 @@ export function RightPanel({
   const [tipsVisible, setTipsVisible] = useState(true);
 
   return (
-    <aside className="right-panel" aria-label="右侧面板">
+    <aside className="right-panel" aria-label="右侧面板" data-tour="inspector">
       <div className="tabs" role="tablist">
         {TABS.map((tab) => (
           <button
@@ -64,7 +67,7 @@ export function RightPanel({
           <ArrangeTab scene={scene} selectedIds={selectedIds} applySceneChange={applySceneChange} />
         ) : null}
       </div>
-      <UsageTipsCard visible={tipsVisible} onClose={() => setTipsVisible(false)} />
+      <UsageTipsCard visible={tipsVisible} onClose={() => setTipsVisible(false)} onShowTour={onShowTour} />
     </aside>
   );
 }

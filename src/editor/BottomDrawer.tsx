@@ -57,6 +57,7 @@ export function BottomDrawer({
   return (
     <section className="bottom-drawer" aria-label="AI 矢量化抽屉">
       <div
+        data-tour="ai-vectorize"
         className={[
           "drawer-card drawer-card-drop",
           dragOver ? "drawer-card-drop-active" : "",
