@@ -17,7 +17,7 @@ services:
       - ./data/evaluation:/app/data/evaluation
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8787/api/config"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8787/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3

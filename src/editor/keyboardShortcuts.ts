@@ -27,10 +27,11 @@ export function isEditableKeyboardTarget(target: EventTarget | null) {
     return false;
   }
 
-  // 1.2 判断可编辑元素
+  // 1.2 判断可编辑/可聚焦表单控件（含 <select>：聚焦下拉时按 Delete/Backspace 不应删除画布节点）
   const editable =
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
     target.isContentEditable;
 
   logger.info("判断键盘事件来源完成", { editable });

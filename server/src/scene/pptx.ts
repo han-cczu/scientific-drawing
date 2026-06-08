@@ -1,6 +1,7 @@
 import pptxgenjs from "pptxgenjs";
 import { logger } from "../logger";
-import { isNormalizedHexColor, normalizeHexColor, resolveEndpoint, shadeColor } from "@shared/geometry";
+import { resolveLocalAssetPath } from "../paths";
+import { indexGridCells, isNormalizedHexColor, normalizeHexColor, resolveEndpoint, shadeColor } from "@shared/geometry";
 import { visibleSceneEdges, visibleSceneNodes } from "@shared/sceneVisibility";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
@@ -90,7 +91,7 @@ function addNode(slide: SlideLike, node: SceneNode, scale: number) {
 
   // 1.2 添加元素
   if (node.type === "image" && node.source) {
-    slide.addImage({ path: localPathFromUrl(node.source), x, y, w, h, transparency: opacityToTransparency(node.style.opacity ?? 1) });
+    addImageNode(slide, node.source, { x, y, w, h, transparency: opacityToTransparency(node.style.opacity ?? 1) });
   } else if (node.type === "text") {
     slide.addText(node.text ?? "", {
       x,
@@ -100,11 +101,20 @@ function addNode(slide: SlideLike, node: SceneNode, scale: number) {
       fontFace: node.style.fontFamily ?? "Times New Roman",
       fontSize: Math.max(6, (node.style.fontSize ?? 16) * 0.75),
       color: normalizeColor(node.style.color ?? "#111111"),
-      bold: node.style.fontWeight === "bold",
+      bold: isBoldWeight(node.style.fontWeight),
       margin: 0
     });
   } else if (node.type === "ellipse" || node.type === "operator") {
-    slide.addShape(ShapeType.ellipse, { x, y, w, h, ...shapeStyle(node) });
+    if (node.type === "operator") {
+      // 与 Canvas/SVG 一致：算子画 min(w,h) 的居中正圆，而非占满包围盒的拉伸椭圆
+      const size = Math.min(node.w, node.h);
+      const circleSize = Math.max(0.01, size * scale);
+      const cx = (node.x + (node.w - size) / 2) * scale;
+      const cy = (node.y + (node.h - size) / 2) * scale;
+      slide.addShape(ShapeType.ellipse, { x: cx, y: cy, w: circleSize, h: circleSize, ...shapeStyle(node) });
+    } else {
+      slide.addShape(ShapeType.ellipse, { x, y, w, h, ...shapeStyle(node) });
+    }
     if (node.type === "operator" && (node.symbol || node.text)) {
       slide.addText(node.symbol || node.text || "", {
         x,
@@ -114,6 +124,7 @@ function addNode(slide: SlideLike, node: SceneNode, scale: number) {
         fontFace: node.style.fontFamily ?? "Cambria Math",
         fontSize: Math.max(6, (node.style.fontSize ?? 16) * 0.75),
         color: normalizeColor(node.style.color ?? "#111111"),
+        bold: isBoldWeight(node.style.fontWeight),
         margin: 0,
         align: "center",
         valign: "middle"
@@ -136,6 +147,7 @@ function addNode(slide: SlideLike, node: SceneNode, scale: number) {
         fontFace: node.style.fontFamily ?? "Times New Roman",
         fontSize: Math.max(6, (node.style.fontSize ?? 14) * 0.75),
         color: normalizeColor(node.style.color ?? "#111111"),
+        bold: isBoldWeight(node.style.fontWeight),
         margin: 0.04,
         align: "center",
         valign: "middle"
@@ -167,7 +179,7 @@ function addEdge(slide: SlideLike, edge: SceneEdge, nodes: SceneNode[], scale: n
 
   // 1.2 写入线条
   const points = [start, ...(edge.points ?? []), end];
-  addSegmentedLine(slide, points, scale, edge.style.stroke ?? "#111111", edge.style.strokeWidth ?? 1, edge.type === "arrow" || edge.type === "fork", edge.style.dash);
+  addSegmentedLine(slide, points, scale, edge.style.stroke ?? "#111111", edge.style.strokeWidth ?? 1, edge.type === "arrow" || edge.type === "fork", edge.style.dash, edge.style.opacity ?? 1);
 
   logger.info("添加语义连线完成", { id: edge.id });
 }
@@ -183,13 +195,11 @@ function addLineNode(slide: SlideLike, node: SceneNode, scale: number) {
    */
   logger.info("开始添加线条节点...", { id: node.id });
 
-  // 1.1 读取首尾点
+  // 1.1 读取折线点
   const points = node.points?.length ? node.points : [{ x: node.x, y: node.y }, { x: node.x + node.w, y: node.y + node.h }];
-  const start = points[0];
-  const end = points[points.length - 1];
 
   // 1.2 写入线条
-  addSegmentedLine(slide, points, scale, node.style.stroke ?? "#111111", node.style.strokeWidth ?? 1, node.type === "arrow", node.style.dash);
+  addSegmentedLine(slide, points, scale, node.style.stroke ?? "#111111", node.style.strokeWidth ?? 1, node.type === "arrow", node.style.dash, node.style.opacity ?? 1);
 
   logger.info("添加线条节点完成", { id: node.id });
 }
@@ -201,7 +211,8 @@ function addSegmentedLine(
   color: string,
   width: number,
   arrowEnd: boolean,
-  dash?: string
+  dash?: string,
+  opacity: number = 1
 ) {
   /*
    * ========================================================================
@@ -232,6 +243,7 @@ function addSegmentedLine(
       line: {
         color: normalizeColor(color),
         width,
+        transparency: opacityToTransparency(opacity),
         dashType: dashToPptx(dash),
         beginArrowType: "none",
         endArrowType: arrowEnd && index === points.length - 2 ? "triangle" : "none"
@@ -258,11 +270,12 @@ function addGridNode(slide: SlideLike, node: SceneNode, scale: number) {
   const cols = node.cols ?? 1;
   const cellW = node.w / cols;
   const cellH = node.h / rows;
+  const cellIndex = indexGridCells(node.cells);
 
   // 1.2 写入每个单元格
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
-      const explicit = node.cells?.find((cell) => cell.row === row && cell.col === col);
+      const explicit = cellIndex.get(`${row}:${col}`);
       const base = explicit?.fill ?? node.rowColors?.[row % Math.max(1, node.rowColors.length)] ?? node.style.fill ?? "#FFFFFF";
       const fill = shadeColor(base, node.columnShades?.[col] ?? 0);
       slide.addShape(ShapeType.rect, {
@@ -285,6 +298,7 @@ function addGridNode(slide: SlideLike, node: SceneNode, scale: number) {
           fontFace: node.style.fontFamily ?? "Times New Roman",
           fontSize: Math.max(6, (node.style.fontSize ?? Math.max(10, Math.min(28, cellH * 0.62))) * 0.75),
           color: normalizeColor(explicit.color ?? node.style.color ?? "#111111"),
+          bold: isBoldWeight(node.style.fontWeight),
           margin: 0,
           align: "center",
           valign: "middle"
@@ -322,7 +336,7 @@ function addBracketNode(slide: SlideLike, node: SceneNode, scale: number) {
 
   // 1.2 写入线段（括号臂保持实线，显式不传 dash）
   for (const [start, end] of segments) {
-    addSegmentedLine(slide, [start, end], scale, node.style.stroke ?? "#111111", node.style.strokeWidth ?? 1, false, undefined);
+    addSegmentedLine(slide, [start, end], scale, node.style.stroke ?? "#111111", node.style.strokeWidth ?? 1, false, undefined, node.style.opacity ?? 1);
   }
 
   logger.info("添加括号节点完成", { id: node.id, segments: segments.length });
@@ -344,14 +358,33 @@ function shapeStyle(node: SceneNode) {
     ? { color: normalizeColor(node.style.fill), transparency: opacityToTransparency(node.style.opacity ?? 1) }
     : { color: "FFFFFF", transparency: 100 };
 
-  // 1.2 生成线条配置（dash 仅对真实描边有意义）
+  // 1.2 生成线条配置（dash 仅对真实描边有意义；描边同样应用 opacity，与 fill/SVG 一致）
   const line = node.style.stroke && node.style.stroke !== "none"
-    ? { color: normalizeColor(node.style.stroke), width: node.style.strokeWidth ?? 1, dashType: dashToPptx(node.style.dash) }
+    ? { color: normalizeColor(node.style.stroke), width: node.style.strokeWidth ?? 1, transparency: opacityToTransparency(node.style.opacity ?? 1), dashType: dashToPptx(node.style.dash) }
     : { color: "FFFFFF", transparency: 100 };
 
   const result = { fill, line };
   logger.info("生成 PPT 形状样式完成", { id: node.id });
   return result;
+}
+
+export function isBoldWeight(fontWeight: string | undefined): boolean {
+  /*
+   * ========================================================================
+   * 步骤1：判断字重是否加粗
+   * ========================================================================
+   * 目标：
+   *   1) 兼容字面量 "bold" 与数字字重（如 "600"/"700"）
+   *   2) 与 SVG/Canvas 的任意 CSS 字重渲染对齐，避免数字字重在 PPTX 丢失加粗
+   */
+  if (!fontWeight) {
+    return false;
+  }
+  if (fontWeight === "bold") {
+    return true;
+  }
+  const numeric = Number(fontWeight);
+  return Number.isFinite(numeric) && numeric >= 600;
 }
 
 export function dashToPptx(dash: string | undefined): "solid" | "dash" | "sysDot" | "lgDash" {
@@ -400,14 +433,30 @@ function opacityToTransparency(opacity: number) {
   return Math.round((1 - Math.max(0, Math.min(1, opacity))) * 100);
 }
 
-function localPathFromUrl(url: string) {
-  const normalized = url.replaceAll("\\", "/");
-  const marker = "/uploads/";
-  const index = normalized.indexOf(marker);
-  if (index < 0) {
-    return url;
+function addImageNode(
+  slide: SlideLike,
+  source: string,
+  box: { x: number; y: number; w: number; h: number; transparency: number }
+) {
+  /*
+   * ========================================================================
+   * 步骤1：安全地把图片节点写入 PPTX
+   * ========================================================================
+   * 目标：
+   *   1) data: URL 走 data 字段（pptxgenjs 把 path 当文件路径 readFileSync，data URL 会整体导出失败）
+   *   2) 仅受控目录（/uploads、/eval-suite）内的本地资源走 path（防任意文件读取/LFI）
+   *   3) 非受控来源（外部 URL、穿越路径）跳过内嵌，既不读盘也不让导出失败
+   */
+  if (source.startsWith("data:")) {
+    slide.addImage({ data: source, ...box });
+    return;
   }
-  return `data/uploads/${normalized.slice(index + marker.length)}`;
+  const filePath = resolveLocalAssetPath(source);
+  if (filePath) {
+    slide.addImage({ path: filePath, ...box });
+    return;
+  }
+  logger.warn("跳过非受控图片来源，PPTX 不内嵌", { source });
 }
 
 function resolvePptxConstructor() {

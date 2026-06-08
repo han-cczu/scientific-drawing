@@ -57,8 +57,8 @@ export function PropertiesTab({ node, onChange, onStyleChange }: PropertiesTabPr
         <div className="grid-fields">
           <NumberField label="X" value={node.x} onChange={(value) => onChange({ x: value })} />
           <NumberField label="Y" value={node.y} onChange={(value) => onChange({ y: value })} />
-          <NumberField label="W" value={node.w} onChange={(value) => onChange({ w: value })} />
-          <NumberField label="H" value={node.h} onChange={(value) => onChange({ h: value })} />
+          <NumberField label="W" value={node.w} min={1} onChange={(value) => onChange({ w: value })} />
+          <NumberField label="H" value={node.h} min={0} onChange={(value) => onChange({ h: value })} />
         </div>
       </div>
 
@@ -70,6 +70,7 @@ export function PropertiesTab({ node, onChange, onStyleChange }: PropertiesTabPr
             <NumberField
               label="字号"
               value={node.style.fontSize ?? 16}
+              min={1}
               onChange={(value) => onStyleChange({ fontSize: value })}
             />
             <label className="field">
@@ -87,19 +88,24 @@ export function PropertiesTab({ node, onChange, onStyleChange }: PropertiesTabPr
   );
 }
 
-function NumberField({ label, value, onChange }: {
+function NumberField({ label, value, onChange, min }: {
   label: string;
   value: number;
   onChange: (value: number) => void;
+  min?: number;
 }) {
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(Number(event.target.value || 0));
+    // 非有限输入（空串/非数字）回退 0；带 min 时钳制下限，避免写出 validateScene 拒绝的几何/字号，
+    // 否则该非法值经 autosave 落盘、刷新时被整图丢弃（数据丢失）。
+    const parsed = Number(event.target.value);
+    const safe = Number.isFinite(parsed) ? parsed : 0;
+    onChange(min === undefined ? safe : Math.max(min, safe));
   };
 
   return (
     <label className="field">
       <span>{label}</span>
-      <input type="number" value={Math.round(value * 10) / 10} onChange={handleChange} />
+      <input type="number" min={min} value={Math.round(value * 10) / 10} onChange={handleChange} />
     </label>
   );
 }

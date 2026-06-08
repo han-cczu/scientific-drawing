@@ -50,8 +50,10 @@ export function repairScene(scene: Scene): Scene {
   };
 
   // 1.2 修复节点和边
+  //   idMap：原始 id → 首个分配 id（供边端点重写）；usedIds：所有已分配 id（保证唯一）
   const idMap = new Map<string, string>();
-  next.nodes = Array.isArray(scene.nodes) ? scene.nodes.map((node, index) => repairNode(node, index, idMap)) : [];
+  const usedIds = new Set<string>();
+  next.nodes = Array.isArray(scene.nodes) ? scene.nodes.map((node, index) => repairNode(node, index, idMap, usedIds)) : [];
   next.edges = Array.isArray(scene.edges)
     ? scene.edges
       .map((edge, index) => repairEdge(edge, index, idMap, next.nodes))
@@ -61,7 +63,7 @@ export function repairScene(scene: Scene): Scene {
   return next;
 }
 
-function repairNode(node: SceneNode, index: number, idMap: Map<string, string>): SceneNode {
+function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, usedIds: Set<string>): SceneNode {
   /*
    * ========================================================================
    * 步骤1：修复节点
@@ -73,7 +75,7 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>):
 
   // 1.1 修复 id、类型和几何
   const originalId = nonEmpty(node.id, `node-${index + 1}`);
-  const id = uniqueId(originalId, idMap);
+  const id = uniqueId(originalId, idMap, usedIds);
   const type = NODE_TYPES.has(node.type) ? node.type : "rect";
   const repaired: SceneNode = {
     ...node,
@@ -204,14 +206,17 @@ function repairPoint(point: { x: number; y: number } | undefined) {
   return { x: finite(point.x, 0), y: finite(point.y, 0) };
 }
 
-function uniqueId(originalId: string, idMap: Map<string, string>) {
-  const used = new Set(idMap.values());
+function uniqueId(originalId: string, idMap: Map<string, string>, usedIds: Set<string>) {
+  // usedIds 累积所有已分配 id（含重复原始 id 的后缀变体），保证 ≥3 次碰撞也能产出唯一 id；
+  // 旧实现每次从 idMap.values() 重建集合，既漏记后缀变体（导致重复 id）又是 O(n²)。
   let candidate = originalId;
   let suffix = 2;
-  while (used.has(candidate)) {
+  while (usedIds.has(candidate)) {
     candidate = `${originalId}-${suffix}`;
     suffix += 1;
   }
+  usedIds.add(candidate);
+  // idMap 仅保留每个原始 id 的首个映射，供边端点重写复用首个落点
   if (!idMap.has(originalId)) {
     idMap.set(originalId, candidate);
   }

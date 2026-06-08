@@ -16,6 +16,8 @@ data/scenes
 data/evaluation
 data/test-*
 data/*.log
+# 含明文 API Key，绝不进 build context（镜像也只 COPY data/eval-suite）
+data/config.json
 
 # 版本控制 & IDE
 .git

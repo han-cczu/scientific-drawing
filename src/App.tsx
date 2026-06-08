@@ -523,7 +523,8 @@ export default function App() {
     anchor.href = url;
     anchor.download = "scientific-drawing-reconstruction-prompt.txt";
     anchor.click();
-    URL.revokeObjectURL(url);
+    // 延后释放，避免个别浏览器在下载真正开始前 revoke 导致下载被取消
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // 2.6 移动画布节点
@@ -625,7 +626,8 @@ export default function App() {
       anchor.href = url;
       anchor.download = filename;
       anchor.click();
-      URL.revokeObjectURL(url);
+      // 延后释放，避免个别浏览器在下载真正开始前 revoke 导致下载被取消
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       notify(`已下载 ${filename}`, "success");
     } catch (error) {
       logger.error("导出失败", { error: String(error), kind });
@@ -908,6 +910,7 @@ export default function App() {
             selectedIds={viewMode === "original" ? [] : selectedIds}
             viewport={viewport}
             panMode={panMode}
+            dragEnabled={tool === "select"}
             onSelect={handleSelect}
             onMove={handleMove}
             onResize={handleResize}

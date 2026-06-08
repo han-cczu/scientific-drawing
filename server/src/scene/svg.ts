@@ -1,5 +1,7 @@
+import { promises as fs } from "node:fs";
 import { logger } from "../logger";
-import { resolveEndpoint, shadeColor } from "@shared/geometry";
+import { resolveLocalAssetPath } from "../paths";
+import { indexGridCells, resolveEndpoint, shadeColor } from "@shared/geometry";
 import { visibleSceneEdges, visibleSceneNodes } from "@shared/sceneVisibility";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
@@ -99,11 +101,16 @@ async function imageHref(source: string) {
     return source;
   }
 
-  // 1.2 读取本地上传图片
+  // 1.2 仅内嵌受控目录（/uploads、/eval-suite）内的本地资源；
+  //     非受控来源（外部 URL、穿越路径、绝对路径）保留原始引用，绝不读盘（防任意文件读取）
+  const filePath = resolveLocalAssetPath(source);
+  if (!filePath) {
+    logger.info("生成 SVG 图片引用完成，保留外部引用", { mode: "external-ref" });
+    return source;
+  }
+
+  // 1.3 读取本地资源并内嵌为 data URL
   try {
-    const { promises: fs } = await import("node:fs");
-    const path = await import("node:path");
-    const filePath = localPathFromUrl(source);
     const bytes = await fs.readFile(filePath);
     const mime = mimeFromPath(filePath);
     const href = `data:${mime};base64,${bytes.toString("base64")}`;
@@ -113,23 +120,6 @@ async function imageHref(source: string) {
     logger.warn("生成 SVG 图片引用失败，保留原始路径", { source, error: String(error) });
     return source;
   }
-}
-
-// Whitelist of /data/<dir>/ subtrees that are safe to resolve when a scene
-// references an image by absolute-looking URL ("/uploads/foo.png", "/eval-suite/bar.jpg").
-// Adding a new directory here lets sceneToSvg embed images from it as data URLs.
-const LOCAL_URL_DIRS = ["uploads", "eval-suite"] as const;
-
-function localPathFromUrl(url: string) {
-  const normalized = url.replaceAll("\\", "/");
-  for (const dir of LOCAL_URL_DIRS) {
-    const marker = `/${dir}/`;
-    const index = normalized.indexOf(marker);
-    if (index >= 0) {
-      return `data/${dir}/${normalized.slice(index + marker.length)}`;
-    }
-  }
-  return url;
 }
 
 function mimeFromPath(filePath: string) {
@@ -255,10 +245,11 @@ function gridToSvg(node: SceneNode): string {
   const cols = node.cols ?? 1;
   const cellW = node.w / cols;
   const cellH = node.h / rows;
+  const cellIndex = indexGridCells(node.cells);
   const cells: string[] = [];
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
-      const explicit = node.cells?.find((cell) => cell.row === row && cell.col === col);
+      const explicit = cellIndex.get(`${row}:${col}`);
       const base = explicit?.fill ?? node.rowColors?.[row % Math.max(1, node.rowColors.length)] ?? node.style.fill ?? "#FFFFFF";
       const fill = shadeColor(base, node.columnShades?.[col] ?? 0);
       cells.push(`<rect x="${node.x + col * cellW}" y="${node.y + row * cellH}" width="${cellW}" height="${cellH}" fill="${escapeAttr(fill)}" stroke="${escapeAttr(node.style.stroke ?? "#111111")}" stroke-width="${node.style.strokeWidth ?? 0.8}" />`);

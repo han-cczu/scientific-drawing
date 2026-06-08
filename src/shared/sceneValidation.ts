@@ -5,6 +5,10 @@ import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneSt
 // 不经 repair 的导出/区域路径上触发 rows*cols 级渲染循环（DoS）。
 export const MAX_GRID_DIMENSION = 256;
 
+// 单个网格 cells 数组长度上界：等于最大网格的单元格总数，超出即视为畸形输入，
+// 防止超长 cells 数组放大解析/内存开销（渲染侧已用 indexGridCells 改 O(1) 查表）。
+export const MAX_GRID_CELLS = MAX_GRID_DIMENSION * MAX_GRID_DIMENSION;
+
 export type ValidationIssue = {
   path: string;
   code: string;
@@ -252,7 +256,16 @@ function validateNodeCollections(node: SceneNode, path: string, issues: Validati
       addIssue(issues, `${path}.cells`, "invalid_grid_cells", "Grid cells must be an array.");
       return;
     }
+    if (node.cells.length > MAX_GRID_CELLS) {
+      addIssue(issues, `${path}.cells`, "too_many_grid_cells", `Grid cells must not exceed ${MAX_GRID_CELLS}.`);
+      return;
+    }
     node.cells.forEach((cell, index) => {
+      // 先守卫 null/原始值元素：直接访问 cell.row 会抛 TypeError，违反“只返错误列表不抛异常”契约
+      if (!isRecord(cell)) {
+        addIssue(issues, `${path}.cells[${index}]`, "invalid_grid_cell", "Grid cell must be an object.");
+        return;
+      }
       if (!Number.isInteger(cell.row) || cell.row < 0 || !Number.isInteger(cell.col) || cell.col < 0) {
         addIssue(issues, `${path}.cells[${index}]`, "invalid_grid_cell_position", "Grid cell row and col must be non-negative integers.");
       }

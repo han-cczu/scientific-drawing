@@ -179,4 +179,45 @@ describe("scene validation", () => {
     assert.ok(result.issues.some((issue) => issue.code === "invalid_opacity"));
     assert.ok(result.issues.some((issue) => issue.code === "invalid_edge_type"));
   });
+
+  it("rejects null/non-object grid cells without throwing (no opaque exception)", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 cells 含 null 时不抛异常
+     * ========================================================================
+     * 目标：
+     *   1) validateScene 契约：只返错误列表，绝不抛不透明异常
+     *   2) 导出路径（validateSceneForExport→validateScene，不经 repair）从不可信输入可达
+     */
+    const scene = validScene();
+    scene.nodes[0] = {
+      id: "g", type: "grid", x: 0, y: 0, w: 100, h: 100, rows: 1, cols: 1,
+      style: {}, cells: [null, { row: 0, col: 0 }]
+    } as unknown as Scene["nodes"][number];
+
+    let result: ReturnType<typeof validateScene> | undefined;
+    assert.doesNotThrow(() => { result = validateScene(scene); });
+    assert.equal(result?.ok, false);
+    assert.ok(result?.issues.some((issue) => issue.code === "invalid_grid_cell"));
+  });
+
+  it("rejects grid cells arrays exceeding the size cap", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 cells 长度上界
+     * ========================================================================
+     * 目标：
+     *   1) 超长 cells 被拒，防解析/内存放大（渲染侧已 O(1) 查表）
+     */
+    const scene = validScene();
+    const huge = Array.from({ length: 256 * 256 + 1 }, () => ({ row: 0, col: 0 }));
+    scene.nodes[0] = {
+      id: "g", type: "grid", x: 0, y: 0, w: 100, h: 100, rows: 1, cols: 1,
+      style: {}, cells: huge
+    } as unknown as Scene["nodes"][number];
+
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.code === "too_many_grid_cells"));
+  });
 });

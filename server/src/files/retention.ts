@@ -13,7 +13,7 @@ type CleanupOptions = {
   logger: RetentionLogger;
 };
 
-const MANAGED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".img", ".svg", ".pptx", ".json"]);
+const MANAGED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".img", ".svg", ".pptx", ".json", ".tmp"]);
 
 // 保留期默认值（天）：env 解析与 NaN 兜底共用，避免两处字面量漂移
 export const DEFAULT_RETENTION_DAYS = 14;
@@ -32,6 +32,10 @@ export async function cleanupDataFiles(options: CleanupOptions) {
   // 1.1 计算过期时间（非法/NaN 保留期回退默认值；NaN 若进入 ageMs <= maxAgeMs
   //     比较会恒为 false，"保留"分支永不命中 → 误删全部受管文件）
   const now = options.now ?? new Date();
+  // 负值能被解析为有限数，会被 Math.max(0, ...) 收敛为 0（清理几乎全部产物）——显式告警避免静默灾难
+  if (Number.isFinite(options.maxAgeDays) && options.maxAgeDays < 0) {
+    options.logger.warn("保留天数为负，已按 0 处理（将清理几乎全部受管产物）", { maxAgeDays: options.maxAgeDays });
+  }
   const safeMaxAgeDays = Number.isFinite(options.maxAgeDays) ? Math.max(0, options.maxAgeDays) : DEFAULT_RETENTION_DAYS;
   const maxAgeMs = safeMaxAgeDays * 24 * 60 * 60 * 1000;
   const removed: string[] = [];
@@ -56,10 +60,13 @@ export async function cleanupDataFiles(options: CleanupOptions) {
       if (ageMs <= maxAgeMs) {
         continue;
       }
-      await fs.unlink(filePath).catch((error) => {
+      // 仅在删除成功时计数，避免 removed 计数/返回值虚报（删除失败只 warn 不计入）
+      try {
+        await fs.unlink(filePath);
+        removed.push(filePath);
+      } catch (error) {
         options.logger.warn("删除过期运行产物失败", { filePath, error: String(error) });
-      });
-      removed.push(filePath);
+      }
     }
   }
 

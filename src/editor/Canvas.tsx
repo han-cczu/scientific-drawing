@@ -14,6 +14,8 @@ type CanvasProps = {
   viewport: Viewport;
   /** 平移模式：与空格/中键共用同一套 pan 手势路径 */
   panMode: boolean;
+  /** 仅选择工具下允许拖拽节点；连线/区域/绘制工具下点击节点只做选择/激活，不启动拖拽 */
+  dragEnabled: boolean;
   onSelect: (ids: string[]) => void;
   onMove: (nodeIds: string[], dx: number, dy: number) => void;
   onResize: (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number) => void;
@@ -26,7 +28,7 @@ type CanvasProps = {
   onViewportChange: (viewport: Viewport | ((previous: Viewport) => Viewport)) => void;
 };
 
-export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, onSelect, onMove, onResize, onSceneInteractionCommit, onBoxSelect, onNodeActivate, onNodeDoubleClick, onViewportChange }: CanvasProps) {
+export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, dragEnabled, onSelect, onMove, onResize, onSceneInteractionCommit, onBoxSelect, onNodeActivate, onNodeDoubleClick, onViewportChange }: CanvasProps) {
   /*
    * ========================================================================
    * 步骤1：初始化画布交互
@@ -122,7 +124,8 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, onSe
     const activeIds = selectedIds.includes(node.id) ? selectedIds : [node.id];
     onSelect(activeIds);
     onNodeActivate(node.id);
-    if (node.locked) {
+    // 锁定节点、或非选择工具（连线/区域/绘制）下不启动拖拽：避免连线时轻微位移误移端点节点
+    if (node.locked || !dragEnabled) {
       return;
     }
     const point = pointFromEvent(event);

@@ -161,7 +161,11 @@ export function StyleTab({ node, onStyleChange }: StyleTabProps) {
               min={0}
               step={0.5}
               value={strokeWidth}
-              onChange={(event) => onStyleChange({ strokeWidth: Number(event.target.value || 0) })}
+              onChange={(event) => {
+                // 钳制非负并防 NaN：负线宽会让 validateScene 失败，经 autosave 落盘后刷新即丢图
+                const parsed = Number(event.target.value);
+                onStyleChange({ strokeWidth: Number.isFinite(parsed) ? Math.max(0, parsed) : 0 });
+              }}
               className="style-number-input"
               aria-label="描边线宽"
             />

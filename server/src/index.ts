@@ -74,6 +74,22 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 
 // 1.6 启动监听
 const port = Number(process.env.PORT || 8787);
-app.listen(port, () => {
+const server = app.listen(port, () => {
   logger.info("HTTP 服务启动完成", { port });
 });
+
+// 1.7 优雅关闭：收到 SIGTERM/SIGINT 时先停止接收新连接并收尾，再退出；
+//   兜底超时避免长连接挂住进程，使 docker stop / 滚动重启快速完成。
+const shutdown = (signal: string) => {
+  logger.info("收到退出信号，开始优雅关闭", { signal });
+  server.close(() => {
+    logger.info("HTTP 服务已关闭");
+    process.exit(0);
+  });
+  setTimeout(() => {
+    logger.warn("优雅关闭超时，强制退出");
+    process.exit(0);
+  }, 10_000).unref();
+};
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

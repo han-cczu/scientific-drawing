@@ -14,7 +14,55 @@ export const dataDir = path.join(rootDir, "data");
 export const uploadDir = path.join(dataDir, "uploads");
 export const exportDir = path.join(dataDir, "exports");
 export const sceneDir = path.join(dataDir, "scenes");
+export const evalSuiteDir = path.join(dataDir, "eval-suite");
 export const configPath = path.join(dataDir, "config.json");
+
+// 允许被 scene 引用并由服务端读盘内嵌的本地资源目录白名单。
+const LOCAL_ASSET_DIRS: ReadonlyArray<readonly [string, string]> = [
+  ["uploads", uploadDir],
+  ["eval-suite", evalSuiteDir]
+];
+
+export function resolveLocalAssetPath(source: unknown): string | null {
+  /*
+   * ========================================================================
+   * 步骤1：把 scene 里的本地资源 URL 安全解析为受控目录内的绝对路径
+   * ========================================================================
+   * 目标：
+   *   1) 仅接受 /uploads/ 或 /eval-suite/ 标记的本地资源
+   *   2) 用 path.resolve + 包含校验拒绝任何穿越（..）、绝对路径或目录外引用
+   *   3) 解析失败一律返回 null，由调用方跳过读盘（防任意文件读取/LFI）
+   */
+
+  // 1.1 仅处理字符串来源
+  if (typeof source !== "string" || !source) {
+    return null;
+  }
+
+  // 1.2 逐个白名单目录匹配标记并做包含校验
+  const normalized = source.replaceAll("\\", "/");
+  for (const [name, baseDir] of LOCAL_ASSET_DIRS) {
+    const marker = `/${name}/`;
+    const index = normalized.indexOf(marker);
+    if (index < 0) {
+      continue;
+    }
+    const rest = normalized.slice(index + marker.length);
+    if (!rest) {
+      return null;
+    }
+    const resolved = path.resolve(baseDir, rest);
+    const relative = path.relative(baseDir, resolved);
+    // relative 以 '..' 开头或为绝对路径 → 解析结果逃出 baseDir，拒绝
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+      return null;
+    }
+    return resolved;
+  }
+
+  // 1.3 非受控来源（外部 URL / 绝对路径 / 非法字符串）
+  return null;
+}
 
 export function ensureDataDirs(logger: { info: (message: string, meta?: Record<string, unknown>) => void }) {
   /*

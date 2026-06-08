@@ -103,16 +103,23 @@ export function mergeRegionReconstruction(
     ? new Set(baseScene.nodes.filter((node) => !node.locked && boxesIntersect(normalized, nodeBox(node))).map((node) => node.id))
     : new Set<string>();
 
+  // 1.1.1 计算局部坐标 → 全局坐标的缩放比。
+  //   AI 看到的是按原图像素裁剪的局部图（regionScene.page 为该裁剪图尺寸），返回的坐标在该局部图
+  //   像素空间；而框选区域 normalized 在 page 空间。仅平移在 page≈image（scale=1）时才正确，
+  //   page≠image（用户改过页面尺寸或导入异尺寸 scene）时必须按比例缩放，否则节点错位且尺寸错误。
+  const scaleX = scaleFactor(normalized.w, regionScene.page?.width);
+  const scaleY = scaleFactor(normalized.h, regionScene.page?.height);
+
   // 1.2 平移并去重新节点
   const idMap = new Map<string, string>();
   const usedIds = new Set(baseScene.nodes.map((node) => node.id));
   const translatedNodes = regionScene.nodes
     .filter((node) => !node.locked && node.type !== "image")
-    .map((node) => translateNode(node, normalized.x, normalized.y, usedIds, idMap));
+    .map((node) => translateNode(node, normalized.x, normalized.y, scaleX, scaleY, usedIds, idMap));
 
   // 1.3 平移局部边
   const translatedEdges = (regionScene.edges ?? [])
-    .map((edge) => translateEdge(edge, normalized.x, normalized.y, usedIds, idMap))
+    .map((edge) => translateEdge(edge, normalized.x, normalized.y, scaleX, scaleY, usedIds, idMap))
     .filter((edge): edge is SceneEdge => Boolean(edge));
 
   // 1.4 组装合并后的 scene
@@ -138,13 +145,13 @@ export function mergeRegionReconstruction(
   return next;
 }
 
-function translateNode(node: SceneNode, offsetX: number, offsetY: number, usedIds: Set<string>, idMap: Map<string, string>): SceneNode {
+function translateNode(node: SceneNode, offsetX: number, offsetY: number, scaleX: number, scaleY: number, usedIds: Set<string>, idMap: Map<string, string>): SceneNode {
   /*
    * ========================================================================
    * 步骤1：平移局部节点
    * ========================================================================
    * 目标：
-   *   1) 把裁剪图坐标转回全局坐标
+   *   1) 把裁剪图（局部像素）坐标先缩放再转回全局坐标
    *   2) 避免和现有节点 id 冲突
    */
   logger.info("开始平移局部节点...", { id: node.id });
@@ -153,13 +160,15 @@ function translateNode(node: SceneNode, offsetX: number, offsetY: number, usedId
   const id = uniqueId(node.id, usedIds);
   idMap.set(node.id, id);
 
-  // 1.2 平移节点坐标
+  // 1.2 缩放并平移节点坐标（含宽高，page≠image 时尺寸同样需要缩放）
   const translated = {
     ...node,
     id,
-    x: node.x + offsetX,
-    y: node.y + offsetY,
-    points: node.points?.map((point) => ({ x: point.x + offsetX, y: point.y + offsetY })),
+    x: node.x * scaleX + offsetX,
+    y: node.y * scaleY + offsetY,
+    w: node.w * scaleX,
+    h: node.h * scaleY,
+    points: node.points?.map((point) => ({ x: point.x * scaleX + offsetX, y: point.y * scaleY + offsetY })),
     locked: false
   };
 
@@ -167,14 +176,14 @@ function translateNode(node: SceneNode, offsetX: number, offsetY: number, usedId
   return translated;
 }
 
-function translateEdge(edge: SceneEdge, offsetX: number, offsetY: number, usedIds: Set<string>, idMap: Map<string, string>): SceneEdge | null {
+function translateEdge(edge: SceneEdge, offsetX: number, offsetY: number, scaleX: number, scaleY: number, usedIds: Set<string>, idMap: Map<string, string>): SceneEdge | null {
   /*
    * ========================================================================
    * 步骤1：平移局部边
    * ========================================================================
    * 目标：
    *   1) 重写局部端点 id
-   *   2) 平移显式端点和折线点
+   *   2) 缩放并平移显式端点和折线点
    */
   logger.info("开始平移局部边...", { id: edge.id });
 
@@ -189,15 +198,15 @@ function translateEdge(edge: SceneEdge, offsetX: number, offsetY: number, usedId
   // 1.2 生成唯一 edge id
   const id = uniqueId(edge.id, usedIds);
 
-  // 1.3 平移显式坐标
+  // 1.3 缩放并平移显式坐标
   const translated = {
     ...edge,
     id,
     from,
     to,
-    fromPoint: edge.fromPoint ? { x: edge.fromPoint.x + offsetX, y: edge.fromPoint.y + offsetY } : undefined,
-    toPoint: edge.toPoint ? { x: edge.toPoint.x + offsetX, y: edge.toPoint.y + offsetY } : undefined,
-    points: edge.points?.map((point) => ({ x: point.x + offsetX, y: point.y + offsetY }))
+    fromPoint: edge.fromPoint ? { x: edge.fromPoint.x * scaleX + offsetX, y: edge.fromPoint.y * scaleY + offsetY } : undefined,
+    toPoint: edge.toPoint ? { x: edge.toPoint.x * scaleX + offsetX, y: edge.toPoint.y * scaleY + offsetY } : undefined,
+    points: edge.points?.map((point) => ({ x: point.x * scaleX + offsetX, y: point.y * scaleY + offsetY }))
   };
 
   logger.info("平移局部边完成", { id });
@@ -235,6 +244,15 @@ function uniqueId(originalId: string, usedIds: Set<string>) {
   }
   usedIds.add(candidate);
   return candidate;
+}
+
+function scaleFactor(regionSize: number, regionPageSize: number | undefined): number {
+  // 局部图尺寸缺失/非正/非有限时回退 1（退化为纯平移，与 page≈image 的历史行为一致）
+  if (typeof regionPageSize !== "number" || !Number.isFinite(regionPageSize) || regionPageSize <= 0) {
+    return 1;
+  }
+  const factor = regionSize / regionPageSize;
+  return Number.isFinite(factor) && factor > 0 ? factor : 1;
 }
 
 function normalizeRegion(region: SceneBox): SceneBox {

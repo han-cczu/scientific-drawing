@@ -128,9 +128,14 @@ export async function runEvaluation() {
   const samples = await listEvaluationSamples(rootDir, { suiteDir, fallbackDir: uploadDir });
   const results: SampleResult[] = [];
   for (const sample of samples) {
-    const result = await evaluateSample(sample, reportDir);
-    const delta = deltaFromBaseline(result, baseline.results);
-    results.push({ ...result, ...delta });
+    // 单样本失败隔离：一张图评估抛错不应中断整批并丢失已写报告，记录后继续
+    try {
+      const result = await evaluateSample(sample, reportDir);
+      const delta = deltaFromBaseline(result, baseline.results);
+      results.push({ ...result, ...delta });
+    } catch (error) {
+      logger.warn("样例评估失败，已跳过", { sample, error: String(error) });
+    }
   }
 
   // 1.3 写入报告

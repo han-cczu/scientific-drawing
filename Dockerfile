@@ -77,6 +77,8 @@ USER node
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:8787/api/config || exit 1
+    CMD curl -fsS http://localhost:8787/api/health || exit 1
 
-CMD ["npx", "tsx", "server/src/index.ts"]
+# node 直接作为 PID 1（经 --import tsx 加载 TS），避免 npx 包装层吞掉 SIGTERM、
+# 配合 index.ts 的优雅关闭，使 docker stop 能快速收尾而非等满宽限期被 SIGKILL。
+CMD ["node", "--import", "tsx", "server/src/index.ts"]

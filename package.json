@@ -13,7 +13,7 @@
     "build": "tsc -b && vite build",
     "server:start": "tsx server/src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "evaluate": "tsx server/src/evaluate.ts"
   },
   "dependencies": {

@@ -35,7 +35,12 @@ const IMAGE_EXTENSIONS_BY_MIME = new Map([
 ]);
 
 const upload = multer({
-  dest: uploadDir,
+  // 用 diskStorage 显式产出带 .tmp 后缀的临时文件名：默认 dest 产出无扩展名文件，
+  // 一旦在 rename 落地前进程崩溃便永久残留，且不被保留清理白名单覆盖。
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (_req, _file, callback) => callback(null, `${randomUUID()}.upload.tmp`)
+  }),
   limits: {
     fileSize: MAX_IMAGE_UPLOAD_BYTES,
     files: 1
@@ -95,6 +100,12 @@ const uploadImage: express.RequestHandler = (req, res, next) => {
 };
 
 export const apiRouter = express.Router();
+
+apiRouter.get("/health", (_req, res) => {
+  // 纯本地存活探针：不触发任何出站请求，供 Docker/compose 健康检查使用，
+  // 避免把容器存活耦合到外部 LLM 端点的可用性/延迟（详见 /config 会出站拉模型列表）。
+  res.json({ ok: true });
+});
 
 type ExportKind = "svg" | "pptx" | "json";
 
@@ -159,6 +170,8 @@ apiRouter.post("/analyze", uploadImage, async (req, res, next) => {
     });
     const validation = repairAndValidateSceneForPersistence(rawScene, { id, sourceUrl });
     if (!validation.ok) {
+      // 未生成有效 scene：清理已重命名的孤儿上传图，避免残留到保留期
+      await cleanupUpload(undefined, imagePath);
       res.status(500).json({ error: "Generated scene is invalid.", issues: validation.issues });
       return;
     }
@@ -260,6 +273,8 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res) => {
     const sourceUrl = `/uploads/${fileName}`;
     const validation = repairAndValidateSceneForPersistence(normalizeImportedScene(rawScene), { id, sourceUrl });
     if (!validation.ok) {
+      // 未生成有效 scene：清理已重命名的孤儿上传图，避免残留到保留期
+      await cleanupUpload(undefined, imagePath);
       res.status(500).json({
         error: { code: "INVALID_SCENE", message: "Generated scene is invalid.", hint: "可重试或更换模型" },
         issues: validation.issues
@@ -459,8 +474,10 @@ apiRouter.post("/config", express.json({ limit: "16kb" }), async (req, res) => {
   logger.info("开始保存 AI 配置...");
 
   try {
-    // 1.1 读取 saved key（用于空 apiKey 时的 fallback）
-    const savedKey = readPersistedConfig()?.apiKey ?? "";
+    // 1.1 读取 saved 配置（用于空 apiKey 时的 fallback）
+    const savedConfig = readPersistedConfig();
+    const savedKey = savedConfig?.apiKey ?? "";
+    const savedBaseUrl = savedConfig?.baseUrl ?? "";
 
     // 1.2 用 allowEmptyKey 软校验，apiKey 可空，其余字段严格
     const validation = validateWritableConfig(req.body, { allowEmptyKey: Boolean(savedKey) });
@@ -470,11 +487,13 @@ apiRouter.post("/config", express.json({ limit: "16kb" }), async (req, res) => {
       return;
     }
 
-    // 1.3 合成 effectiveKey：表单非空 → 表单值；空 → 复用 saved
-    const effectiveKey = validation.value.apiKey || savedKey;
+    // 1.3 合成 effectiveKey：表单非空 → 表单值；空且 baseUrl 未变 → 复用 saved。
+    //   改 baseUrl 必须重填 key，防止把已落盘密钥重放到调用方临时指定的任意 URL（密钥外泄）。
+    const sameBaseUrl = validation.value.baseUrl === savedBaseUrl;
+    const effectiveKey = validation.value.apiKey || (sameBaseUrl ? savedKey : "");
     if (!effectiveKey) {
-      logger.warn("保存 AI 配置失败，缺少 apiKey");
-      res.status(400).json({ error: "apiKey is required." });
+      logger.warn("保存 AI 配置失败，缺少 apiKey（或 baseUrl 变更但未重填 key）");
+      res.status(400).json({ error: "apiKey is required when changing baseUrl." });
       return;
     }
 
@@ -558,8 +577,10 @@ apiRouter.post("/config/test", express.json({ limit: "16kb" }), async (req, res)
    */
   logger.info("开始测试 AI 配置...");
 
-  // 1.1 读 saved key 用于空 apiKey fallback
-  const savedKey = readPersistedConfig()?.apiKey ?? "";
+  // 1.1 读 saved 配置用于空 apiKey fallback
+  const savedConfig = readPersistedConfig();
+  const savedKey = savedConfig?.apiKey ?? "";
+  const savedBaseUrl = savedConfig?.baseUrl ?? "";
 
   // 1.2 软校验：apiKey 允许空
   const validation = validateWritableConfig(req.body, { allowEmptyKey: Boolean(savedKey) });
@@ -569,11 +590,13 @@ apiRouter.post("/config/test", express.json({ limit: "16kb" }), async (req, res)
     return;
   }
 
-  // 1.3 合成 effectiveKey
-  const effectiveKey = validation.value.apiKey || savedKey;
+  // 1.3 合成 effectiveKey：仅当 baseUrl 与已保存值一致时才复用 saved key。
+  //   否则"留空 apiKey + 改 baseUrl 指向攻击者"会把已落盘密钥以 Bearer 重放到任意 URL（密钥外泄）。
+  const sameBaseUrl = validation.value.baseUrl === savedBaseUrl;
+  const effectiveKey = validation.value.apiKey || (sameBaseUrl ? savedKey : "");
   if (!effectiveKey) {
-    logger.warn("测试 AI 配置失败，缺少 apiKey");
-    res.status(400).json({ ok: false, code: "VALIDATION", error: "apiKey is required.", models: [] });
+    logger.warn("测试 AI 配置失败，缺少 apiKey（或 baseUrl 变更但未重填 key）");
+    res.status(400).json({ ok: false, code: "VALIDATION", error: "apiKey is required when changing baseUrl.", models: [] });
     return;
   }
 

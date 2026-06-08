@@ -157,4 +157,35 @@ describe("scene repair", () => {
     assert.equal(repaired.nodes[0].source, "/uploads/sample.png");
     assert.equal(validateScene(repaired).ok, true);
   });
+
+  it("deduplicates three or more nodes sharing one id into unique ids", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 ≥3 次 id 碰撞的去重
+     * ========================================================================
+     * 目标：
+     *   1) 旧实现对 ≥3 个同 id 节点会产出重复 id（如 x-2,x-2），被 validateScene 拒绝返回 500
+     *   2) 修复后全部 id 唯一且通过校验
+     */
+
+    // 1.1 四个同 id 节点
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        { id: "x", type: "rect", x: 0, y: 0, w: 10, h: 10, style: {} },
+        { id: "x", type: "rect", x: 0, y: 0, w: 10, h: 10, style: {} },
+        { id: "x", type: "rect", x: 0, y: 0, w: 10, h: 10, style: {} },
+        { id: "x", type: "rect", x: 0, y: 0, w: 10, h: 10, style: {} }
+      ],
+      edges: []
+    } as unknown as Scene;
+
+    // 1.2 去重后全部唯一且校验通过
+    const repaired = repairScene(scene);
+    const ids = repaired.nodes.map((node) => node.id);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.equal(validateScene(repaired).ok, true);
+  });
 });

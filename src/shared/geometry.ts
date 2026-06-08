@@ -1,5 +1,33 @@
 import type { SceneNode } from "./scene";
 
+type GridCell = NonNullable<SceneNode["cells"]>[number];
+
+export function indexGridCells(cells: SceneNode["cells"]): Map<string, GridCell> {
+  /*
+   * ========================================================================
+   * 步骤1：把网格单元格按 (row,col) 建索引
+   * ========================================================================
+   * 目标：
+   *   1) 供 Canvas/SVG/PPTX 三处渲染以 O(1) 查表替代 rows×cols 循环内的 cells.find
+   *   2) 消除 O(rows·cols·cells.length) 复杂度（cells 超长时的导出 DoS 放大点）
+   *   3) 同一 (row,col) 取首个匹配，与原 cells.find 行为一致
+   */
+  const index = new Map<string, GridCell>();
+  if (!Array.isArray(cells)) {
+    return index;
+  }
+  for (const cell of cells) {
+    if (!cell || !Number.isInteger(cell.row) || !Number.isInteger(cell.col)) {
+      continue;
+    }
+    const key = `${cell.row}:${cell.col}`;
+    if (!index.has(key)) {
+      index.set(key, cell);
+    }
+  }
+  return index;
+}
+
 export function resolveEndpoint(endpoint: string, nodes: SceneNode[]) {
   /*
    * ========================================================================

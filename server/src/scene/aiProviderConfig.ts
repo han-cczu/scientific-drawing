@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, chmodSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, chmodSync, renameSync } from "node:fs";
 import { logger } from "../logger";
 import { configPath, dataDir } from "../paths";
 
@@ -43,6 +43,10 @@ export const AI_CONFIG_LIMITS = {
   baseUrl: 256,
   reconstructModel: 120
 } as const;
+
+// 模型列表请求超时：GET /api/config（首屏、健康检查）等会 await 它，
+// 无超时会被慢/挂起的 baseUrl 拖死，故封顶并归一化错误（绝不抛出/挂起）。
+export const MODELS_FETCH_TIMEOUT_MS = 8000;
 
 export function resolveOpenAiCompatibleUrls(baseUrl = "https://api.openai.com/v1") {
   /*
@@ -138,14 +142,17 @@ export function writePersistedConfig(input: WritableAiConfigInput, filePath: str
     reconstructModel: validation.value.reconstructModel,
     updatedAt: new Date().toISOString()
   };
-  writeFileSync(filePath, JSON.stringify(persisted, null, 2), { encoding: "utf-8", mode: 0o600 });
-
-  // 1.4 已存在文件上次以默认权限创建，重新设置 0o600（Windows 上为 no-op）
+  // 1.4 原子写：先写同目录临时文件（0o600），再 rename 覆盖目标（同卷 rename 原子），
+  //   避免并发写或写中途崩溃留下截断/交错的 config.json。
+  const tmpPath = `${filePath}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(persisted, null, 2), { encoding: "utf-8", mode: 0o600 });
   try {
-    chmodSync(filePath, 0o600);
+    // 临时文件已存在时 mode 参数被忽略，显式 chmod 确保 0o600（Windows 上为 no-op）
+    chmodSync(tmpPath, 0o600);
   } catch {
     /* Windows 等平台不支持 chmod，忽略 */
   }
+  renameSync(tmpPath, filePath);
 
   logger.info("写入持久化 AI 配置完成", {
     filePath,
@@ -275,13 +282,24 @@ export async function fetchOpenAiCompatibleModels(config: { apiKey: string; base
     return { models: [], error: "OPENAI_API_KEY is not set.", status: null };
   }
 
-  // 1.2 请求模型列表
+  // 1.2 请求模型列表（带超时；网络/超时错误归一化为 status -1，绝不抛出，避免挂起 GET /config 等调用方）
   const { modelsUrl } = resolveOpenAiCompatibleUrls(config.baseUrl);
-  const response = await fetch(modelsUrl, {
-    headers: {
-      "Authorization": `Bearer ${config.apiKey}`
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(modelsUrl, {
+      headers: {
+        "Authorization": `Bearer ${config.apiKey}`
+      },
+      signal: AbortSignal.timeout(MODELS_FETCH_TIMEOUT_MS)
+    });
+  } catch (error) {
+    const isTimeout = error instanceof Error && error.name === "TimeoutError";
+    const message = isTimeout
+      ? `模型列表请求超过 ${MODELS_FETCH_TIMEOUT_MS / 1000}s 未完成`
+      : `无法连接模型服务：${String(error)}`;
+    logger.warn("获取模型列表失败，网络或超时", { error: message });
+    return { models: [], error: message, status: -1 };
+  }
 
   // 1.3 校验响应 Content-Type，非 JSON 直接报协议错（避免 baseUrl 指错网关时拿到 HTML 还误判为 NETWORK）
   const contentType = response.headers.get("content-type") ?? "";
@@ -294,9 +312,10 @@ export async function fetchOpenAiCompatibleModels(config: { apiKey: string; base
   // 1.4 解析响应
   const payload = await response.json() as unknown;
   if (!response.ok) {
-    const error = JSON.stringify(payload);
-    logger.warn("获取模型列表失败", { status: response.status, error });
-    return { models: [], error, status: response.status };
+    // 上游错误体完整内容只写服务端日志；对外仅暴露 HTTP 状态，
+    // 避免网关内部信息（内部主机名/组织标识/栈信息）经首屏 /api/config 泄露到浏览器
+    logger.warn("获取模型列表失败", { status: response.status, error: JSON.stringify(payload) });
+    return { models: [], error: `模型列表请求失败（HTTP ${response.status}）`, status: response.status };
   }
 
   const models = normalizeModelListPayload(payload);

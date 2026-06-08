@@ -1,4 +1,4 @@
-import { resolveEndpoint, shadeColor } from "../shared/geometry";
+import { indexGridCells, resolveEndpoint, shadeColor } from "../shared/geometry";
 import type { SceneEdge, SceneNode } from "../shared/scene";
 import { ResizeHandles } from "./canvasHandles";
 import type { ResizeHandle } from "./sceneOps";
@@ -230,12 +230,13 @@ export function GridNode({ node }: { node: SceneNode }) {
   const cols = node.cols ?? 1;
   const cellW = node.w / cols;
   const cellH = node.h / rows;
+  const cellIndex = indexGridCells(node.cells);
   const cells = [];
 
   // 1.2 渲染每个单元格
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
-      const explicit = node.cells?.find((cell) => cell.row === row && cell.col === col);
+      const explicit = cellIndex.get(`${row}:${col}`);
       const base = explicit?.fill ?? node.rowColors?.[row % Math.max(1, node.rowColors.length)] ?? node.style.fill ?? "#FFFFFF";
       const fill = shadeColor(base, node.columnShades?.[col] ?? 0);
       cells.push(
