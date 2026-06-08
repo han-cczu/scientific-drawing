@@ -1,8 +1,14 @@
 import type { SceneNode } from "../shared/scene";
 import type { ResizeHandle } from "./sceneOps";
 
-export function ResizeHandles({ node, onPointerDown }: {
+// 手柄屏幕目标尺寸（scene 单位会被 viewport.scale 放大，故除以 scale 反补偿，保持屏幕像素恒定）
+const LINE_HANDLE_RADIUS = 5;
+const BOX_HANDLE_SIZE = 8;
+
+export function ResizeHandles({ node, scale, onPointerDown }: {
   node: SceneNode;
+  /** 当前视图缩放（viewport.scale）：用于把手柄几何反补偿为屏幕恒定尺寸 */
+  scale: number;
   onPointerDown: (event: React.PointerEvent<SVGElement>, handle: ResizeHandle) => void;
 }) {
   /*
@@ -12,7 +18,14 @@ export function ResizeHandles({ node, onPointerDown }: {
    * 目标：
    *   1) 形状节点显示八方向手柄
    *   2) 线条和箭头显示两个端点手柄
+   *   3) 手柄随视图缩放反补偿，低缩放下仍可点中
    */
+
+  // 1.0 反补偿缩放（scale 已被 viewport 钳到 [0.25,4]，恒为正）
+  const safeScale = scale > 0 ? scale : 1;
+  const radius = LINE_HANDLE_RADIUS / safeScale;
+  const size = BOX_HANDLE_SIZE / safeScale;
+  const half = size / 2;
 
   // 1.1 渲染线条端点手柄
   if (node.type === "line" || node.type === "arrow") {
@@ -21,8 +34,8 @@ export function ResizeHandles({ node, onPointerDown }: {
     const end = points[points.length - 1];
     return (
       <>
-        <circle className="resize-handle" cx={start.x} cy={start.y} r={5} onPointerDown={(event) => onPointerDown(event, "line-start")} />
-        <circle className="resize-handle" cx={end.x} cy={end.y} r={5} onPointerDown={(event) => onPointerDown(event, "line-end")} />
+        <circle className="resize-handle" cx={start.x} cy={start.y} r={radius} onPointerDown={(event) => onPointerDown(event, "line-start")} />
+        <circle className="resize-handle" cx={end.x} cy={end.y} r={radius} onPointerDown={(event) => onPointerDown(event, "line-end")} />
       </>
     );
   }
@@ -50,10 +63,10 @@ export function ResizeHandles({ node, onPointerDown }: {
         <rect
           key={item.handle}
           className="resize-handle"
-          x={item.x - 4}
-          y={item.y - 4}
-          width={8}
-          height={8}
+          x={item.x - half}
+          y={item.y - half}
+          width={size}
+          height={size}
           onPointerDown={(event) => onPointerDown(event, item.handle)}
         />
       ))}

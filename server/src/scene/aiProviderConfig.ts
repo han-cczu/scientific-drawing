@@ -48,6 +48,59 @@ export const AI_CONFIG_LIMITS = {
 // 无超时会被慢/挂起的 baseUrl 拖死，故封顶并归一化错误（绝不抛出/挂起）。
 export const MODELS_FETCH_TIMEOUT_MS = 8000;
 
+// 上游（用户自配 baseUrl，按设计可为不可信网关）响应体大小上界：
+// 无封顶时 response.json() 会把任意大的 body 全量读入内存，单请求即可触发 OOM。
+export const MAX_AI_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+export async function readJsonWithLimit(response: Response, maxBytes: number): Promise<unknown> {
+  /*
+   * ========================================================================
+   * 步骤1：限长读取并解析 JSON 响应
+   * ========================================================================
+   * 目标：
+   *   1) 先按 Content-Length 快速拒绝超限响应
+   *   2) 流式累计字节，超过上限即中止读取，防止超大 body 撑爆内存
+   */
+
+  // 1.1 Content-Length 快速拒绝（缺失/畸形 → NaN，跳过快速判定，交给后续流式累计兜底）
+  const declaredHeader = response.headers.get("content-length");
+  const declared = declaredHeader == null ? Number.NaN : Number(declaredHeader);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error(`Response body exceeds ${maxBytes} bytes (declared ${declared}).`);
+  }
+
+  // 1.2 无流式 body：退回 text()，按字节数（非 UTF-16 码元数）校验长度
+  const body = response.body;
+  if (!body) {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf-8") > maxBytes) {
+      throw new Error(`Response body exceeds ${maxBytes} bytes.`);
+    }
+    return text ? JSON.parse(text) : {};
+  }
+
+  // 1.3 流式读取并累计字节，超限即 cancel
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (value) {
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error(`Response body exceeds ${maxBytes} bytes.`);
+      }
+      chunks.push(value);
+    }
+  }
+  const text = Buffer.concat(chunks).toString("utf-8");
+  return text ? JSON.parse(text) : {};
+}
+
 export function resolveOpenAiCompatibleUrls(baseUrl = "https://api.openai.com/v1") {
   /*
    * ========================================================================
@@ -309,8 +362,14 @@ export async function fetchOpenAiCompatibleModels(config: { apiKey: string; base
     return { models: [], error, status: -1 };
   }
 
-  // 1.4 解析响应
-  const payload = await response.json() as unknown;
+  // 1.4 限长解析响应（解析失败/超限归一化为 status -1，保持本函数绝不抛出）
+  let payload: unknown;
+  try {
+    payload = await readJsonWithLimit(response, MAX_AI_RESPONSE_BYTES);
+  } catch (error) {
+    logger.warn("解析模型列表响应失败", { error: String(error) });
+    return { models: [], error: `模型列表响应解析失败：${String(error)}`, status: -1 };
+  }
   if (!response.ok) {
     // 上游错误体完整内容只写服务端日志；对外仅暴露 HTTP 状态，
     // 避免网关内部信息（内部主机名/组织标识/栈信息）经首屏 /api/config 泄露到浏览器

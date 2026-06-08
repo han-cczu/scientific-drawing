@@ -293,6 +293,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
               key={node.id}
               node={node}
               selected={node.id === selectedId || selectedIds.includes(node.id)}
+              scale={viewport.scale}
               onPointerDown={(event) => handlePointerDown(event, node)}
               onResizePointerDown={(event, handle) => handleResizePointerDown(event, node, handle)}
               onDoubleClick={(event) => {

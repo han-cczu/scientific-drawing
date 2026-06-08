@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import sharp from "sharp";
 import { logger } from "../logger";
-import { readAiRuntimeConfig, resolveOpenAiCompatibleUrls } from "./aiProviderConfig";
+import { MAX_AI_RESPONSE_BYTES, readAiRuntimeConfig, readJsonWithLimit, resolveOpenAiCompatibleUrls } from "./aiProviderConfig";
 import { buildServerReconstructionPrompt, type ReconstructionMode } from "./reconstructionPrompt";
 
 type ReconstructInput = {
@@ -131,9 +131,9 @@ export async function reconstructWithOpenAI(input: ReconstructInput): Promise<Re
   // 2.2 处理错误响应（网关 5xx 可能返回 HTML，非 JSON 一律 UPSTREAM）
   let payload: Record<string, unknown>;
   try {
-    payload = await response.json() as Record<string, unknown>;
+    payload = await readJsonWithLimit(response, MAX_AI_RESPONSE_BYTES) as Record<string, unknown>;
   } catch {
-    throw new ReconstructError("UPSTREAM", `模型服务返回非 JSON 响应（HTTP ${response.status}）。`);
+    throw new ReconstructError("UPSTREAM", `模型服务返回非 JSON 响应或响应过大（HTTP ${response.status}）。`);
   }
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {

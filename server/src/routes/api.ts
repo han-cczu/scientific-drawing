@@ -99,7 +99,58 @@ const uploadImage: express.RequestHandler = (req, res, next) => {
   });
 };
 
+export const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+export function isAllowedMutationOrigin(originOrReferer: string, hostHeader: string): boolean {
+  /*
+   * ========================================================================
+   * 步骤1：判定状态变更请求来源是否可信（CSRF 纵深防御）
+   * ========================================================================
+   * 目标：
+   *   1) 无 Origin/Referer：非浏览器客户端（curl/CLI/服务端），CSRF 必经浏览器，放行
+   *   2) Origin 为本机回环（含 dev 的 localhost:5173 跨端口）或与 Host 同主机：放行
+   *   3) 其余跨站来源（如 evil.com）：拒绝。与“同源、不开 CORS”决策正交，不重新引入 cors()
+   */
+  if (!originOrReferer) {
+    return true;
+  }
+  let originHostname: string;
+  try {
+    originHostname = new URL(originOrReferer).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    return false;
+  }
+  if (LOOPBACK_HOSTS.has(originHostname)) {
+    return true;
+  }
+  const hostHostname = hostHeader.replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
+  return Boolean(hostHostname) && originHostname === hostHostname;
+}
+
+const csrfGuard: express.RequestHandler = (req, res, next) => {
+  // 仅拦截状态变更方法；GET/HEAD/OPTIONS 为安全方法，放行
+  const method = req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    next();
+    return;
+  }
+  const source =
+    (typeof req.headers.origin === "string" && req.headers.origin) ||
+    (typeof req.headers.referer === "string" && req.headers.referer) ||
+    "";
+  const hostHeader = typeof req.headers.host === "string" ? req.headers.host : "";
+  if (isAllowedMutationOrigin(source, hostHeader)) {
+    next();
+    return;
+  }
+  logger.warn("拒绝跨站状态变更请求", { method, path: req.path, origin: req.headers.origin, host: hostHeader });
+  res.status(403).json({ error: "Cross-site request blocked." });
+};
+
 export const apiRouter = express.Router();
+
+// CSRF 纵深防御：所有状态变更请求先过来源校验（在路由注册前挂载）
+apiRouter.use(csrfGuard);
 
 apiRouter.get("/health", (_req, res) => {
   // 纯本地存活探针：不触发任何出站请求，供 Docker/compose 健康检查使用，

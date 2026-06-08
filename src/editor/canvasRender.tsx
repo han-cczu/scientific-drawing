@@ -3,9 +3,11 @@ import type { SceneEdge, SceneNode } from "../shared/scene";
 import { ResizeHandles } from "./canvasHandles";
 import type { ResizeHandle } from "./sceneOps";
 
-export function NodeView({ node, selected, onPointerDown, onResizePointerDown, onDoubleClick }: {
+export function NodeView({ node, selected, scale, onPointerDown, onResizePointerDown, onDoubleClick }: {
   node: SceneNode;
   selected: boolean;
+  /** 当前视图缩放：传给手柄做屏幕恒定尺寸反补偿 */
+  scale: number;
   onPointerDown: (event: React.PointerEvent<SVGGElement>) => void;
   onResizePointerDown: (event: React.PointerEvent<SVGElement>, handle: ResizeHandle) => void;
   /** 双击进入文本/属性编辑（可选，由 Canvas 传入） */
@@ -37,7 +39,7 @@ export function NodeView({ node, selected, onPointerDown, onResizePointerDown, o
         vectorEffect="non-scaling-stroke"
         pointerEvents="none"
       />
-      <ResizeHandles node={node} onPointerDown={onResizePointerDown} />
+      <ResizeHandles node={node} scale={scale} onPointerDown={onResizePointerDown} />
     </>
   ) : null;
 
