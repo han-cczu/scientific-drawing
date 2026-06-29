@@ -52,4 +52,31 @@ describe("api scene persistence pipeline", () => {
     assert.equal(repairedNode?.w, 40);
     assert.equal(result.scene.edges.length, 0);
   });
+
+  it("avoids source-image id collisions when adding the replica base layer", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证复刻底图 id 避让
+     * ========================================================================
+     * 目标：
+     *   1) AI 输出可能已经包含 id=source-image 的可编辑节点
+     *   2) 写盘管线补锁定底图时不能制造重复 node id
+     */
+
+    // 1.1 构造已有 source-image 普通节点的可修复 scene
+    const scene = invalidButRepairableScene();
+    scene.nodes[0].id = "source-image";
+
+    // 1.2 写盘前修复应成功，并生成唯一底图 id
+    const result = repairAndValidateSceneForPersistence(scene, {
+      id: "scene-1",
+      sourceUrl: "/uploads/a.png"
+    });
+
+    assert.equal(result.ok, true);
+    const ids = result.scene.nodes.map((node) => node.id);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.equal(result.scene.nodes[0].type, "image");
+    assert.equal(result.scene.nodes[0].source, "/uploads/a.png");
+  });
 });

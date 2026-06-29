@@ -1120,7 +1120,7 @@ export function ensureReplicaBaseLayer(scene: Scene, sourceUrl: string) {
 
   // 1.2 插入锁定底图
   scene.nodes.unshift({
-    id: "source-image",
+    id: uniqueReplicaBaseLayerId(scene),
     type: "image",
     x: 0,
     y: 0,
@@ -1134,4 +1134,15 @@ export function ensureReplicaBaseLayer(scene: Scene, sourceUrl: string) {
   });
 
   logger.info("补充复刻底图完成", { nodes: scene.nodes.length });
+}
+
+function uniqueReplicaBaseLayerId(scene: Scene) {
+  const usedIds = new Set(scene.nodes.map((node) => node.id));
+  let candidate = "source-image";
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `source-image-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
 }
