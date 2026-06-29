@@ -130,11 +130,14 @@ export async function reconstructWithOpenAI(input: ReconstructInput): Promise<Re
   }
 
   // 2.2 处理错误响应（网关 5xx 可能返回 HTML，非 JSON 一律 UPSTREAM）
-  let payload: Record<string, unknown>;
+  let payload: unknown;
   try {
-    payload = await readJsonWithLimit(response, MAX_AI_RESPONSE_BYTES) as Record<string, unknown>;
+    payload = await readJsonWithLimit(response, MAX_AI_RESPONSE_BYTES);
   } catch {
     throw new ReconstructError("UPSTREAM", `模型服务返回非 JSON 响应或响应过大（HTTP ${response.status}）。`);
+  }
+  if (!isRecord(payload)) {
+    throw new ReconstructError("BAD_MODEL_OUTPUT", "OpenAI response payload was not an object.", "建议更换模型或检查 Base URL");
   }
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {

@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import sharp from "sharp";
 import { toReconstructEnvelope } from "../server/src/routes/api";
-import { ReconstructError, RECONSTRUCT_TIMEOUT_MS } from "../server/src/scene/reconstructWithOpenAI";
+import { ReconstructError, reconstructWithOpenAI, RECONSTRUCT_TIMEOUT_MS } from "../server/src/scene/reconstructWithOpenAI";
 
 describe("reconstruct error envelope", () => {
   it("maps typed reconstruct errors to HTTP status and envelope", () => {
@@ -80,3 +84,66 @@ describe("reconstruct error envelope", () => {
     assert.equal(RECONSTRUCT_TIMEOUT_MS, 120_000);
   });
 });
+
+describe("reconstruct upstream payload parsing", () => {
+  it("classifies non-object success payloads as bad model output", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证成功 HTTP 响应的 payload 结构边界
+     * ========================================================================
+     * 目标：
+     *   1) OpenAI-compatible 网关返回 200 但 body 不是对象时，不应泄漏普通 TypeError
+     *   2) 这类协议/模型输出异常应归入 BAD_MODEL_OUTPUT，供路由返回 502 可恢复信封
+     */
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "reconstruct-payload-"));
+    const imagePath = path.join(tmpDir, "tiny.png");
+    const originalFetch = globalThis.fetch;
+    const originalEnv = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+      OPENAI_RECONSTRUCT_MODEL: process.env.OPENAI_RECONSTRUCT_MODEL
+    };
+
+    try {
+      await sharp({
+        create: {
+          width: 1,
+          height: 1,
+          channels: 3,
+          background: "#ffffff"
+        }
+      }).png().toFile(imagePath);
+
+      process.env.OPENAI_API_KEY = "sk-test";
+      process.env.OPENAI_BASE_URL = "https://gateway.example.com/v1";
+      process.env.OPENAI_RECONSTRUCT_MODEL = "gpt-test";
+      globalThis.fetch = (async () => new Response("null", {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })) as typeof fetch;
+
+      await assert.rejects(
+        () => reconstructWithOpenAI({ imagePath, mimeType: "image/png", mode: "color" }),
+        (error) => {
+          assert.ok(error instanceof ReconstructError);
+          assert.equal(error.code, "BAD_MODEL_OUTPUT");
+          return true;
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnvVar("OPENAI_API_KEY", originalEnv.OPENAI_API_KEY);
+      restoreEnvVar("OPENAI_BASE_URL", originalEnv.OPENAI_BASE_URL);
+      restoreEnvVar("OPENAI_RECONSTRUCT_MODEL", originalEnv.OPENAI_RECONSTRUCT_MODEL);
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+function restoreEnvVar(name: "OPENAI_API_KEY" | "OPENAI_BASE_URL" | "OPENAI_RECONSTRUCT_MODEL", value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
