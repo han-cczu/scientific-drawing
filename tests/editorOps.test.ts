@@ -1,8 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolveEndpoint } from "../src/shared/geometry";
-import { createEdgeBetweenNodes, duplicateNode, moveNodeLayer, moveNodes, normalizeBox, removeNode, resizeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked } from "../src/editor/sceneOps";
+import { createEdgeBetweenNodes, duplicateNode, moveNodeLayer, moveNodes, normalizeBox, removeNode, resizeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked, updateNode, updateNodeStyle } from "../src/editor/sceneOps";
 import type { Scene } from "../src/shared/scene";
+import { MAX_GEOMETRY_COORDINATE, MAX_NODE_SIZE, MAX_STYLE_FONT_SIZE, MAX_STYLE_STROKE_WIDTH, MAX_TEXT_LENGTH, validateScene } from "../src/shared/sceneValidation";
 
 function editorScene(): Scene {
   /*
@@ -171,6 +172,61 @@ describe("editor scene operations", () => {
     const node = locked.nodes.find((item) => item.id === "a");
     assert.equal(node?.hidden, true);
     assert.equal(node?.locked, true);
+  });
+
+  it("keeps manual edit operations within the shared scene schema", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证编辑器手动输入不会写出非法 scene
+     * ========================================================================
+     * 目标：
+     *   1) 属性面板输入的几何和文本需要钳到共享 schema 上界
+     *   2) 样式面板输入的线宽和字号需要钳到共享 schema 上界
+     *   3) 拖拽移动、缩放和线条端点调整不能绕过同一上界
+     */
+
+    // 1.1 模拟属性/样式面板写入超界值
+    let scene = updateNode(editorScene(), "a", {
+      x: MAX_GEOMETRY_COORDINATE + 100,
+      y: -MAX_GEOMETRY_COORDINATE - 100,
+      w: MAX_NODE_SIZE + 100,
+      h: MAX_NODE_SIZE + 100,
+      text: "x".repeat(MAX_TEXT_LENGTH + 100)
+    });
+    scene = updateNodeStyle(scene, "a", {
+      strokeWidth: MAX_STYLE_STROKE_WIDTH + 100,
+      fontSize: MAX_STYLE_FONT_SIZE + 100
+    });
+
+    // 1.2 编辑后的 scene 仍应可持久化/导出
+    const node = scene.nodes.find((item) => item.id === "a");
+    assert.equal(node?.x, MAX_GEOMETRY_COORDINATE);
+    assert.equal(node?.y, -MAX_GEOMETRY_COORDINATE);
+    assert.equal(node?.w, MAX_NODE_SIZE);
+    assert.equal(node?.h, MAX_NODE_SIZE);
+    assert.equal(node?.text?.length, MAX_TEXT_LENGTH);
+    assert.equal(node?.style.strokeWidth, MAX_STYLE_STROKE_WIDTH);
+    assert.equal(node?.style.fontSize, MAX_STYLE_FONT_SIZE);
+    assert.equal(validateScene(scene).ok, true);
+
+    // 1.3 画布拖拽入口同样不能写出非法几何
+    const moved = moveNodes(editorScene(), ["a"], MAX_GEOMETRY_COORDINATE * 2, -MAX_GEOMETRY_COORDINATE * 2);
+    const movedNode = moved.nodes.find((item) => item.id === "a");
+    assert.equal(movedNode?.x, MAX_GEOMETRY_COORDINATE);
+    assert.equal(movedNode?.y, -MAX_GEOMETRY_COORDINATE);
+    assert.equal(validateScene(moved).ok, true);
+
+    // 1.4 缩放和线条端点入口也需要收敛到共享 schema
+    const resized = resizeNode(editorScene(), "a", { x: 0, y: 0, w: MAX_NODE_SIZE + 100, h: MAX_NODE_SIZE + 100 });
+    const resizedNode = resized.nodes.find((item) => item.id === "a");
+    assert.equal(resizedNode?.w, MAX_NODE_SIZE);
+    assert.equal(resizedNode?.h, MAX_NODE_SIZE);
+    assert.equal(validateScene(resized).ok, true);
+
+    const lineResized = resizeNodeFromHandle(editorScene(), "line", "line-end", { x: 70, y: 140, w: 80, h: 0 }, MAX_GEOMETRY_COORDINATE * 2, 0);
+    const lineNode = lineResized.nodes.find((item) => item.id === "line");
+    assert.equal(lineNode?.points?.[1]?.x, MAX_GEOMETRY_COORDINATE);
+    assert.equal(validateScene(lineResized).ok, true);
   });
 
   it("moves nodes through layer order without moving locked base below top constraints", () => {

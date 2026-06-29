@@ -1,7 +1,14 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
-import { endpointReferencesNode } from "../shared/geometry";
-import type { Scene, SceneEdge, SceneNode, SceneNodeType } from "../shared/scene";
+import { clampNumber, endpointReferencesNode } from "../shared/geometry";
+import type { Scene, SceneEdge, SceneNode, SceneNodeType, SceneStyle } from "../shared/scene";
+import {
+  MAX_GEOMETRY_COORDINATE,
+  MAX_NODE_SIZE,
+  MAX_STYLE_FONT_SIZE,
+  MAX_STYLE_STROKE_WIDTH,
+  MAX_TEXT_LENGTH
+} from "../shared/sceneValidation";
 
 export type SceneBox = {
   x: number;
@@ -119,7 +126,7 @@ export function updateNode(scene: Scene, nodeId: string, patch: Partial<SceneNod
   logger.info("开始更新节点...", { nodeId });
 
   // 1.1 替换目标节点
-  const nodes = scene.nodes.map((node) => node.id === nodeId ? { ...node, ...patch } : node);
+  const nodes = scene.nodes.map((node) => node.id === nodeId ? sanitizeNode({ ...node, ...patch }) : node);
 
   // 1.2 返回新场景
   const next = { ...scene, nodes };
@@ -140,7 +147,7 @@ export function updateNodeStyle(scene: Scene, nodeId: string, patch: SceneNode["
 
   // 1.1 合并样式
   const nodes = scene.nodes.map((node) => node.id === nodeId
-    ? { ...node, style: { ...node.style, ...patch } }
+    ? sanitizeNode({ ...node, style: sanitizeStyle({ ...node.style, ...patch }) })
     : node);
 
   // 1.2 返回新场景
@@ -170,13 +177,13 @@ export function moveNodes(scene: Scene, nodeIds: string[], dx: number, dy: numbe
     }
     const moved: SceneNode = {
       ...node,
-      x: node.x + dx,
-      y: node.y + dy
+      x: coordinate(node.x + dx),
+      y: coordinate(node.y + dy)
     };
     if (node.points?.length) {
-      moved.points = node.points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+      moved.points = node.points.map((point) => ({ x: coordinate(point.x + dx), y: coordinate(point.y + dy) }));
     }
-    return moved;
+    return sanitizeNode(moved);
   });
 
   logger.info("批量移动节点完成", { count: nodeIds.length });
@@ -197,10 +204,10 @@ export function resizeNode(scene: Scene, nodeId: string, nextBox: SceneBox): Sce
   // 1.1 归一化目标盒子
   const box = normalizeBox(nextBox);
   const clamped = {
-    x: box.x,
-    y: box.y,
-    w: Math.max(MIN_NODE_SIZE, box.w),
-    h: Math.max(MIN_NODE_SIZE, box.h)
+    x: coordinate(box.x),
+    y: coordinate(box.y),
+    w: positiveSize(Math.max(MIN_NODE_SIZE, box.w)),
+    h: nonNegativeSize(Math.max(MIN_NODE_SIZE, box.h))
   };
 
   // 1.2 更新目标节点
@@ -208,7 +215,7 @@ export function resizeNode(scene: Scene, nodeId: string, nextBox: SceneBox): Sce
     if (node.id !== nodeId || node.locked || node.hidden) {
       return node;
     }
-    return { ...node, ...clamped };
+    return sanitizeNode({ ...node, ...clamped });
   });
 
   logger.info("调整节点尺寸完成", { nodeId, width: clamped.w, height: clamped.h });
@@ -237,7 +244,7 @@ export function resizeNodeFromHandle(scene: Scene, nodeId: string, handle: Resiz
   if ((node.type === "line" || node.type === "arrow") && (handle === "line-start" || handle === "line-end")) {
     const points = resizeLinePoints(node, handle, dx, dy);
     const box = boxFromPoints(points);
-    const nodes = scene.nodes.map((item) => item.id === nodeId ? { ...item, ...box, points } : item);
+    const nodes = scene.nodes.map((item) => item.id === nodeId ? sanitizeNode({ ...item, ...box, points }) : item);
     logger.info("按手柄调整节点完成", { nodeId, handle });
     return { ...scene, nodes };
   }
@@ -384,7 +391,7 @@ export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {
     y: source.y + 18,
     locked: false,
     style: { ...source.style },
-    points: source.points?.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
+    points: source.points?.map((point) => ({ x: coordinate(point.x + 18), y: coordinate(point.y + 18) })),
     cells: source.cells?.map((cell) => ({ ...cell })),
     rowColors: source.rowColors ? [...source.rowColors] : undefined,
     columnShades: source.columnShades ? [...source.columnShades] : undefined,
@@ -392,7 +399,7 @@ export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {
   };
 
   logger.info("复制节点完成", { nodeId, copyId: copy.id });
-  return copy;
+  return sanitizeNode(copy);
 }
 
 export function setNodeHidden(scene: Scene, nodeId: string, hidden: boolean): Scene {
@@ -575,7 +582,7 @@ function resizeLinePoints(node: SceneNode, handle: ResizeHandle, dx: number, dy:
   const targetIndex = handle === "line-start" ? 0 : points.length - 1;
 
   // 1.2 移动目标端点
-  points[targetIndex] = { x: points[targetIndex].x + dx, y: points[targetIndex].y + dy };
+  points[targetIndex] = { x: coordinate(points[targetIndex].x + dx), y: coordinate(points[targetIndex].y + dy) };
 
   logger.info("调整线条端点完成", { nodeId: node.id, handle });
   return points;
@@ -622,4 +629,75 @@ function boxesIntersect(a: SceneBox, b: SceneBox) {
 
   logger.info("判断矩形相交完成", { result });
   return result;
+}
+
+function sanitizeNode(node: SceneNode): SceneNode {
+  /*
+   * ========================================================================
+   * 步骤1：收敛编辑器写入的节点
+   * ========================================================================
+   * 目标：
+   *   1) 防止属性面板、排列、拖拽和复制写出 validateScene 拒绝的几何/文本
+   *   2) 保持编辑入口和共享 scene schema 的边界一致
+   */
+  const next: SceneNode = {
+    ...node,
+    x: coordinate(node.x),
+    y: coordinate(node.y),
+    w: positiveSize(node.w),
+    h: nonNegativeSize(node.h),
+    style: sanitizeStyle(node.style)
+  };
+  if (node.text !== undefined) {
+    next.text = truncateText(node.text);
+  }
+  if (node.symbol !== undefined) {
+    next.symbol = truncateText(node.symbol);
+  }
+  if (node.points !== undefined) {
+    next.points = node.points.map((point) => ({ x: coordinate(point.x), y: coordinate(point.y) }));
+  }
+  return next;
+}
+
+function sanitizeStyle(style: SceneStyle): SceneStyle {
+  const next = { ...style };
+  if (style.strokeWidth !== undefined) {
+    next.strokeWidth = strokeWidth(style.strokeWidth);
+  }
+  if (style.fontSize !== undefined) {
+    next.fontSize = fontSize(style.fontSize);
+  }
+  return next;
+}
+
+function coordinate(value: number) {
+  return clampNumber(finite(value, 0), -MAX_GEOMETRY_COORDINATE, MAX_GEOMETRY_COORDINATE);
+}
+
+function positiveSize(value: number) {
+  const numeric = finite(value, MIN_NODE_SIZE);
+  return clampNumber(numeric > 0 ? numeric : MIN_NODE_SIZE, 1, MAX_NODE_SIZE);
+}
+
+function nonNegativeSize(value: number) {
+  const numeric = finite(value, 0);
+  return clampNumber(numeric >= 0 ? numeric : 0, 0, MAX_NODE_SIZE);
+}
+
+function strokeWidth(value: number) {
+  return clampNumber(finite(value, 0), 0, MAX_STYLE_STROKE_WIDTH);
+}
+
+function fontSize(value: number) {
+  const numeric = finite(value, 16);
+  return clampNumber(numeric > 0 ? numeric : 16, 1, MAX_STYLE_FONT_SIZE);
+}
+
+function finite(value: number, fallback: number) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function truncateText(value: string | undefined) {
+  return typeof value === "string" ? value.slice(0, MAX_TEXT_LENGTH) : undefined;
 }
