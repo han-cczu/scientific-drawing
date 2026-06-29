@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
+import { MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -402,6 +402,46 @@ describe("scene repair", () => {
     // 1.2 修复后 tickPositions 被钳制且 scene 合法
     const repaired = repairScene(scene);
     assert.equal(repaired.nodes[0].tickPositions?.length, MAX_TICK_POSITIONS);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps oversized row color and column shade arrays so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证网格行/列辅助数组修复规模上界
+     * ========================================================================
+     * 目标：
+     *   1) repairScene 需要把 AI 输出的超长 rowColors/columnShades 钳到网格维度上界
+     *   2) 修复后的 scene 仍应通过 validateScene
+     */
+
+    // 1.1 构造包含超长 rowColors/columnShades 的 grid 节点
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        {
+          id: "g",
+          type: "grid",
+          x: 0,
+          y: 0,
+          w: 50,
+          h: 50,
+          rows: 1,
+          cols: 1,
+          rowColors: Array.from({ length: MAX_GRID_DIMENSION + 10 }, () => "#abc"),
+          columnShades: Array.from({ length: MAX_GRID_DIMENSION + 10 }, () => 0.25),
+          style: {}
+        }
+      ],
+      edges: []
+    } as unknown as Scene;
+
+    // 1.2 修复后辅助数组被钳制且 scene 合法
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes[0].rowColors?.length, MAX_GRID_DIMENSION);
+    assert.equal(repaired.nodes[0].columnShades?.length, MAX_GRID_DIMENSION);
     assert.equal(validateScene(repaired).ok, true);
   });
 

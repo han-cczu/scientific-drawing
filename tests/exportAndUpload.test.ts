@@ -8,6 +8,7 @@ import { shadeColor } from "../src/shared/geometry";
 import type { Scene } from "../src/shared/scene";
 import {
   MAX_GRID_CELLS,
+  MAX_GRID_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
@@ -519,6 +520,45 @@ describe("visiomaster adapter", () => {
     const grid = scene.nodes[0];
     assert.equal(grid.cells?.length, MAX_GRID_CELLS);
     assert.equal(grid.cells?.[0]?.text, undefined);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("clamps grid row colors and column shades before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 网格行/列辅助数组规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身裁剪超长 row_colors
+     *   2) normalizeImportedScene 自身裁剪超长 column_shades
+     */
+
+    // 1.1 构造超长行颜色和列阴影数组
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "grid",
+          type: "grid_matrix",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          rows: 1,
+          cols: 1,
+          row_colors: Array.from({ length: MAX_GRID_DIMENSION + 10 }, () => "#ABC"),
+          column_shades: Array.from({ length: MAX_GRID_DIMENSION + 10 }, () => 0.25),
+          style: {}
+        }
+      ],
+      edges: []
+    });
+
+    // 1.2 适配结果已符合共享校验上界
+    const grid = scene.nodes[0];
+    assert.equal(grid.rowColors?.length, MAX_GRID_DIMENSION);
+    assert.equal(grid.columnShades?.length, MAX_GRID_DIMENSION);
     assert.equal(validateScene(scene).ok, true);
   });
 

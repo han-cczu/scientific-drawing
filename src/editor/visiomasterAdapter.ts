@@ -135,8 +135,8 @@ function convertVisiomasterNode(node: AnyRecord): SceneNode {
     symbol: stringOptional(node.symbol),
     rows: intOptional(node.rows),
     cols: intOptional(node.cols ?? node.columns),
-    rowColors: stringArray(node.row_colors),
-    columnShades: numberArray(node.column_shades),
+    rowColors: stringArray(node.row_colors, MAX_GRID_DIMENSION),
+    columnShades: numberArray(node.column_shades, MAX_GRID_DIMENSION),
     cells: cellArray(node.colored_cells ?? node.cells, node.cell_labels ?? node.labels),
     orientation: orientationValue(node.orientation),
     tickPositions: numberArray(node.tick_positions, MAX_TICK_POSITIONS),
@@ -285,14 +285,15 @@ function intOptional(value: unknown) {
   return Math.min(MAX_GRID_DIMENSION, Math.max(1, Math.round(value)));
 }
 
-function stringArray(value: unknown) {
+function stringArray(value: unknown, maxItems?: number) {
   if (!Array.isArray(value)) {
     return undefined;
   }
   const colors = value
     .filter((item): item is string => typeof item === "string")
     .map((item) => safeColor(item, "#FFFFFF"));
-  return colors.length > 0 ? colors : undefined;
+  const result = maxItems === undefined ? colors : colors.slice(0, maxItems);
+  return result.length > 0 ? result : undefined;
 }
 
 function numberArray(value: unknown, maxItems?: number) {

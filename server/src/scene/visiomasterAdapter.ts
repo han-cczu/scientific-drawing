@@ -1,5 +1,5 @@
 import { resolveEndpoint } from "@shared/geometry";
-import { MAX_GRID_CELLS, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
+import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
 type AnyRecord = Record<string, unknown>;
@@ -80,8 +80,8 @@ function convertNode(node: AnyRecord): SceneNode {
     symbol: stringOptional(node.symbol),
     rows: intOptional(node.rows),
     cols: intOptional(node.cols ?? node.columns),
-    rowColors: stringArray(node.row_colors),
-    columnShades: numberArray(node.column_shades),
+    rowColors: stringArray(node.row_colors, MAX_GRID_DIMENSION),
+    columnShades: numberArray(node.column_shades, MAX_GRID_DIMENSION),
     cells: cellArray(node.colored_cells ?? node.cells, node.cell_labels ?? node.labels),
     orientation: orientationValue(node.orientation),
     tickPositions: numberArray(node.tick_positions, MAX_TICK_POSITIONS),
@@ -192,8 +192,9 @@ function intOptional(value: unknown) {
   return typeof value === "number" ? Math.max(1, Math.round(value)) : undefined;
 }
 
-function stringArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
+function stringArray(value: unknown, maxItems?: number) {
+  const strings = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
+  return maxItems === undefined ? strings : strings?.slice(0, maxItems);
 }
 
 function numberArray(value: unknown, maxItems?: number) {

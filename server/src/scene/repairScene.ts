@@ -130,9 +130,11 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
     : undefined;
   repaired.rowColors = Array.isArray(node.rowColors)
     ? node.rowColors.flatMap((color) => typeof color === "string" ? [safeColor(color, "#FFFFFF")] : [])
+      .slice(0, MAX_GRID_DIMENSION)
     : undefined;
   repaired.columnShades = Array.isArray(node.columnShades)
     ? node.columnShades.filter((shade): shade is number => typeof shade === "number" && Number.isFinite(shade))
+      .slice(0, MAX_GRID_DIMENSION)
     : undefined;
   repaired.tickPositions = Array.isArray(node.tickPositions)
     ? node.tickPositions.filter((tick): tick is number => typeof tick === "number" && Number.isFinite(tick))

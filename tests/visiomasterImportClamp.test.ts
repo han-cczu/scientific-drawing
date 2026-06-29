@@ -109,6 +109,46 @@ describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", (
     assert.equal(validateScene(scene).ok, true);
   });
 
+  it("钳制 Visiomaster row_colors 和 column_shades，避免前端导入保留无效尾部", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端 Visiomaster 网格行/列辅助数组规模上界
+     * ========================================================================
+     * 目标：
+     *   1) row_colors 最多保留 MAX_GRID_DIMENSION 项
+     *   2) column_shades 最多保留 MAX_GRID_DIMENSION 项
+     */
+
+    // 1.1 构造超长行颜色和列阴影数组
+    const input = {
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "grid",
+          type: "grid_matrix",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          rows: 1,
+          cols: 1,
+          row_colors: Array.from({ length: MAX_GRID_DIMENSION + 10 }, () => "#ABC"),
+          column_shades: Array.from({ length: MAX_GRID_DIMENSION + 10 }, () => 0.25),
+          style: {}
+        }
+      ],
+      edges: []
+    };
+
+    // 1.2 导入后裁剪并通过校验
+    const scene = normalizeImportedScene(input);
+    const grid = scene.nodes.find((node) => node.id === "grid");
+    assert.equal(grid?.rowColors?.length, MAX_GRID_DIMENSION);
+    assert.equal(grid?.columnShades?.length, MAX_GRID_DIMENSION);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
   it("清洗 Visiomaster 样式颜色，避免命名色导致前端导入失败", () => {
     /*
      * ========================================================================

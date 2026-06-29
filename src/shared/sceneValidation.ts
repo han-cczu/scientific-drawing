@@ -265,11 +265,17 @@ function validateNodeCollections(node: SceneNode, path: string, issues: Validati
   if (node.rowColors !== undefined) {
     validateStringArray(node.rowColors, `${path}.rowColors`, "invalid_row_colors", issues);
     if (Array.isArray(node.rowColors)) {
+      if (node.rowColors.length > MAX_GRID_DIMENSION) {
+        addIssue(issues, `${path}.rowColors`, "too_many_row_colors", `Row colors must not exceed ${MAX_GRID_DIMENSION}.`);
+      }
       node.rowColors.forEach((color, index) => validateColor(color, `${path}.rowColors[${index}]`, issues, "#FFFFFF"));
     }
   }
   if (node.columnShades !== undefined) {
     validateNumberArray(node.columnShades, `${path}.columnShades`, "invalid_column_shades", issues);
+    if (Array.isArray(node.columnShades) && node.columnShades.length > MAX_GRID_DIMENSION) {
+      addIssue(issues, `${path}.columnShades`, "too_many_column_shades", `Column shades must not exceed ${MAX_GRID_DIMENSION}.`);
+    }
   }
   if (node.orientation !== undefined && !["left", "right", "up", "down"].includes(node.orientation)) {
     addIssue(issues, `${path}.orientation`, "invalid_node_orientation", "Orientation must be left, right, up, or down.");

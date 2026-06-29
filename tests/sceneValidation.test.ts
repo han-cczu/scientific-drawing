@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   assertScene,
+  MAX_GRID_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
@@ -341,6 +342,42 @@ describe("scene validation", () => {
     const result = validateScene(scene);
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].tickPositions" && issue.code === "too_many_tick_positions"));
+  });
+
+  it("rejects oversized grid row color and column shade arrays", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证网格行/列辅助数组规模上界
+     * ========================================================================
+     * 目标：
+     *   1) rowColors 实际最多按 MAX_GRID_DIMENSION 行取模使用
+     *   2) columnShades 实际最多按 MAX_GRID_DIMENSION 列索引使用
+     */
+
+    // 1.1 构造超过网格维度上界的辅助数组
+    const scene = validScene();
+    scene.edges = [];
+    scene.nodes = [
+      {
+        id: "g",
+        type: "grid",
+        x: 0,
+        y: 0,
+        w: 100,
+        h: 100,
+        rows: 1,
+        cols: 1,
+        rowColors: Array.from({ length: MAX_GRID_DIMENSION + 1 }, () => "#FFFFFF"),
+        columnShades: Array.from({ length: MAX_GRID_DIMENSION + 1 }, () => 0),
+        style: {}
+      }
+    ];
+
+    // 1.2 校验层应返回结构化规模错误
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].rowColors" && issue.code === "too_many_row_colors"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].columnShades" && issue.code === "too_many_column_shades"));
   });
 
   it("rejects invalid optional node fields used by renderers and exporters", () => {
