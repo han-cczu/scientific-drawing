@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CUSTOM_PRESET_LIMIT, CUSTOM_PRESETS_KEY, loadCustomPresets, saveCustomPreset } from "../src/lib/customStyles";
+import {
+  CUSTOM_PRESET_LIMIT,
+  CUSTOM_PRESETS_BACKUP_KEY,
+  CUSTOM_PRESETS_KEY,
+  loadCustomPresets,
+  saveCustomPreset
+} from "../src/lib/customStyles";
 
 function withMockLocalStorage<T>(mockStorage: Storage, callback: () => T): T {
   const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -16,11 +22,14 @@ function withMockLocalStorage<T>(mockStorage: Storage, callback: () => T): T {
   }
 }
 
-function mapStorage(backing: Map<string, string>, options?: { failRealKey?: () => boolean }): Storage {
+function mapStorage(backing: Map<string, string>, options?: { failRealKey?: () => boolean; failBackupKey?: () => boolean }): Storage {
   return {
     getItem: (key: string) => backing.get(key) ?? null,
     setItem: (key: string, value: string) => {
       if (options?.failRealKey?.() && key === CUSTOM_PRESETS_KEY) {
+        throw new Error("QuotaExceededError");
+      }
+      if (options?.failBackupKey?.() && key === CUSTOM_PRESETS_BACKUP_KEY) {
         throw new Error("QuotaExceededError");
       }
       backing.set(key, value);
@@ -111,6 +120,30 @@ describe("自定义样式 localStorage 配额满回退一致性", () => {
     const result = withMockLocalStorage(mapStorage(backing), () => saveCustomPreset("url(javascript:alert(1))", "#00FF00"));
     assert.equal(result, null);
     assert.equal(backing.has(CUSTOM_PRESETS_KEY), false);
+  });
+
+  it("损坏预设即使备份失败也会清空主 key", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证损坏预设清理不依赖备份成功
+     * ========================================================================
+     * 目标：
+     *   1) localStorage 配额满时 backup key 写入可能失败
+     *   2) 主 customStyles key 仍必须被删除，避免每次读取反复解析坏数据
+     */
+
+    // 1.1 构造损坏 JSON，并模拟 backup key 写入失败
+    const backing = new Map<string, string>();
+    backing.set(CUSTOM_PRESETS_KEY, "{not-json");
+
+    // 1.2 读取失败后仍应清理主 key
+    const loaded = withMockLocalStorage(
+      mapStorage(backing, { failBackupKey: () => true }),
+      () => loadCustomPresets()
+    );
+    assert.deepEqual(loaded, []);
+    assert.equal(backing.has(CUSTOM_PRESETS_KEY), false);
+    assert.equal(backing.has(CUSTOM_PRESETS_BACKUP_KEY), false);
   });
 
   it("配额满写入回退内存后，读取仍能取回（不静默丢数据）", () => {

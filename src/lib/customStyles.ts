@@ -111,9 +111,13 @@ function readFromStorage(): StoredPreset[] {
       if (raw) {
         globalThis.localStorage.setItem(CUSTOM_PRESETS_BACKUP_KEY, raw);
       }
+    } catch {
+      // 备份失败不影响主数据清理
+    }
+    try {
       globalThis.localStorage.removeItem(CUSTOM_PRESETS_KEY);
     } catch {
-      // 备份失败也不影响主流程
+      // 清理失败不影响主流程
     }
     console.warn("[customStyles] 自定义预设 JSON 损坏，已备份并清空", err);
     return [];
