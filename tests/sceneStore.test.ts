@@ -1,6 +1,12 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 import type { Scene } from "../src/shared/scene";
+import {
+  MAX_PAGE_DIMENSION,
+  MAX_STYLE_FONT_SIZE,
+  MAX_STYLE_STROKE_WIDTH,
+  validateScene
+} from "../src/shared/sceneValidation";
 
 /*
  * ============================================================================
@@ -122,6 +128,37 @@ describe("scene store", () => {
     backing.clear();
     backing.set(store.SCENE_STORE_KEY, JSON.stringify({ version: 999, scene: validScene(), savedAt: 0 }));
     assert.equal(store.loadStoredScene(), null);
+  });
+
+  it("repairs recoverable stored scenes instead of discarding local drafts", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证可修复草稿恢复
+     * ========================================================================
+     * 目标：
+     *   1) schema 收紧后，旧 localStorage 草稿若可修复，不应直接丢弃
+     *   2) 修复后的 scene 需要重新满足 validateScene
+     */
+
+    // 1.1 构造能修复但当前 schema 不接受的旧草稿
+    backing.clear();
+    const scene = validScene();
+    scene.page.width = MAX_PAGE_DIMENSION + 10;
+    scene.nodes[0].style.fill = "red";
+    scene.nodes[0].style.strokeWidth = MAX_STYLE_STROKE_WIDTH + 10;
+    scene.nodes[0].style.fontSize = MAX_STYLE_FONT_SIZE + 10;
+    backing.set(store.SCENE_STORE_KEY, JSON.stringify({ version: 1, scene, savedAt: 0 }));
+
+    // 1.2 恢复时应修复保留，而不是备份清空后返回 null
+    const restored = store.loadStoredScene();
+    assert.ok(restored);
+    assert.equal(restored.page.width, MAX_PAGE_DIMENSION);
+    assert.equal(restored.nodes[0].style.fill, "#FFFFFF");
+    assert.equal(restored.nodes[0].style.strokeWidth, MAX_STYLE_STROKE_WIDTH);
+    assert.equal(restored.nodes[0].style.fontSize, MAX_STYLE_FONT_SIZE);
+    assert.equal(validateScene(restored).ok, true);
+    assert.equal(backing.has(store.SCENE_STORE_KEY), true);
+    assert.equal(backing.has(store.SCENE_STORE_BACKUP_KEY), false);
   });
 
   it("judges persist-worthiness by content, not blank-scene equality", () => {

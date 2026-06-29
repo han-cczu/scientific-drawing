@@ -1,4 +1,5 @@
 import type { Scene } from "../shared/scene";
+import { repairScene } from "../shared/repairScene";
 import { validateScene } from "../shared/sceneValidation";
 
 /*
@@ -129,10 +130,19 @@ export function loadStoredScene(): Scene | null {
     }
     const candidate = (parsed as StoredSchema).scene;
     const validation = validateScene(candidate);
-    if (!validation.ok) {
+    if (validation.ok) {
+      return candidate as Scene;
+    }
+    if (!isRecoverableSceneDraft(candidate)) {
       throw new Error("scene invalid");
     }
-    return candidate as Scene;
+    const repaired = repairScene(candidate as Scene);
+    const repairedValidation = validateScene(repaired);
+    if (!repairedValidation.ok) {
+      throw new Error("scene invalid");
+    }
+    saveStoredScene(repaired);
+    return repaired;
   } catch (err) {
     try {
       globalThis.localStorage.setItem(SCENE_STORE_BACKUP_KEY, raw);
@@ -143,6 +153,20 @@ export function loadStoredScene(): Scene | null {
     console.warn("[sceneStore] 本地场景数据损坏或不兼容，已备份并清空", err);
     return null;
   }
+}
+
+function isRecoverableSceneDraft(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const scene = value as Partial<Scene>;
+  const hasPage = Boolean(scene.page && typeof scene.page === "object" && !Array.isArray(scene.page));
+  const hasMetadata = Boolean(scene.metadata && typeof scene.metadata === "object" && !Array.isArray(scene.metadata));
+  const nodes = scene.nodes;
+  const edges = scene.edges;
+  const hasNodes = Array.isArray(nodes);
+  const hasEdges = Array.isArray(edges);
+  return hasPage && hasMetadata && hasNodes && hasEdges && (nodes.length > 0 || edges.length > 0 || Boolean(scene.metadata?.sourceImage));
 }
 
 export function clearStoredScene(): void {
