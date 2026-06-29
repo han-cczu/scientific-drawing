@@ -92,7 +92,7 @@ async function parseReconstructError(response: Response): Promise<ReconstructApi
    *   2) 网关 HTML（非 JSON）归为 NETWORK
    */
   const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
+  if (!contentType.toLowerCase().includes("application/json")) {
     return new ReconstructApiError("NETWORK", `服务返回异常（HTTP ${response.status}）。`);
   }
   try {
@@ -365,7 +365,7 @@ export async function testAppConfig(payload: WritableAppConfig): Promise<TestCon
 
   // 1.2 即便 400 也是受控响应；但网关 5xx 可能返回 HTML，需先确认是 JSON 再解析
   const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
+  if (!contentType.toLowerCase().includes("application/json")) {
     logger.warn("测试 AI 配置响应非 JSON", { status: response.status });
     return invalidTestConfigResponse(response.status, "服务返回异常");
   }

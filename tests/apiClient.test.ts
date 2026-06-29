@@ -141,6 +141,38 @@ describe("frontend API client", () => {
     );
   });
 
+  it("parses reconstruct error envelopes when JSON Content-Type uses mixed case", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证重建错误响应 Content-Type 大小写兼容
+     * ========================================================================
+     * 目标：
+     *   1) HTTP media type 大小写不敏感
+     *   2) 代理/网关返回 Application/JSON 时仍应保留结构化错误 code/hint
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      error: {
+        code: "INVALID_IMAGE",
+        message: "invalid uploaded image",
+        hint: "upload a PNG or JPEG"
+      }
+    }), {
+      status: 400,
+      headers: { "content-type": "Application/JSON; Charset=UTF-8" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => reconstructImage(new File(["png"], "sample.png", { type: "image/png" }), "color", "gpt-test"),
+      (error: unknown) => {
+        assert.ok(error instanceof ReconstructApiError);
+        assert.equal(error.code, "INVALID_IMAGE");
+        assert.equal(error.message, "invalid uploaded image");
+        assert.equal(error.hint, "upload a PNG or JPEG");
+        return true;
+      }
+    );
+  });
+
   it("rejects malformed region reconstruction responses", async () => {
     /*
      * ========================================================================
@@ -371,6 +403,37 @@ describe("frontend API client", () => {
       assert.equal(result.code, "INVALID_RESPONSE");
       assert.match(result.error, /format|格式|响应/i);
       assert.deepEqual(result.models, []);
+    }
+  });
+
+  it("accepts config test JSON responses when Content-Type uses mixed case", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证配置测试响应 Content-Type 大小写兼容
+     * ========================================================================
+     * 目标：
+     *   1) HTTP media type 大小写不敏感
+     *   2) 正常 JSON 响应不应因 Application/JSON 被误判为 INVALID_RESPONSE
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      ok: true,
+      modelCount: 1,
+      models: ["gpt-test"]
+    }), {
+      status: 200,
+      headers: { "content-type": "Application/JSON; Charset=UTF-8" }
+    })) as typeof fetch;
+
+    const result = await testAppConfig({
+      apiKey: "sk-test",
+      baseUrl: "https://api.example.com",
+      reconstructModel: "gpt-test"
+    });
+
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.modelCount, 1);
+      assert.deepEqual(result.models, ["gpt-test"]);
     }
   });
 
