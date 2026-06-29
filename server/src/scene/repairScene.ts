@@ -173,7 +173,9 @@ function repairEdge(edge: SceneEdge, index: number, idMap: Map<string, string>, 
     to,
     fromPoint: repairPoint(edge.fromPoint),
     toPoint: repairPoint(edge.toPoint),
-    points: edge.points?.map(repairPoint).filter((point): point is { x: number; y: number } => Boolean(point)),
+    points: Array.isArray(edge.points)
+      ? edge.points.map(repairPoint).filter((point): point is { x: number; y: number } => Boolean(point))
+      : undefined,
     style: repairStyle(edge.style)
   };
 }
@@ -217,11 +219,15 @@ function repairEndpoint(endpoint: string | undefined, idMap: Map<string, string>
   return rest ? `${mapped}:${rest}` : mapped;
 }
 
-function repairPoint(point: { x: number; y: number } | undefined) {
-  if (!point) {
+function repairPoint(point: unknown) {
+  if (!point || typeof point !== "object") {
     return undefined;
   }
-  return { x: finite(point.x, 0), y: finite(point.y, 0) };
+  const candidate = point as { x?: unknown; y?: unknown };
+  if (typeof candidate.x !== "number" || typeof candidate.y !== "number") {
+    return undefined;
+  }
+  return { x: finite(candidate.x, 0), y: finite(candidate.y, 0) };
 }
 
 function uniqueId(originalId: string, idMap: Map<string, string>, usedIds: Set<string>) {

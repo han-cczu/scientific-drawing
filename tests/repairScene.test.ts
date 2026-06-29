@@ -252,6 +252,50 @@ describe("scene repair", () => {
     assert.equal(validateScene(repaired).ok, true);
   });
 
+  it("cleans malformed edge geometry fields without throwing", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证连线几何字段清洗
+     * ========================================================================
+     * 目标：
+     *   1) AI/导入数据给 edge.points 非数组时 repairScene 不应抛 TypeError
+     *   2) 畸形 fromPoint/toPoint 被清理，修复后仍可通过 validateScene
+     */
+
+    // 1.1 构造畸形连线几何字段
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        { id: "a", type: "rect", x: 0, y: 0, w: 10, h: 10, style: {} },
+        { id: "b", type: "rect", x: 20, y: 0, w: 10, h: 10, style: {} }
+      ],
+      edges: [
+        {
+          id: "e",
+          type: "arrow",
+          from: "a",
+          to: "b",
+          fromPoint: { x: "bad", y: 0 },
+          toPoint: null,
+          points: "not-an-array",
+          style: {}
+        }
+      ]
+    } as unknown as Scene;
+
+    // 1.2 修复不应抛错，且坏几何字段被清掉
+    let repaired: Scene | undefined;
+    assert.doesNotThrow(() => {
+      repaired = repairScene(scene);
+    });
+    assert.equal(repaired?.edges[0].fromPoint, undefined);
+    assert.equal(repaired?.edges[0].toPoint, undefined);
+    assert.equal(repaired?.edges[0].points, undefined);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
   it("cleans optional renderer fields that would otherwise leak invalid data", () => {
     /*
      * ========================================================================
