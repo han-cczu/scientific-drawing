@@ -1,6 +1,7 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
 import { clampNumber, isNormalizedHexColor, normalizeHexColor, resolveEndpoint } from "../shared/geometry";
+import { repairScene } from "../shared/repairScene";
 import {
   MAX_GEOMETRY_COORDINATE,
   MAX_GRID_CELLS,
@@ -64,12 +65,13 @@ function normalizeScientificScene(input: AnyRecord): Scene {
   const scene = input as unknown as Scene;
 
   // 1.2 补齐缺省字段
-  const normalized = {
+  const normalized: Scene = {
     ...scene,
     edges: Array.isArray(scene.edges) ? scene.edges : []
   };
-  logger.info("规范化当前协议完成", { nodes: normalized.nodes.length });
-  return normalized;
+  const repaired = repairScene(normalized);
+  logger.info("规范化当前协议完成", { nodes: repaired.nodes.length });
+  return repaired;
 }
 
 function normalizeVisiomasterScene(input: AnyRecord): Scene {

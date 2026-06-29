@@ -1,4 +1,5 @@
 import { clampNumber, resolveEndpoint } from "@shared/geometry";
+import { repairScene } from "@shared/repairScene";
 import { MAX_GEOMETRY_COORDINATE, MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_NODE_SIZE, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_STYLE_FONT_SIZE, MAX_STYLE_STROKE_WIDTH, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
@@ -18,7 +19,7 @@ export function normalizeImportedScene(input: unknown): Scene {
   }
   if (hasScientificShape(input)) {
     const scene = input as unknown as Scene;
-    return { ...scene, edges: Array.isArray(scene.edges) ? scene.edges : [] };
+    return repairScene({ ...scene, edges: Array.isArray(scene.edges) ? scene.edges : [] });
   }
   return normalizeVisiomasterScene(input);
 }

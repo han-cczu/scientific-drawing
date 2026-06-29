@@ -20,6 +20,48 @@ import {
 } from "../src/shared/sceneValidation";
 
 describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", () => {
+  it("修复当前协议 scene，避免前端导入旧草稿被 schema 收紧拒绝", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端当前协议导入修复
+     * ========================================================================
+     * 目标：
+     *   1) 当前协议 scene 也可能来自旧版本或手写 JSON，需要复用 repairScene
+     *   2) normalizeImportedScene 输出应能直接通过 validateScene
+     */
+
+    // 1.1 构造当前协议但 schema 已不接受的旧 scene
+    const scene = normalizeImportedScene({
+      version: "0.1",
+      page: { width: MAX_PAGE_DIMENSION + 100, height: 180, background: "white", units: "px" },
+      metadata: { id: "old", title: "Old", createdAt: "2026-06-29T00:00:00.000Z", engine: "old", notes: [] },
+      nodes: [
+        {
+          id: "box",
+          type: "rect",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 80,
+          style: {
+            fill: "red",
+            strokeWidth: MAX_STYLE_STROKE_WIDTH + 100,
+            fontSize: MAX_STYLE_FONT_SIZE + 100
+          }
+        }
+      ],
+      edges: []
+    });
+
+    // 1.2 导入后应修复而不是保留非法字段
+    assert.equal(scene.page.width, MAX_PAGE_DIMENSION);
+    assert.equal(scene.page.background, "#FFFFFF");
+    assert.equal(scene.nodes[0].style.fill, "#FFFFFF");
+    assert.equal(scene.nodes[0].style.strokeWidth, MAX_STYLE_STROKE_WIDTH);
+    assert.equal(scene.nodes[0].style.fontSize, MAX_STYLE_FONT_SIZE);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
   it("把超界的 Visiomaster 网格 rows/cols 钳到上界，使客户端导入通过校验", () => {
     /*
      * ========================================================================
