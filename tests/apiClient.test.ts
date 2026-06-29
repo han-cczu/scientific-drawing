@@ -1,6 +1,15 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { deleteAppConfig, exportScene, loadAppConfig, saveAppConfig, testAppConfig } from "../src/lib/api";
+import {
+  analyzeImage,
+  deleteAppConfig,
+  exportScene,
+  loadAppConfig,
+  reconstructImage,
+  reconstructRegion,
+  saveAppConfig,
+  testAppConfig
+} from "../src/lib/api";
 import type { Scene } from "../src/shared/scene";
 
 const originalFetch = globalThis.fetch;
@@ -26,6 +35,103 @@ afterEach(() => {
 });
 
 describe("frontend API client", () => {
+  it("loads valid analyze responses", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证合法 AnalyzeResponse
+     * ========================================================================
+     * 目标：
+     *   1) AnalyzeResponse runtime guard 不误拒后端正常响应
+     *   2) sceneUrl/sourceUrl 字符串按协议保留
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      scene: sampleScene(),
+      sceneUrl: "/api/scenes/api-client-scene",
+      sourceUrl: "/uploads/api-client-scene.png"
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    const result = await analyzeImage(new File(["png"], "sample.png", { type: "image/png" }));
+
+    assert.equal(result.scene.metadata.id, "api-client-scene");
+    assert.equal(result.sceneUrl, "/api/scenes/api-client-scene");
+    assert.equal(result.sourceUrl, "/uploads/api-client-scene.png");
+  });
+
+  it("rejects malformed analyze responses", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证图片分析响应结构
+     * ========================================================================
+     * 目标：
+     *   1) /api/analyze 返回合法 JSON 也必须符合 AnalyzeResponse 协议
+     *   2) 非法 scene 不能进入编辑器历史
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      scene: { ...sampleScene(), nodes: "bad" },
+      sceneUrl: "/api/scenes/api-client-scene",
+      sourceUrl: "/uploads/api-client-scene.png"
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => analyzeImage(new File(["png"], "sample.png", { type: "image/png" })),
+      /响应格式异常|Analyze response/
+    );
+  });
+
+  it("rejects malformed reconstruct responses", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证整图重建响应结构
+     * ========================================================================
+     * 目标：
+     *   1) /api/reconstruct 成功响应必须校验 scene schema
+     *   2) AI/代理返回的畸形 scene 不能写入画布
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      scene: { ...sampleScene(), page: { width: 0, height: 80, background: "#FFFFFF", units: "px" } },
+      sceneUrl: "/api/scenes/api-client-scene",
+      sourceUrl: "/uploads/api-client-scene.png"
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => reconstructImage(new File(["png"], "sample.png", { type: "image/png" }), "color", "gpt-test"),
+      /响应格式异常|Analyze response/
+    );
+  });
+
+  it("rejects malformed region reconstruction responses", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证局部重建响应结构
+     * ========================================================================
+     * 目标：
+     *   1) /api/reconstruct-region 成功响应同样必须校验
+     *   2) 非字符串 sceneUrl/sourceUrl 不能穿透 API client
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      scene: sampleScene(),
+      sceneUrl: 123,
+      sourceUrl: null
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => reconstructRegion(sampleScene(), { x: 0, y: 0, w: 10, h: 10 }, "mono", "gpt-test", "replace"),
+      /响应格式异常|Analyze response/
+    );
+  });
+
   it("loads valid app config payloads", async () => {
     /*
      * ========================================================================

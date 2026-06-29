@@ -1,5 +1,6 @@
 import { logger } from "./logger";
 import type { AnalyzeResponse, Scene } from "../shared/scene";
+import { validateScene } from "../shared/sceneValidation";
 
 export type ReconstructionMode = "color" | "mono";
 export type RegionMergeMode = "replace" | "overlay";
@@ -164,6 +165,37 @@ async function readAppConfigResponse(response: Response, action: string): Promis
     throw new Error(`${action}响应格式异常（HTTP ${response.status}）。`);
   }
   return config;
+}
+
+function parseAnalyzeResponse(value: unknown): AnalyzeResponse | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const validation = validateScene(value.scene);
+  if (!validation.ok || typeof value.sceneUrl !== "string" || typeof value.sourceUrl !== "string") {
+    return null;
+  }
+  return {
+    scene: value.scene as Scene,
+    sceneUrl: value.sceneUrl,
+    sourceUrl: value.sourceUrl
+  };
+}
+
+async function readAnalyzeResponse(response: Response, action: string): Promise<AnalyzeResponse> {
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch (error) {
+    logger.warn(`${action}响应 JSON 解析失败`, { status: response.status, error: String(error) });
+    throw new Error(`${action}响应 JSON 解析失败（HTTP ${response.status}）。`);
+  }
+  const payload = parseAnalyzeResponse(data);
+  if (!payload) {
+    logger.warn(`${action}响应结构非法`, { status: response.status });
+    throw new Error(`${action}响应格式异常（HTTP ${response.status}）。`);
+  }
+  return payload;
 }
 
 function isTestConfigErrorCode(value: unknown): value is TestConfigErrorCode {
@@ -356,7 +388,7 @@ export async function analyzeImage(file: File): Promise<AnalyzeResponse> {
   }
 
   // 1.3 解析响应
-  const payload = await response.json() as AnalyzeResponse;
+  const payload = await readAnalyzeResponse(response, "图片分析");
   logger.info("上传图片并请求分析完成", { nodes: payload.scene.nodes.length });
   return payload;
 }
@@ -390,7 +422,7 @@ export async function reconstructImage(file: File, mode: ReconstructionMode, mod
   }
 
   // 1.3 解析响应
-  const payload = await response.json() as AnalyzeResponse;
+  const payload = await readAnalyzeResponse(response, "AI 重建");
   logger.info("上传图片并请求 AI 重建完成", { nodes: payload.scene.nodes.length });
   return payload;
 }
@@ -427,7 +459,7 @@ export async function reconstructRegion(
   }
 
   // 1.2 解析响应
-  const payload = await response.json() as AnalyzeResponse;
+  const payload = await readAnalyzeResponse(response, "AI 局部重建");
   logger.info("请求 AI 局部重建完成", { nodes: payload.scene.nodes.length });
   return payload;
 }
