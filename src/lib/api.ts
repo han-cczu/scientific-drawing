@@ -102,6 +102,62 @@ export type TestConfigResult =
   | { ok: true; modelCount: number; models: string[] }
   | { ok: false; code: TestConfigErrorCode; error: string; models: string[] };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isTestConfigErrorCode(value: unknown): value is TestConfigErrorCode {
+  return (
+    value === "AUTH" ||
+    value === "NETWORK" ||
+    value === "INVALID_RESPONSE" ||
+    value === "VALIDATION" ||
+    value === "UNKNOWN"
+  );
+}
+
+function parseTestConfigResult(value: unknown): TestConfigResult | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (value.ok === true) {
+    const modelCount = value.modelCount;
+    if (typeof modelCount !== "number" || !Number.isInteger(modelCount) || modelCount < 0 || !isStringArray(value.models)) {
+      return null;
+    }
+    return {
+      ok: true,
+      modelCount,
+      models: value.models
+    };
+  }
+  if (value.ok === false) {
+    if (!isTestConfigErrorCode(value.code) || typeof value.error !== "string" || !isStringArray(value.models)) {
+      return null;
+    }
+    return {
+      ok: false,
+      code: value.code,
+      error: value.error,
+      models: value.models
+    };
+  }
+  return null;
+}
+
+function invalidTestConfigResponse(status: number, error: string): TestConfigResult {
+  return {
+    ok: false,
+    code: "INVALID_RESPONSE",
+    error: `${error}（HTTP ${status}）。`,
+    models: []
+  };
+}
+
 export async function loadAppConfig(): Promise<AppConfig> {
   /*
    * ========================================================================
@@ -200,17 +256,22 @@ export async function testAppConfig(payload: WritableAppConfig): Promise<TestCon
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     logger.warn("测试 AI 配置响应非 JSON", { status: response.status });
-    return { ok: false, code: "INVALID_RESPONSE", error: `服务返回异常（HTTP ${response.status}）。`, models: [] };
+    return invalidTestConfigResponse(response.status, "服务返回异常");
   }
-  let data: TestConfigResult;
+  let data: unknown;
   try {
-    data = await response.json() as TestConfigResult;
+    data = await response.json();
   } catch (error) {
     logger.warn("测试 AI 配置响应 JSON 解析失败", { status: response.status, error: String(error) });
-    return { ok: false, code: "INVALID_RESPONSE", error: `服务响应 JSON 解析失败（HTTP ${response.status}）。`, models: [] };
+    return invalidTestConfigResponse(response.status, "服务响应 JSON 解析失败");
   }
-  logger.info("测试 AI 配置完成", { ok: data.ok });
-  return data;
+  const result = parseTestConfigResult(data);
+  if (!result) {
+    logger.warn("测试 AI 配置响应结构非法", { status: response.status });
+    return invalidTestConfigResponse(response.status, "服务响应格式异常");
+  }
+  logger.info("测试 AI 配置完成", { ok: result.ok });
+  return result;
 }
 
 export async function analyzeImage(file: File): Promise<AnalyzeResponse> {
