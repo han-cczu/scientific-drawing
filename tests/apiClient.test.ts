@@ -7,6 +7,7 @@ import {
   loadAppConfig,
   reconstructImage,
   reconstructRegion,
+  ReconstructApiError,
   saveAppConfig,
   testAppConfig
 } from "../src/lib/api";
@@ -105,6 +106,38 @@ describe("frontend API client", () => {
     await assert.rejects(
       () => reconstructImage(new File(["png"], "sample.png", { type: "image/png" }), "color", "gpt-test"),
       /响应格式异常|Analyze response/
+    );
+  });
+
+  it("normalizes unknown reconstruct error codes to UNKNOWN", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证重建错误 code 白名单
+     * ========================================================================
+     * 目标：
+     *   1) 失败响应中的 error.code 来自不可信 JSON
+     *   2) 未知字符串不能被 cast 成受支持 ReconstructErrorCode
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      error: {
+        code: "BILLING_REQUIRED",
+        message: "billing required",
+        hint: "check account"
+      }
+    }), {
+      status: 402,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => reconstructImage(new File(["png"], "sample.png", { type: "image/png" }), "color", "gpt-test"),
+      (error: unknown) => {
+        assert.ok(error instanceof ReconstructApiError);
+        assert.equal(error.code, "UNKNOWN");
+        assert.equal(error.message, "billing required");
+        assert.equal(error.hint, "check account");
+        return true;
+      }
     );
   });
 

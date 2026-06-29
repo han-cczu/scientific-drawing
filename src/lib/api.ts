@@ -69,6 +69,19 @@ export class ReconstructApiError extends Error {
   }
 }
 
+function isReconstructErrorCode(value: unknown): value is ReconstructErrorCode {
+  return (
+    value === "AUTH" ||
+    value === "INVALID_IMAGE" ||
+    value === "TIMEOUT" ||
+    value === "BAD_MODEL_OUTPUT" ||
+    value === "INVALID_SCENE" ||
+    value === "NETWORK" ||
+    value === "UPSTREAM" ||
+    value === "UNKNOWN"
+  );
+}
+
 async function parseReconstructError(response: Response): Promise<ReconstructApiError> {
   /*
    * ========================================================================
@@ -88,7 +101,7 @@ async function parseReconstructError(response: Response): Promise<ReconstructApi
     if (raw && typeof raw === "object") {
       const envelope = raw as { code?: unknown; message?: unknown; hint?: unknown };
       return new ReconstructApiError(
-        typeof envelope.code === "string" ? envelope.code as ReconstructErrorCode : "UNKNOWN",
+        isReconstructErrorCode(envelope.code) ? envelope.code : "UNKNOWN",
         typeof envelope.message === "string" ? envelope.message : `HTTP ${response.status}`,
         typeof envelope.hint === "string" ? envelope.hint : undefined
       );
