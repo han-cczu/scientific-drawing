@@ -7,8 +7,10 @@ import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
 import { shadeColor } from "../src/shared/geometry";
 import type { Scene } from "../src/shared/scene";
 import {
+  MAX_GEOMETRY_COORDINATE,
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
+  MAX_NODE_SIZE,
   MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
@@ -668,6 +670,57 @@ describe("visiomaster adapter", () => {
     // 1.2 适配结果已符合共享校验上界
     assert.equal(scene.page.width, MAX_PAGE_DIMENSION);
     assert.equal(scene.page.height, 1);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("clamps node and point geometry before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 几何数值规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身钳制 node.x/y/w/h
+     *   2) normalizeImportedScene 自身钳制 edge points/from_point/to_point
+     */
+
+    // 1.1 构造超界几何数值
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "box",
+          type: "process_box",
+          x: MAX_GEOMETRY_COORDINATE + 100,
+          y: -MAX_GEOMETRY_COORDINATE - 100,
+          w: MAX_NODE_SIZE + 100,
+          h: MAX_NODE_SIZE + 100,
+          style: {}
+        },
+        { id: "target", type: "process_box", x: 0, y: 0, w: 10, h: 10, style: {} }
+      ],
+      edges: [
+        {
+          id: "edge",
+          type: "line_segment",
+          from: "box",
+          to: "target",
+          from_point: [MAX_GEOMETRY_COORDINATE + 100, 0],
+          to_point: [0, -MAX_GEOMETRY_COORDINATE - 100],
+          points: [[MAX_GEOMETRY_COORDINATE + 100, -MAX_GEOMETRY_COORDINATE - 100]],
+          style: {}
+        }
+      ]
+    });
+
+    // 1.2 适配结果几何字段在共享合法范围内
+    assert.equal(scene.nodes[0].x, MAX_GEOMETRY_COORDINATE);
+    assert.equal(scene.nodes[0].y, -MAX_GEOMETRY_COORDINATE);
+    assert.equal(scene.nodes[0].w, MAX_NODE_SIZE);
+    assert.equal(scene.nodes[0].h, MAX_NODE_SIZE);
+    assert.deepEqual(scene.edges[0].fromPoint, { x: MAX_GEOMETRY_COORDINATE, y: 0 });
+    assert.deepEqual(scene.edges[0].toPoint, { x: 0, y: -MAX_GEOMETRY_COORDINATE });
+    assert.deepEqual(scene.edges[0].points, [{ x: MAX_GEOMETRY_COORDINATE, y: -MAX_GEOMETRY_COORDINATE }]);
     assert.equal(validateScene(scene).ok, true);
   });
 

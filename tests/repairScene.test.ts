@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
+import { MAX_GEOMETRY_COORDINATE, MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_NODE_SIZE, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -107,6 +107,61 @@ describe("scene repair", () => {
     const repaired = repairScene(scene);
     assert.equal(repaired.page.width, MAX_PAGE_DIMENSION);
     assert.equal(repaired.page.height, 1);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps oversized node and point geometry so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证节点和点几何修复规模上界
+     * ========================================================================
+     * 目标：
+     *   1) repairScene 需要限制 node.x/y/w/h 的绝对规模
+     *   2) node.points、edge from/to points 和 edge.points 同步限制
+     */
+
+    // 1.1 构造超界几何字段
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        {
+          id: "a",
+          type: "line",
+          x: MAX_GEOMETRY_COORDINATE + 100,
+          y: -MAX_GEOMETRY_COORDINATE - 100,
+          w: MAX_NODE_SIZE + 100,
+          h: MAX_NODE_SIZE + 100,
+          points: [{ x: MAX_GEOMETRY_COORDINATE + 100, y: -MAX_GEOMETRY_COORDINATE - 100 }],
+          style: {}
+        },
+        { id: "b", type: "rect", x: 20, y: 0, w: 10, h: 10, style: {} }
+      ],
+      edges: [
+        {
+          id: "e",
+          type: "arrow",
+          from: "a",
+          to: "b",
+          fromPoint: { x: MAX_GEOMETRY_COORDINATE + 100, y: 0 },
+          toPoint: { x: 0, y: -MAX_GEOMETRY_COORDINATE - 100 },
+          points: [{ x: MAX_GEOMETRY_COORDINATE + 100, y: 0 }],
+          style: {}
+        }
+      ]
+    } as unknown as Scene;
+
+    // 1.2 修复后几何字段在共享合法范围内
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes[0].x, MAX_GEOMETRY_COORDINATE);
+    assert.equal(repaired.nodes[0].y, -MAX_GEOMETRY_COORDINATE);
+    assert.equal(repaired.nodes[0].w, MAX_NODE_SIZE);
+    assert.equal(repaired.nodes[0].h, MAX_NODE_SIZE);
+    assert.deepEqual(repaired.nodes[0].points, [{ x: MAX_GEOMETRY_COORDINATE, y: -MAX_GEOMETRY_COORDINATE }]);
+    assert.deepEqual(repaired.edges[0].fromPoint, { x: MAX_GEOMETRY_COORDINATE, y: 0 });
+    assert.deepEqual(repaired.edges[0].toPoint, { x: 0, y: -MAX_GEOMETRY_COORDINATE });
+    assert.deepEqual(repaired.edges[0].points, [{ x: MAX_GEOMETRY_COORDINATE, y: 0 }]);
     assert.equal(validateScene(repaired).ok, true);
   });
 

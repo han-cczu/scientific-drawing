@@ -2,9 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   assertScene,
+  MAX_GEOMETRY_COORDINATE,
   MAX_GRID_DIMENSION,
   MAX_METADATA_NOTE_LENGTH,
   MAX_METADATA_NOTES,
+  MAX_NODE_SIZE,
   MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
@@ -214,6 +216,58 @@ describe("scene validation", () => {
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.path === "$.page.width" && issue.code === "invalid_page_width"));
     assert.ok(result.issues.some((issue) => issue.path === "$.page.height" && issue.code === "invalid_page_height"));
+  });
+
+  it("rejects node and point geometry outside supported render bounds", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证节点和点几何规模边界
+     * ========================================================================
+     * 目标：
+     *   1) 坐标允许画布外负值，但不能无限放大 SVG/PPTX 数字输出
+     *   2) 节点尺寸不能绕过页面上界后继续以超大值进入渲染器
+     */
+
+    // 1.1 构造超界节点和折线点
+    const scene = validScene();
+    scene.nodes = [
+      {
+        id: "line",
+        type: "line",
+        x: MAX_GEOMETRY_COORDINATE + 1,
+        y: -MAX_GEOMETRY_COORDINATE - 1,
+        w: MAX_NODE_SIZE + 1,
+        h: MAX_NODE_SIZE + 1,
+        points: [{ x: MAX_GEOMETRY_COORDINATE + 1, y: -MAX_GEOMETRY_COORDINATE - 1 }],
+        style: {}
+      },
+      { id: "b", type: "rect", x: 0, y: 0, w: 10, h: 10, style: {} }
+    ];
+    scene.edges = [
+      {
+        id: "edge",
+        type: "arrow",
+        from: "line",
+        to: "b",
+        fromPoint: { x: MAX_GEOMETRY_COORDINATE + 1, y: 0 },
+        toPoint: { x: 0, y: -MAX_GEOMETRY_COORDINATE - 1 },
+        points: [{ x: MAX_GEOMETRY_COORDINATE + 1, y: 0 }],
+        style: {}
+      }
+    ];
+
+    // 1.2 校验层应拒绝超界几何数值
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].x" && issue.code === "invalid_node_x"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].y" && issue.code === "invalid_node_y"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].w" && issue.code === "invalid_node_width"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].h" && issue.code === "invalid_node_height"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].points[0].x" && issue.code === "invalid_point_x"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].points[0].y" && issue.code === "invalid_point_y"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].fromPoint.x" && issue.code === "invalid_point_x"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].toPoint.y" && issue.code === "invalid_point_y"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].points[0].x" && issue.code === "invalid_point_x"));
   });
 
   it("rejects null/non-object grid cells without throwing (no opaque exception)", () => {

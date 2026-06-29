@@ -1,9 +1,11 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
-import { isNormalizedHexColor, normalizeHexColor, resolveEndpoint } from "../shared/geometry";
+import { clampNumber, isNormalizedHexColor, normalizeHexColor, resolveEndpoint } from "../shared/geometry";
 import {
+  MAX_GEOMETRY_COORDINATE,
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
+  MAX_NODE_SIZE,
   MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
@@ -138,10 +140,10 @@ function convertVisiomasterNode(node: AnyRecord, id?: string): SceneNode {
   const base: SceneNode = {
     id: id ?? stringValue(node.id, createId("node"), MAX_SCENE_ID_LENGTH),
     type: mapNodeType(type),
-    x: numberValue(node.x, 0),
-    y: numberValue(node.y, 0),
-    w: numberValue(node.w, 100),
-    h: numberValue(node.h, 40),
+    x: coordinate(node.x, 0),
+    y: coordinate(node.y, 0),
+    w: positiveSize(node.w, 100),
+    h: nonNegativeSize(node.h, 40),
     text: stringOptional(node.text, MAX_TEXT_LENGTH),
     symbol: stringOptional(node.symbol, MAX_TEXT_LENGTH),
     rows: intOptional(node.rows),
@@ -309,6 +311,26 @@ function numberValue(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function coordinate(value: unknown, fallback: number) {
+  return clampNumber(numberValue(value, fallback), -MAX_GEOMETRY_COORDINATE, MAX_GEOMETRY_COORDINATE);
+}
+
+function positiveSize(value: unknown, fallback: number) {
+  const numeric = numberValue(value, fallback);
+  if (numeric <= 0) {
+    return fallback;
+  }
+  return clampNumber(numeric, 1, MAX_NODE_SIZE);
+}
+
+function nonNegativeSize(value: unknown, fallback: number) {
+  const numeric = numberValue(value, fallback);
+  if (numeric < 0) {
+    return fallback;
+  }
+  return clampNumber(numeric, 0, MAX_NODE_SIZE);
+}
+
 function pageDimension(value: unknown, fallback: number) {
   const numeric = numberValue(value, fallback);
   if (numeric <= 0) {
@@ -353,7 +375,7 @@ function pointValue(value: unknown) {
   if (typeof value[0] !== "number" || !Number.isFinite(value[0]) || typeof value[1] !== "number" || !Number.isFinite(value[1])) {
     return undefined;
   }
-  return { x: value[0], y: value[1] };
+  return { x: coordinate(value[0], 0), y: coordinate(value[1], 0) };
 }
 
 function pointArray(value: unknown) {

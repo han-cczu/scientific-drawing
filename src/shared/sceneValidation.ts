@@ -9,6 +9,10 @@ export const MAX_GRID_DIMENSION = 256;
 // 低于 1px 或超大尺寸都会放大比例计算或导出布局。
 export const MAX_PAGE_DIMENSION = 16384;
 
+// 几何数值上界：节点和折线允许位于画布外，但超大坐标/尺寸会放大 SVG/PPTX 数字输出。
+export const MAX_GEOMETRY_COORDINATE = 65536;
+export const MAX_NODE_SIZE = 65536;
+
 // 单个网格 cells 数组长度上界：等于最大网格的单元格总数，超出即视为畸形输入，
 // 防止超长 cells 数组放大解析/内存开销（渲染侧已用 indexGridCells 改 O(1) 查表）。
 export const MAX_GRID_CELLS = MAX_GRID_DIMENSION * MAX_GRID_DIMENSION;
@@ -269,13 +273,13 @@ function validateNode(node: SceneNode, index: number, seen: Set<string>, issues:
   }
 
   // 1.2 校验几何和样式
-  validateFiniteNumber(node.x, `${path}.x`, "invalid_node_x", issues);
-  validateFiniteNumber(node.y, `${path}.y`, "invalid_node_y", issues);
-  if (!isPositiveNumber(node.w)) {
-    addIssue(issues, `${path}.w`, "invalid_node_width", "Node width must be positive.");
+  validateCoordinate(node.x, `${path}.x`, "invalid_node_x", issues);
+  validateCoordinate(node.y, `${path}.y`, "invalid_node_y", issues);
+  if (!isPositiveGeometrySize(node.w)) {
+    addIssue(issues, `${path}.w`, "invalid_node_width", `Node width must be between 1 and ${MAX_NODE_SIZE}.`);
   }
-  if (!isNonNegativeNumber(node.h)) {
-    addIssue(issues, `${path}.h`, "invalid_node_height", "Node height must be non-negative.");
+  if (!isNonNegativeGeometrySize(node.h)) {
+    addIssue(issues, `${path}.h`, "invalid_node_height", `Node height must be between 0 and ${MAX_NODE_SIZE}.`);
   }
   validateStyle(node.style, `${path}.style`, issues);
   validateOptionalBoolean(node.locked, `${path}.locked`, "invalid_node_locked", issues);
@@ -536,8 +540,8 @@ function validatePoint(value: unknown, path: string, issues: ValidationIssue[]) 
     addIssue(issues, path, "point_not_object", "Point must be an object.");
     return;
   }
-  validateFiniteNumber(value.x, `${path}.x`, "invalid_point_x", issues);
-  validateFiniteNumber(value.y, `${path}.y`, "invalid_point_y", issues);
+  validateCoordinate(value.x, `${path}.x`, "invalid_point_x", issues);
+  validateCoordinate(value.y, `${path}.y`, "invalid_point_y", issues);
 }
 
 function validateColor(value: unknown, path: string, issues: ValidationIssue[], fallback: string) {
@@ -561,6 +565,12 @@ function validateColor(value: unknown, path: string, issues: ValidationIssue[], 
 function validateFiniteNumber(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     addIssue(issues, path, code, "Value must be a finite number.");
+  }
+}
+
+function validateCoordinate(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
+  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > MAX_GEOMETRY_COORDINATE) {
+    addIssue(issues, path, code, `Coordinate must be finite and between -${MAX_GEOMETRY_COORDINATE} and ${MAX_GEOMETRY_COORDINATE}.`);
   }
 }
 
@@ -622,6 +632,14 @@ function validateTickPositions(value: unknown, path: string, issues: ValidationI
 
 function isPositiveNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isPositiveGeometrySize(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= MAX_NODE_SIZE;
+}
+
+function isNonNegativeGeometrySize(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= MAX_NODE_SIZE;
 }
 
 function isValidPageDimension(value: unknown) {

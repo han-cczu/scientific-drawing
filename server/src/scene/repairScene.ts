@@ -1,9 +1,11 @@
 import { clampNumber, isNormalizedHexColor, normalizeHexColor } from "@shared/geometry";
 import {
+  MAX_GEOMETRY_COORDINATE,
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
   MAX_METADATA_NOTE_LENGTH,
   MAX_METADATA_NOTES,
+  MAX_NODE_SIZE,
   MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
@@ -98,10 +100,10 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
     ...node,
     id,
     type,
-    x: finite(node.x, 0),
-    y: finite(node.y, 0),
-    w: positive(Math.abs(finite(node.w, 100)), 1),
-    h: nonNegative(Math.abs(finite(node.h, 40)), type === "line" || type === "arrow" ? 0 : 1),
+    x: coordinate(node.x, 0),
+    y: coordinate(node.y, 0),
+    w: positiveSize(Math.abs(finite(node.w, 100)), 1),
+    h: nonNegativeSize(Math.abs(finite(node.h, 40)), type === "line" || type === "arrow" ? 0 : 1),
     style: repairStyle(node.style),
     text: optionalText(node.text),
     source: optionalString(node.source),
@@ -116,7 +118,7 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
   repaired.points = Array.isArray(node.points)
     ? node.points
       .filter((point) => typeof point?.x === "number" && typeof point?.y === "number")
-      .map((point) => ({ x: finite(point.x, repaired.x), y: finite(point.y, repaired.y) }))
+      .map((point) => ({ x: coordinate(point.x, repaired.x), y: coordinate(point.y, repaired.y) }))
       .slice(0, MAX_POLYLINE_POINTS)
     : undefined;
   //   cells 长度同样钳到 MAX_GRID_CELLS：否则超长（仍合法的）cells 经 repair 后
@@ -254,7 +256,7 @@ function repairPoint(point: unknown) {
   if (typeof candidate.x !== "number" || typeof candidate.y !== "number") {
     return undefined;
   }
-  return { x: finite(candidate.x, 0), y: finite(candidate.y, 0) };
+  return { x: coordinate(candidate.x, 0), y: coordinate(candidate.y, 0) };
 }
 
 function uniqueId(originalId: string, idMap: Map<string, string>, usedIds: Set<string>) {
@@ -348,6 +350,26 @@ function finite(value: unknown, fallback: number) {
 function positive(value: unknown, fallback: number) {
   const numberValue = finite(value, fallback);
   return numberValue > 0 ? numberValue : fallback;
+}
+
+function coordinate(value: unknown, fallback: number) {
+  return clampNumber(finite(value, fallback), -MAX_GEOMETRY_COORDINATE, MAX_GEOMETRY_COORDINATE);
+}
+
+function positiveSize(value: unknown, fallback: number) {
+  const numberValue = finite(value, fallback);
+  if (numberValue <= 0) {
+    return fallback;
+  }
+  return clampNumber(numberValue, 1, MAX_NODE_SIZE);
+}
+
+function nonNegativeSize(value: unknown, fallback: number) {
+  const numberValue = finite(value, fallback);
+  if (numberValue < 0) {
+    return fallback;
+  }
+  return clampNumber(numberValue, 0, MAX_NODE_SIZE);
 }
 
 function pageDimension(value: unknown, fallback: number) {
