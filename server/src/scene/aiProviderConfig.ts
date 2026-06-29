@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, chmodSync, renameSync } from "node:fs";
+import path from "node:path";
 import { logger } from "../logger";
-import { configPath, dataDir } from "../paths";
+import { configPath } from "../paths";
 
 export type ConfigSource = "env" | "file" | "none";
 
@@ -188,8 +189,8 @@ export function writePersistedConfig(input: WritableAiConfigInput, filePath: str
     throw new ConfigValidationError(validation.error);
   }
 
-  // 1.2 确保 data 目录存在
-  mkdirSync(dataDir, { recursive: true });
+  // 1.2 确保目标文件所在目录存在
+  mkdirSync(path.dirname(filePath), { recursive: true });
 
   // 1.3 构造持久化对象并写入
   const persisted: PersistedAiConfig = {

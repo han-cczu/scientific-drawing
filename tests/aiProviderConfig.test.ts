@@ -584,6 +584,31 @@ describe("AI runtime config persistence", () => {
     assert.equal(raw.apiKey, "sk-write");
   });
 
+  it("creates the target directory when writing a custom config path", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证自定义配置路径写入
+     * ========================================================================
+     * 目标：
+     *   1) writePersistedConfig 暴露 filePath 参数，调用方可传入测试/临时目录路径
+     *   2) 写入时应创建目标文件自己的父目录，而不是只创建默认 dataDir
+     */
+    const nestedConfigFile = path.join(tmpDir, "nested", "config.json");
+
+    const persisted = writePersistedConfig(
+      {
+        apiKey: "sk-nested",
+        baseUrl: "https://nested.example.com/v1",
+        reconstructModel: "gpt-nested"
+      },
+      nestedConfigFile
+    );
+
+    assert.equal(persisted.apiKey, "sk-nested");
+    assert.ok(existsSync(nestedConfigFile));
+    assert.equal(readPersistedConfig(nestedConfigFile)?.reconstructModel, "gpt-nested");
+  });
+
   it("rejects invalid writable configs", () => {
     /*
      * ========================================================================
