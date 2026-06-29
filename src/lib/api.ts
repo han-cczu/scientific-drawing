@@ -427,11 +427,39 @@ function filenameFromContentDisposition(header: string | null): string | null {
   const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
   if (star) {
     try {
-      return decodeURIComponent(star[1].trim());
+      const filename = sanitizeDownloadFilename(decodeURIComponent(star[1].trim()));
+      if (filename) {
+        return filename;
+      }
     } catch {
       // 编码异常时回退普通 filename
     }
   }
   const plain = /filename="([^"]+)"/i.exec(header);
-  return plain ? plain[1] : null;
+  return plain ? sanitizeDownloadFilename(plain[1]) : null;
+}
+
+function sanitizeDownloadFilename(value: string): string | null {
+  /*
+   * ========================================================================
+   * 步骤1：清洗浏览器下载文件名
+   * ========================================================================
+   * 目标：
+   *   1) 不信任 Content-Disposition 中的路径片段
+   *   2) 保留中文等可读文件名字符
+   */
+  const filename = value
+    .normalize("NFC")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((segment) => segment && segment !== "." && segment !== "..")
+    .join("-")
+    .replace(/[:*?"<>|\x00-\x1F\x7F]+/g, "-")
+    .replace(/[-.]+$/g, "")
+    .replace(/^[.-]+/g, "")
+    .replace(/-+\./g, ".")
+    .replace(/^-+|-+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return filename || null;
 }

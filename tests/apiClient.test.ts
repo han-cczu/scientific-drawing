@@ -1,8 +1,25 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { testAppConfig } from "../src/lib/api";
+import { exportScene, testAppConfig } from "../src/lib/api";
+import type { Scene } from "../src/shared/scene";
 
 const originalFetch = globalThis.fetch;
+
+function sampleScene(): Scene {
+  return {
+    version: "0.1",
+    page: { width: 100, height: 80, background: "#FFFFFF", units: "px" },
+    metadata: {
+      id: "api-client-scene",
+      title: "API Client Scene",
+      createdAt: "2026-06-29T00:00:00.000Z",
+      engine: "test",
+      notes: []
+    },
+    nodes: [],
+    edges: []
+  };
+}
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -99,5 +116,49 @@ describe("frontend API client", () => {
       assert.match(result.error, /format|格式|响应/i);
       assert.deepEqual(result.models, []);
     }
+  });
+
+  it("sanitizes export filenames parsed from Content-Disposition", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端下载文件名兜底清洗
+     * ========================================================================
+     * 目标：
+     *   1) exportScene 不直接信任 Content-Disposition
+     *   2) 路径分隔符、路径穿越和非法字符不能进入 <a download>
+     */
+    globalThis.fetch = (async () => new Response("svg", {
+      status: 200,
+      headers: {
+        "content-disposition": "attachment; filename=\"..\\bad/path:name?.svg\""
+      }
+    })) as typeof fetch;
+
+    const result = await exportScene(sampleScene(), "svg");
+
+    assert.equal(result.filename, "bad-path-name.svg");
+    assert.equal(await result.blob.text(), "svg");
+  });
+
+  it("sanitizes RFC 5987 export filenames while preserving unicode", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 RFC 5987 文件名清洗
+     * ========================================================================
+     * 目标：
+     *   1) filename* 分支同样不能带路径片段
+     *   2) 中文标题应保留，避免降级成不可读 ASCII
+     */
+    globalThis.fetch = (async () => new Response("{}", {
+      status: 200,
+      headers: {
+        "content-disposition": `attachment; filename="fallback.scene.json"; filename*=UTF-8''${encodeURIComponent("../图:path?.scene.json")}`
+      }
+    })) as typeof fetch;
+
+    const result = await exportScene(sampleScene(), "json");
+
+    assert.equal(result.filename, "图-path.scene.json");
+    assert.equal(await result.blob.text(), "{}");
   });
 });
