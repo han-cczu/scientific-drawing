@@ -275,7 +275,7 @@ export function readAiRuntimeConfig(
   }
 
   // 1.2 fallback 到环境变量
-  const apiKey = env.OPENAI_API_KEY ?? "";
+  const apiKey = normalizeEnvApiKey(env.OPENAI_API_KEY);
   const envDefaults = normalizeEnvRuntimeDefaults(env);
   const envConfig: AiRuntimeConfig = {
     apiKey,
@@ -290,6 +290,25 @@ export function readAiRuntimeConfig(
     defaultModel: envConfig.defaultModel
   });
   return envConfig;
+}
+
+function normalizeEnvApiKey(value: unknown) {
+  /*
+   * ========================================================================
+   * 步骤1：归一化环境变量 API Key
+   * ========================================================================
+   * 目标：
+   *   1) 与 UI 写入配置保持一致，trim 掉部署环境中的意外空白
+   *   2) 空白或超长 key 视为未配置，避免误报 hasApiKey 或发送异常 Authorization
+   */
+  if (typeof value !== "string") {
+    return "";
+  }
+  if (value.length > AI_CONFIG_LIMITS.apiKey) {
+    logger.warn("环境变量 OPENAI_API_KEY 超过长度上限，视为未配置");
+    return "";
+  }
+  return value.trim();
 }
 
 function normalizeEnvRuntimeDefaults(env: NodeJS.ProcessEnv) {

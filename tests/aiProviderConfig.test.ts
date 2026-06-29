@@ -437,6 +437,43 @@ describe("AI runtime config persistence", () => {
     assert.equal(config.defaultModel, "gpt-4o");
   });
 
+  it("normalizes env api key before deciding runtime availability", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证环境变量 API Key 与持久化配置使用同一类边界
+     * ========================================================================
+     * 目标：
+     *   1) 首尾空白不应进入运行时 Authorization 头和 maskedTail
+     *   2) 纯空白 OPENAI_API_KEY 不应被视为可用 key
+     */
+
+    // 1.1 首尾空白应被 trim
+    const trimmed = readAiRuntimeConfig(
+      {
+        OPENAI_API_KEY: "  sk-env-trimmed  ",
+        OPENAI_BASE_URL: "https://env.example.com/v1",
+        OPENAI_RECONSTRUCT_MODEL: "gpt-env"
+      },
+      configFile
+    );
+    assert.equal(trimmed.source, "env");
+    assert.equal(trimmed.apiKey, "sk-env-trimmed");
+
+    // 1.2 纯空白 key 应视为未配置
+    const blank = readAiRuntimeConfig(
+      {
+        OPENAI_API_KEY: "   ",
+        OPENAI_BASE_URL: "https://env.example.com/v1",
+        OPENAI_RECONSTRUCT_MODEL: "gpt-env"
+      },
+      configFile
+    );
+    assert.equal(blank.source, "none");
+    assert.equal(blank.apiKey, "");
+    assert.equal(blank.baseUrl, "https://env.example.com/v1");
+    assert.equal(blank.defaultModel, "gpt-env");
+  });
+
   it("uses persisted file when present and overrides env", () => {
     /*
      * ========================================================================
