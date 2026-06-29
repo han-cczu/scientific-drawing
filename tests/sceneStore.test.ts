@@ -24,10 +24,14 @@ import {
 // 1.1 安装基于 Map 的 localStorage stub
 const backing = new Map<string, string>();
 let failSceneStoreWrites = false;
+let failBackupWrites = false;
 const localStorageStub = {
   getItem: (key: string) => (backing.has(key) ? backing.get(key)! : null),
   setItem: (key: string, value: string) => {
     if (failSceneStoreWrites && key === "sciDraw.scene") {
+      throw new Error("QuotaExceededError");
+    }
+    if (failBackupWrites && key === "sciDraw.scene.backup") {
       throw new Error("QuotaExceededError");
     }
     backing.set(key, String(value));
@@ -128,6 +132,29 @@ describe("scene store", () => {
     backing.clear();
     backing.set(store.SCENE_STORE_KEY, JSON.stringify({ version: 999, scene: validScene(), savedAt: 0 }));
     assert.equal(store.loadStoredScene(), null);
+  });
+
+  it("clears corrupted payloads even when backup storage is full", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证损坏数据清理不依赖备份成功
+     * ========================================================================
+     * 目标：
+     *   1) localStorage 配额满时 backup key 写入可能失败
+     *   2) 主 scene key 仍必须被删除，避免每次启动反复解析同一份坏数据
+     */
+    backing.clear();
+    backing.set(store.SCENE_STORE_KEY, "{not-json");
+    failBackupWrites = true;
+
+    try {
+      assert.equal(store.loadStoredScene(), null);
+      assert.equal(backing.has(store.SCENE_STORE_KEY), false);
+      assert.equal(backing.has(store.SCENE_STORE_BACKUP_KEY), false);
+    } finally {
+      failBackupWrites = false;
+      backing.clear();
+    }
   });
 
   it("repairs recoverable stored scenes instead of discarding local drafts", () => {

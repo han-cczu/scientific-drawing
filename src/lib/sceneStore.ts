@@ -146,9 +146,13 @@ export function loadStoredScene(): Scene | null {
   } catch (err) {
     try {
       globalThis.localStorage.setItem(SCENE_STORE_BACKUP_KEY, raw);
+    } catch {
+      // 备份失败不影响主数据清理
+    }
+    try {
       globalThis.localStorage.removeItem(SCENE_STORE_KEY);
     } catch {
-      // 备份失败不影响主流程
+      // 清理失败不影响主流程
     }
     console.warn("[sceneStore] 本地场景数据损坏或不兼容，已备份并清空", err);
     return null;
