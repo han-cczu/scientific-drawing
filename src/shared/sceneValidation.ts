@@ -5,6 +5,10 @@ import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneSt
 // 不经 repair 的导出/区域路径上触发 rows*cols 级渲染循环（DoS）。
 export const MAX_GRID_DIMENSION = 256;
 
+// 页面尺寸上界：page.width/page.height 会进入 SVG viewBox、Canvas 坐标换算和 PPTX layout。
+// 低于 1px 或超大尺寸都会放大比例计算或导出布局。
+export const MAX_PAGE_DIMENSION = 16384;
+
 // 单个网格 cells 数组长度上界：等于最大网格的单元格总数，超出即视为畸形输入，
 // 防止超长 cells 数组放大解析/内存开销（渲染侧已用 indexGridCells 改 O(1) 查表）。
 export const MAX_GRID_CELLS = MAX_GRID_DIMENSION * MAX_GRID_DIMENSION;
@@ -140,11 +144,11 @@ function validatePage(value: unknown, issues: ValidationIssue[]) {
   }
 
   // 1.2 校验尺寸、单位和背景
-  if (!isPositiveNumber(value.width)) {
-    addIssue(issues, "$.page.width", "invalid_page_width", "Page width must be positive.");
+  if (!isValidPageDimension(value.width)) {
+    addIssue(issues, "$.page.width", "invalid_page_width", `Page width must be an integer between 1 and ${MAX_PAGE_DIMENSION}.`);
   }
-  if (!isPositiveNumber(value.height)) {
-    addIssue(issues, "$.page.height", "invalid_page_height", "Page height must be positive.");
+  if (!isValidPageDimension(value.height)) {
+    addIssue(issues, "$.page.height", "invalid_page_height", `Page height must be an integer between 1 and ${MAX_PAGE_DIMENSION}.`);
   }
   if (value.units !== "px") {
     addIssue(issues, "$.page.units", "invalid_page_units", "Page units must be px.");
@@ -618,6 +622,10 @@ function validateTickPositions(value: unknown, path: string, issues: ValidationI
 
 function isPositiveNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isValidPageDimension(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_PAGE_DIMENSION;
 }
 
 function isNonNegativeNumber(value: unknown) {

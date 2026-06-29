@@ -5,6 +5,7 @@ import {
   MAX_GRID_DIMENSION,
   MAX_METADATA_NOTE_LENGTH,
   MAX_METADATA_NOTES,
+  MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
@@ -191,6 +192,28 @@ describe("scene validation", () => {
     assert.ok(result.issues.some((issue) => issue.code === "invalid_node_hidden"));
     assert.ok(result.issues.some((issue) => issue.code === "invalid_opacity"));
     assert.ok(result.issues.some((issue) => issue.code === "invalid_edge_type"));
+  });
+
+  it("rejects page dimensions outside the supported render bounds", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证页面尺寸规模边界
+     * ========================================================================
+     * 目标：
+     *   1) 过小正数会导致 PPTX scale 和 Canvas 坐标异常放大
+     *   2) 过大正数会放大 SVG viewBox、Canvas 交互和导出布局
+     */
+
+    // 1.1 构造超界页面尺寸
+    const scene = validScene();
+    scene.page.width = MAX_PAGE_DIMENSION + 1;
+    scene.page.height = 0.5;
+
+    // 1.2 校验层应拒绝非整数像素和超大页面
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.page.width" && issue.code === "invalid_page_width"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.page.height" && issue.code === "invalid_page_height"));
   });
 
   it("rejects null/non-object grid cells without throwing (no opaque exception)", () => {

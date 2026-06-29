@@ -1,5 +1,5 @@
 import { resolveEndpoint } from "@shared/geometry";
-import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
+import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
 type AnyRecord = Record<string, unknown>;
@@ -48,8 +48,8 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
   return {
     version: "0.1",
     page: {
-      width: numberValue(page.width, 1280),
-      height: numberValue(page.height, 720),
+      width: pageDimension(page.width, 1280),
+      height: pageDimension(page.height, 720),
       background: stringValue(page.background, "#FFFFFF"),
       units: "px"
     },
@@ -215,6 +215,14 @@ function uniqueId(baseId: string, usedIds: Set<string>) {
 
 function numberValue(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function pageDimension(value: unknown, fallback: number) {
+  const numeric = numberValue(value, fallback);
+  if (numeric <= 0) {
+    return fallback;
+  }
+  return Math.min(MAX_PAGE_DIMENSION, Math.max(1, Math.round(numeric)));
 }
 
 function numberOptional(value: unknown) {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
+import { MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -85,6 +85,28 @@ describe("scene repair", () => {
     const repaired = repairScene(scene);
     assert.equal(repaired.metadata.notes.length, MAX_METADATA_NOTES);
     assert.equal(repaired.metadata.notes[0].length, MAX_METADATA_NOTE_LENGTH);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps page dimensions so repaired scenes stay within render bounds", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证页面尺寸修复规模上界
+     * ========================================================================
+     * 目标：
+     *   1) repairScene 需要把超大页面钳到导出/渲染上界
+     *   2) 小于 1px 的正数不能绕过 positive 修复后继续进入 PPTX scale
+     */
+
+    // 1.1 构造超界页面尺寸
+    const scene = damagedScene();
+    scene.page.width = MAX_PAGE_DIMENSION + 100;
+    scene.page.height = 0.5;
+
+    // 1.2 修复后页面尺寸在共享合法范围内
+    const repaired = repairScene(scene);
+    assert.equal(repaired.page.width, MAX_PAGE_DIMENSION);
+    assert.equal(repaired.page.height, 1);
     assert.equal(validateScene(repaired).ok, true);
   });
 

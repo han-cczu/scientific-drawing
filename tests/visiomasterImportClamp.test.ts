@@ -4,6 +4,7 @@ import { normalizeImportedScene } from "../src/editor/visiomasterAdapter";
 import {
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
+  MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
@@ -263,6 +264,32 @@ describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", (
     assert.equal(scene.nodes[0].style.fontSize, undefined);
     assert.equal(scene.nodes[0].style.opacity, undefined);
     assert.deepEqual(scene.edges[0].points, [{ x: 0, y: 0 }]);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("钳制 Visiomaster 页面尺寸，避免前端导入放大渲染和导出布局", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端页面尺寸规模上界
+     * ========================================================================
+     * 目标：
+     *   1) page.width/page.height 在适配器层钳到共享页面上界
+     *   2) 小于 1px 的正数会被提升到 1px，避免 PPTX/坐标比例异常
+     */
+
+    // 1.1 构造超界页面尺寸
+    const scene = normalizeImportedScene({
+      page: { width: MAX_PAGE_DIMENSION + 100, height: 0.5, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        { id: "box", type: "process_box", x: 0, y: 0, w: 100, h: 80, style: {} }
+      ],
+      edges: []
+    });
+
+    // 1.2 导入结果页面尺寸在共享合法范围内
+    assert.equal(scene.page.width, MAX_PAGE_DIMENSION);
+    assert.equal(scene.page.height, 1);
     assert.equal(validateScene(scene).ok, true);
   });
 

@@ -9,6 +9,7 @@ import type { Scene } from "../src/shared/scene";
 import {
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
+  MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
@@ -641,6 +642,32 @@ describe("visiomaster adapter", () => {
     assert.equal(scene.nodes[0].style.fontSize, undefined);
     assert.equal(scene.nodes[0].style.opacity, undefined);
     assert.deepEqual(scene.edges[0].points, [{ x: 0, y: 0 }]);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("clamps page dimensions before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 页面尺寸规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身钳制超大 page.width/page.height
+     *   2) 小于 1px 的正数不能进入后续 SVG/PPTX/evaluate 链路
+     */
+
+    // 1.1 构造超界页面尺寸
+    const scene = normalizeImportedScene({
+      page: { width: MAX_PAGE_DIMENSION + 100, height: 0.5, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        { id: "box", type: "process_box", x: 0, y: 0, w: 100, h: 80, style: {} }
+      ],
+      edges: []
+    });
+
+    // 1.2 适配结果已符合共享校验上界
+    assert.equal(scene.page.width, MAX_PAGE_DIMENSION);
+    assert.equal(scene.page.height, 1);
     assert.equal(validateScene(scene).ok, true);
   });
 

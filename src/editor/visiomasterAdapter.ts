@@ -4,6 +4,7 @@ import { isNormalizedHexColor, normalizeHexColor, resolveEndpoint } from "../sha
 import {
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
+  MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
@@ -81,8 +82,8 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
   // 1.1 转换页面和元数据
   const page = asRecord(input.page);
   const metadata = asRecord(input.metadata);
-  const width = numberValue(page.width, 1280);
-  const height = numberValue(page.height, 720);
+  const width = pageDimension(page.width, 1280);
+  const height = pageDimension(page.height, 720);
 
   // 1.2 转换节点和边
   const rawNodes = Array.isArray(input.nodes) ? input.nodes.filter(isRecord).slice(0, MAX_SCENE_NODES) : [];
@@ -306,6 +307,14 @@ function uniqueId(baseId: string, usedIds: Set<string>) {
 
 function numberValue(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function pageDimension(value: unknown, fallback: number) {
+  const numeric = numberValue(value, fallback);
+  if (numeric <= 0) {
+    return fallback;
+  }
+  return Math.min(MAX_PAGE_DIMENSION, Math.max(1, Math.round(numeric)));
 }
 
 function numberOptional(value: unknown) {

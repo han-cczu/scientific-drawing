@@ -4,6 +4,7 @@ import {
   MAX_GRID_DIMENSION,
   MAX_METADATA_NOTE_LENGTH,
   MAX_METADATA_NOTES,
+  MAX_PAGE_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
@@ -44,8 +45,8 @@ export function repairScene(scene: Scene): Scene {
   const next: Scene = {
     version: "0.1",
     page: {
-      width: positive(scene.page?.width, 1280),
-      height: positive(scene.page?.height, 720),
+      width: pageDimension(scene.page?.width, 1280),
+      height: pageDimension(scene.page?.height, 720),
       background: safeColor(scene.page?.background, "#FFFFFF"),
       units: "px"
     },
@@ -347,6 +348,14 @@ function finite(value: unknown, fallback: number) {
 function positive(value: unknown, fallback: number) {
   const numberValue = finite(value, fallback);
   return numberValue > 0 ? numberValue : fallback;
+}
+
+function pageDimension(value: unknown, fallback: number) {
+  const numberValue = finite(value, fallback);
+  if (numberValue <= 0) {
+    return fallback;
+  }
+  return Math.min(MAX_PAGE_DIMENSION, Math.max(1, Math.round(numberValue)));
 }
 
 function nonNegative(value: unknown, fallback: number) {
