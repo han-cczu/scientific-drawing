@@ -24,6 +24,13 @@ export const MAX_TICK_POSITIONS = 512;
 export const MAX_METADATA_NOTES = 64;
 export const MAX_METADATA_NOTE_LENGTH = 512;
 
+// id 会作为 Set/Map 键、端点引用和导出标识符使用，单个字段必须比通用文本更短。
+export const MAX_SCENE_ID_LENGTH = 256;
+
+// 非正文协议字符串上界：metadata title/sourceImage、node source、edge endpoint
+// 和字体/虚线等样式字段会进入持久化、导出属性或引用解析。
+export const MAX_PROTOCOL_STRING_LENGTH = 4096;
+
 // 可渲染/协议文本字段上界：node text/symbol、grid cell text 和 edge label
 // 会进入 React/SVG/PPTX 渲染或 scene 持久化，需限制单字段放大。
 export const MAX_TEXT_LENGTH = 4096;
@@ -164,15 +171,23 @@ function validateMetadata(value: unknown, issues: ValidationIssue[]) {
   // 1.2 校验必要字段
   if (typeof value.id !== "string" || !value.id.trim()) {
     addIssue(issues, "$.metadata.id", "invalid_metadata_id", "Metadata id must be a non-empty string.");
+  } else {
+    validateStringLength(value.id, "$.metadata.id", MAX_SCENE_ID_LENGTH, issues);
   }
   if (typeof value.title !== "string") {
     addIssue(issues, "$.metadata.title", "invalid_metadata_title", "Metadata title must be a string.");
+  } else {
+    validateStringLength(value.title, "$.metadata.title", MAX_PROTOCOL_STRING_LENGTH, issues);
   }
   if (typeof value.createdAt !== "string") {
     addIssue(issues, "$.metadata.createdAt", "invalid_metadata_created_at", "Metadata createdAt must be a string.");
+  } else {
+    validateStringLength(value.createdAt, "$.metadata.createdAt", MAX_PROTOCOL_STRING_LENGTH, issues);
   }
   if (typeof value.engine !== "string") {
     addIssue(issues, "$.metadata.engine", "invalid_metadata_engine", "Metadata engine must be a string.");
+  } else {
+    validateStringLength(value.engine, "$.metadata.engine", MAX_PROTOCOL_STRING_LENGTH, issues);
   }
   if (!Array.isArray(value.notes) || !value.notes.every((item) => typeof item === "string")) {
     addIssue(issues, "$.metadata.notes", "invalid_metadata_notes", "Metadata notes must be a string array.");
@@ -238,9 +253,11 @@ function validateNode(node: SceneNode, index: number, seen: Set<string>, issues:
   const path = `$.nodes[${index}]`;
   if (typeof node.id !== "string" || !node.id.trim()) {
     addIssue(issues, `${path}.id`, "invalid_node_id", "Node id must be a non-empty string.");
-  } else if (seen.has(node.id)) {
-    addIssue(issues, `${path}.id`, "duplicate_node_id", "Node id must be unique.");
   } else {
+    validateStringLength(node.id, `${path}.id`, MAX_SCENE_ID_LENGTH, issues);
+    if (seen.has(node.id)) {
+      addIssue(issues, `${path}.id`, "duplicate_node_id", "Node id must be unique.");
+    }
     seen.add(node.id);
   }
   if (!NODE_TYPES.has(node.type)) {
@@ -386,9 +403,11 @@ function validateEdge(edge: SceneEdge, index: number, seen: Set<string>, nodeIds
   const path = `$.edges[${index}]`;
   if (typeof edge.id !== "string" || !edge.id.trim()) {
     addIssue(issues, `${path}.id`, "invalid_edge_id", "Edge id must be a non-empty string.");
-  } else if (seen.has(edge.id)) {
-    addIssue(issues, `${path}.id`, "duplicate_edge_id", "Edge id must be unique.");
   } else {
+    validateStringLength(edge.id, `${path}.id`, MAX_SCENE_ID_LENGTH, issues);
+    if (seen.has(edge.id)) {
+      addIssue(issues, `${path}.id`, "duplicate_edge_id", "Edge id must be unique.");
+    }
     seen.add(edge.id);
   }
   if (!EDGE_TYPES.has(edge.type)) {
@@ -473,6 +492,9 @@ function validateEndpoint(
     addIssue(issues, path, code, "Endpoint must be a string.");
     return;
   }
+  if (!validateStringLength(endpoint, path, MAX_PROTOCOL_STRING_LENGTH, issues)) {
+    return;
+  }
 
   // 1.3 校验端点节点存在
   const nodeId = endpoint.split(":")[0];
@@ -547,6 +569,10 @@ function validateOptionalBoolean(value: unknown, path: string, code: string, iss
 function validateOptionalString(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
   if (value !== undefined && typeof value !== "string") {
     addIssue(issues, path, code, "Value must be a string.");
+    return;
+  }
+  if (typeof value === "string") {
+    validateStringLength(value, path, MAX_PROTOCOL_STRING_LENGTH, issues);
   }
 }
 
@@ -558,6 +584,14 @@ function validateOptionalText(value: unknown, path: string, code: string, issues
   if (typeof value === "string" && value.length > MAX_TEXT_LENGTH) {
     addIssue(issues, path, "text_too_long", `Text must not exceed ${MAX_TEXT_LENGTH} characters.`);
   }
+}
+
+function validateStringLength(value: string, path: string, maxLength: number, issues: ValidationIssue[]) {
+  if (value.length > maxLength) {
+    addIssue(issues, path, "string_too_long", `String must not exceed ${maxLength} characters.`);
+    return false;
+  }
+  return true;
 }
 
 function validateStringArray(value: unknown, path: string, code: string, issues: ValidationIssue[]) {

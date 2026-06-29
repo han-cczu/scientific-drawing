@@ -5,7 +5,9 @@ import {
   MAX_METADATA_NOTE_LENGTH,
   MAX_METADATA_NOTES,
   MAX_POLYLINE_POINTS,
+  MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
+  MAX_SCENE_ID_LENGTH,
   MAX_SCENE_NODES,
   MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS
@@ -48,11 +50,11 @@ export function repairScene(scene: Scene): Scene {
       units: "px"
     },
     metadata: {
-      id: nonEmpty(scene.metadata?.id, "repaired-scene"),
-      title: typeof scene.metadata?.title === "string" ? scene.metadata.title : "Scientific Figure",
-      sourceImage: scene.metadata?.sourceImage,
-      createdAt: nonEmpty(scene.metadata?.createdAt, new Date().toISOString()),
-      engine: nonEmpty(scene.metadata?.engine, "scientific-drawing.repair"),
+      id: boundedNonEmpty(scene.metadata?.id, "repaired-scene", MAX_SCENE_ID_LENGTH),
+      title: typeof scene.metadata?.title === "string" ? boundedString(scene.metadata.title, MAX_PROTOCOL_STRING_LENGTH) : "Scientific Figure",
+      sourceImage: optionalString(scene.metadata?.sourceImage),
+      createdAt: boundedNonEmpty(scene.metadata?.createdAt, new Date().toISOString(), MAX_PROTOCOL_STRING_LENGTH),
+      engine: boundedNonEmpty(scene.metadata?.engine, "scientific-drawing.repair", MAX_PROTOCOL_STRING_LENGTH),
       notes: repairMetadataNotes(scene.metadata?.notes)
     },
     nodes: [],
@@ -88,7 +90,7 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
    */
 
   // 1.1 修复 id、类型和几何
-  const originalId = nonEmpty(node.id, `node-${index + 1}`);
+  const originalId = rawNonEmpty(node.id, `node-${index + 1}`);
   const id = uniqueId(originalId, idMap, usedIds);
   const type = NODE_TYPES.has(node.type) ? node.type : "rect";
   const repaired: SceneNode = {
@@ -181,7 +183,7 @@ function repairEdge(edge: SceneEdge, index: number, idMap: Map<string, string>, 
   }
 
   // 1.2 返回修复后的边
-  const originalId = nonEmpty(edge.id, `edge-${index + 1}`);
+  const originalId = rawNonEmpty(edge.id, `edge-${index + 1}`);
   return {
     ...edge,
     id: uniqueStandaloneId(originalId, usedIds),
@@ -228,16 +230,19 @@ function repairStyle(style: SceneStyle | undefined): SceneStyle {
   };
 }
 
-function repairEndpoint(endpoint: string | undefined, idMap: Map<string, string>) {
-  if (!endpoint) {
-    return endpoint;
+function repairEndpoint(endpoint: unknown, idMap: Map<string, string>) {
+  if (endpoint === undefined) {
+    return undefined;
+  }
+  if (typeof endpoint !== "string" || !endpoint.trim()) {
+    return undefined;
   }
   const [id, rest] = endpoint.split(":");
   const mapped = idMap.get(id);
   if (!mapped) {
     return undefined;
   }
-  return rest ? `${mapped}:${rest}` : mapped;
+  return boundedString(rest ? `${mapped}:${rest}` : mapped, MAX_PROTOCOL_STRING_LENGTH);
 }
 
 function repairPoint(point: unknown) {
@@ -254,10 +259,11 @@ function repairPoint(point: unknown) {
 function uniqueId(originalId: string, idMap: Map<string, string>, usedIds: Set<string>) {
   // usedIds 累积所有已分配 id（含重复原始 id 的后缀变体），保证 ≥3 次碰撞也能产出唯一 id；
   // 旧实现每次从 idMap.values() 重建集合，既漏记后缀变体（导致重复 id）又是 O(n²)。
-  let candidate = originalId;
+  const baseId = boundedString(originalId, MAX_SCENE_ID_LENGTH);
+  let candidate = baseId;
   let suffix = 2;
   while (usedIds.has(candidate)) {
-    candidate = `${originalId}-${suffix}`;
+    candidate = suffixedId(baseId, suffix);
     suffix += 1;
   }
   usedIds.add(candidate);
@@ -265,18 +271,28 @@ function uniqueId(originalId: string, idMap: Map<string, string>, usedIds: Set<s
   if (!idMap.has(originalId)) {
     idMap.set(originalId, candidate);
   }
+  if (!idMap.has(baseId)) {
+    idMap.set(baseId, candidate);
+  }
   return candidate;
 }
 
 function uniqueStandaloneId(originalId: string, usedIds: Set<string>) {
-  let candidate = originalId;
+  const baseId = boundedString(originalId, MAX_SCENE_ID_LENGTH);
+  let candidate = baseId;
   let suffix = 2;
   while (usedIds.has(candidate)) {
-    candidate = `${originalId}-${suffix}`;
+    candidate = suffixedId(baseId, suffix);
     suffix += 1;
   }
   usedIds.add(candidate);
   return candidate;
+}
+
+function suffixedId(baseId: string, suffix: number) {
+  const suffixText = `-${suffix}`;
+  const prefixLength = Math.max(1, MAX_SCENE_ID_LENGTH - suffixText.length);
+  return `${baseId.slice(0, prefixLength)}${suffixText}`;
 }
 
 function safeColor(value: unknown, fallback: string) {
@@ -290,12 +306,20 @@ function safeColor(value: unknown, fallback: string) {
   return isNormalizedHexColor(normalized) ? normalized : fallback;
 }
 
-function nonEmpty(value: unknown, fallback: string) {
+function rawNonEmpty(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function boundedNonEmpty(value: unknown, fallback: string, maxLength: number) {
+  return boundedString(rawNonEmpty(value, fallback), maxLength);
+}
+
 function optionalString(value: unknown) {
-  return typeof value === "string" ? value : undefined;
+  return typeof value === "string" ? boundedString(value, MAX_PROTOCOL_STRING_LENGTH) : undefined;
+}
+
+function boundedString(value: string, maxLength: number) {
+  return value.slice(0, maxLength);
 }
 
 function optionalText(value: unknown) {

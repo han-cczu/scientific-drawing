@@ -6,7 +6,9 @@ import {
   MAX_METADATA_NOTE_LENGTH,
   MAX_METADATA_NOTES,
   MAX_POLYLINE_POINTS,
+  MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
+  MAX_SCENE_ID_LENGTH,
   MAX_SCENE_NODES,
   MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS,
@@ -228,6 +230,27 @@ describe("scene validation", () => {
     assert.doesNotThrow(() => { result = validateScene(scene); });
     assert.equal(result?.ok, false);
     assert.ok(result?.issues.some((issue) => issue.code === "missing_edge_source"));
+  });
+
+  it("stops endpoint existence checks after oversized endpoint strings", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证超长端点短路
+     * ========================================================================
+     * 目标：
+     *   1) 超长 endpoint 已经不符合协议，无需继续做节点存在性校验
+     *   2) 避免把巨大 endpoint 片段复制进 missing_edge_* 错误消息
+     */
+
+    // 1.1 构造引用缺失节点的超长端点
+    const scene = validScene();
+    scene.edges[0].from = "missing".repeat(MAX_PROTOCOL_STRING_LENGTH);
+
+    // 1.2 只报告规模错误，不再生成缺失节点错误
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].from" && issue.code === "string_too_long"));
+    assert.ok(!result.issues.some((issue) => issue.path === "$.edges[0].from" && issue.code === "missing_edge_source"));
   });
 
   it("rejects grid cells arrays exceeding the size cap", () => {
@@ -517,5 +540,62 @@ describe("scene validation", () => {
     assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].symbol" && issue.code === "text_too_long"));
     assert.ok(result.issues.some((issue) => issue.path === "$.nodes[1].cells[0].text" && issue.code === "text_too_long"));
     assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].label" && issue.code === "text_too_long"));
+  });
+
+  it("rejects oversized protocol string fields used by references and exporters", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证协议字符串规模上界
+     * ========================================================================
+     * 目标：
+     *   1) id/from/to 会进入 Set/Map 和端点解析
+     *   2) sourceImage/source/style 字符串会进入持久化或导出属性
+     */
+
+    // 1.1 构造超长协议字符串
+    const longString = "x".repeat(MAX_PROTOCOL_STRING_LENGTH + 1);
+    const scene = validScene();
+    scene.metadata = {
+      ...scene.metadata,
+      id: longString,
+      title: longString,
+      sourceImage: longString,
+      createdAt: longString,
+      engine: longString
+    };
+    scene.nodes = [
+      {
+        id: "a",
+        type: "image",
+        x: 0,
+        y: 0,
+        w: 100,
+        h: 80,
+        source: longString,
+        style: { fontFamily: longString, fontWeight: longString, dash: longString }
+      },
+      { id: longString, type: "rect", x: 120, y: 0, w: 100, h: 80, style: {} }
+    ];
+    scene.edges = [
+      { id: longString, type: "arrow", from: `a:${longString}`, to: `${longString}:left@0.5`, style: {} }
+    ];
+
+    // 1.2 校验层应拒绝单字段放大的协议字符串
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.metadata.id" && issue.message.includes(String(MAX_SCENE_ID_LENGTH))));
+    assert.ok(result.issues.some((issue) => issue.path === "$.metadata.id" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.metadata.title" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.metadata.sourceImage" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.metadata.createdAt" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.metadata.engine" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].source" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].style.fontFamily" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].style.fontWeight" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].style.dash" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[1].id" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].id" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].from" && issue.code === "string_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].to" && issue.code === "string_too_long"));
   });
 });

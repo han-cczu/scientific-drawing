@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
+import { MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -571,6 +571,64 @@ describe("scene repair", () => {
     assert.equal(repaired.nodes[0].symbol?.length, MAX_TEXT_LENGTH);
     assert.equal(repaired.nodes[1].cells?.[0]?.text?.length, MAX_TEXT_LENGTH);
     assert.equal(repaired.edges[0].label?.length, MAX_TEXT_LENGTH);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps oversized protocol string fields so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证协议字符串修复规模上界
+     * ========================================================================
+     * 目标：
+     *   1) 修复 metadata、node、edge 和 style 中的结构字符串
+     *   2) 保留超长原始 id 到修复后短 id 的端点映射
+     */
+
+    // 1.1 构造包含超长结构字符串的 scene
+    const longString = "x".repeat(MAX_PROTOCOL_STRING_LENGTH + 10);
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: {
+        id: longString,
+        title: longString,
+        sourceImage: longString,
+        createdAt: longString,
+        engine: longString,
+        notes: []
+      },
+      nodes: [
+        {
+          id: longString,
+          type: "image",
+          x: 0,
+          y: 0,
+          w: 50,
+          h: 50,
+          source: longString,
+          style: { fontFamily: longString, fontWeight: longString, dash: longString }
+        },
+        { id: "target", type: "rect", x: 60, y: 0, w: 30, h: 30, style: {} }
+      ],
+      edges: [
+        { id: longString, type: "arrow", from: `${longString}:right@0.5`, to: "target:left@0.5", style: {} }
+      ]
+    } as unknown as Scene;
+
+    // 1.2 修复后结构字符串被裁剪，端点仍指向修复后的节点 id
+    const repaired = repairScene(scene);
+    assert.ok(repaired.metadata.id.length <= MAX_SCENE_ID_LENGTH);
+    assert.ok(repaired.metadata.title.length <= MAX_PROTOCOL_STRING_LENGTH);
+    assert.ok(repaired.metadata.sourceImage && repaired.metadata.sourceImage.length <= MAX_PROTOCOL_STRING_LENGTH);
+    assert.ok(repaired.metadata.createdAt.length <= MAX_PROTOCOL_STRING_LENGTH);
+    assert.ok(repaired.metadata.engine.length <= MAX_PROTOCOL_STRING_LENGTH);
+    assert.ok(repaired.nodes[0].id.length <= MAX_SCENE_ID_LENGTH);
+    assert.ok(repaired.nodes[0].source && repaired.nodes[0].source.length <= MAX_PROTOCOL_STRING_LENGTH);
+    assert.ok(repaired.nodes[0].style.fontFamily && repaired.nodes[0].style.fontFamily.length <= MAX_PROTOCOL_STRING_LENGTH);
+    assert.ok(repaired.nodes[0].style.fontWeight && repaired.nodes[0].style.fontWeight.length <= MAX_PROTOCOL_STRING_LENGTH);
+    assert.ok(repaired.nodes[0].style.dash && repaired.nodes[0].style.dash.length <= MAX_PROTOCOL_STRING_LENGTH);
+    assert.ok(repaired.edges[0].id.length <= MAX_SCENE_ID_LENGTH);
+    assert.equal(repaired.edges[0].from, `${repaired.nodes[0].id}:right@0.5`);
     assert.equal(validateScene(repaired).ok, true);
   });
 });

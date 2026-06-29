@@ -10,7 +10,9 @@ import {
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
   MAX_POLYLINE_POINTS,
+  MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
+  MAX_SCENE_ID_LENGTH,
   MAX_SCENE_NODES,
   MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS,
@@ -719,6 +721,87 @@ describe("visiomaster adapter", () => {
     assert.equal(scene.nodes[0].symbol?.length, MAX_TEXT_LENGTH);
     assert.equal(scene.nodes[0].cells?.[0]?.text?.length, MAX_TEXT_LENGTH);
     assert.equal(scene.edges[0].label?.length, MAX_TEXT_LENGTH);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("clamps protocol strings before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 协议字符串规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身裁剪 id/from/to 等引用字符串
+     *   2) normalizeImportedScene 自身裁剪 metadata/source/style 字符串
+     */
+
+    // 1.1 构造超长结构字符串
+    const longId = "n".repeat(MAX_SCENE_ID_LENGTH + 10);
+    const longString = "x".repeat(MAX_PROTOCOL_STRING_LENGTH + 10);
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: longString },
+      nodes: [
+        {
+          id: longId,
+          type: "image_tile",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 80,
+          source: longString,
+          style: { font_family: longString, font_weight: longString, line_dash: "dash" }
+        },
+        { id: "target", type: "process_box", x: 140, y: 0, w: 100, h: 80, style: {} }
+      ],
+      edges: [
+        { id: longId, type: "arrow_connector", from: "target", to: `${longId}:left@0.5`, style: {} }
+      ]
+    });
+
+    // 1.2 适配结果已符合共享校验上界
+    assert.equal(scene.metadata.title.length, MAX_PROTOCOL_STRING_LENGTH);
+    assert.equal(scene.nodes[0].id.length, MAX_SCENE_ID_LENGTH);
+    assert.equal(scene.nodes[0].source?.length, MAX_PROTOCOL_STRING_LENGTH);
+    assert.equal(scene.nodes[0].style.fontFamily?.length, MAX_PROTOCOL_STRING_LENGTH);
+    assert.equal(scene.nodes[0].style.fontWeight?.length, MAX_PROTOCOL_STRING_LENGTH);
+    assert.equal(scene.edges[0].id.length, MAX_SCENE_ID_LENGTH);
+    assert.equal(scene.edges[0].from, "target");
+    assert.equal(scene.edges[0].to, `${scene.nodes[0].id}:left@0.5`);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("deduplicates Visiomaster ids that collide after clamping", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster id 裁剪碰撞处理
+     * ========================================================================
+     * 目标：
+     *   1) 两个超长 id 共享前缀时，裁剪后仍保持节点 id 唯一
+     *   2) 边端点分别重写到对应的唯一化 id
+     */
+
+    // 1.1 构造两个裁剪后会碰撞的 id
+    const prefix = "n".repeat(MAX_SCENE_ID_LENGTH);
+    const firstId = `${prefix}-a`;
+    const secondId = `${prefix}-b`;
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        { id: firstId, type: "process_box", x: 0, y: 0, w: 100, h: 80, style: {} },
+        { id: secondId, type: "process_box", x: 140, y: 0, w: 100, h: 80, style: {} }
+      ],
+      edges: [
+        { id: "edge", type: "arrow_connector", from: firstId, to: `${secondId}:left@0.5`, style: {} }
+      ]
+    });
+
+    // 1.2 适配结果 id 唯一且端点映射不串线
+    assert.notEqual(scene.nodes[0].id, scene.nodes[1].id);
+    assert.equal(scene.nodes[0].id.length, MAX_SCENE_ID_LENGTH);
+    assert.equal(scene.nodes[1].id.length, MAX_SCENE_ID_LENGTH);
+    assert.equal(scene.edges[0].from, scene.nodes[0].id);
+    assert.equal(scene.edges[0].to, `${scene.nodes[1].id}:left@0.5`);
     assert.equal(validateScene(scene).ok, true);
   });
 });

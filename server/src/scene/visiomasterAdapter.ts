@@ -1,5 +1,5 @@
 import { resolveEndpoint } from "@shared/geometry";
-import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
+import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
 type AnyRecord = Record<string, unknown>;
@@ -35,9 +35,16 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
   const page = asRecord(input.page);
   const metadata = asRecord(input.metadata);
   const rawNodes = Array.isArray(input.nodes) ? input.nodes.filter(isRecord).slice(0, MAX_SCENE_NODES) : [];
-  const nodes = rawNodes.map(convertNode);
+  const idMap = new Map<string, string>();
+  const usedIds = new Set<string>();
+  const nodes = rawNodes.map((node) => {
+    const rawId = stringValue(node.id, randomId("node"), MAX_PROTOCOL_STRING_LENGTH);
+    const id = uniqueId(stringValue(node.id, randomId("node"), MAX_SCENE_ID_LENGTH), usedIds);
+    idMap.set(rawId, id);
+    return convertNode(node, id);
+  });
   const rawEdges = Array.isArray(input.edges) ? input.edges.filter(isRecord).slice(0, MAX_SCENE_EDGES) : [];
-  const edges = rawEdges.map((edge) => convertEdge(edge, nodes));
+  const edges = rawEdges.map((edge) => convertEdge(edge, nodes, idMap));
   return {
     version: "0.1",
     page: {
@@ -48,7 +55,7 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
     },
     metadata: {
       id: randomId("scene"),
-      title: stringValue(metadata.title, "AI Reconstruction"),
+      title: stringValue(metadata.title, "AI Reconstruction", MAX_PROTOCOL_STRING_LENGTH),
       createdAt: new Date().toISOString(),
       engine: "scientific-drawing.openai-reconstruction",
       notes: ["Generated from Visiomaster-style AI scene."]
@@ -58,7 +65,7 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
   };
 }
 
-function convertNode(node: AnyRecord): SceneNode {
+function convertNode(node: AnyRecord, id?: string): SceneNode {
   /*
    * ========================================================================
    * 步骤1：转换节点
@@ -70,7 +77,7 @@ function convertNode(node: AnyRecord): SceneNode {
   const type = stringValue(node.type, "process_box");
   const style = mapStyle(asRecord(node.style));
   const result: SceneNode = {
-    id: stringValue(node.id, randomId("node")),
+    id: id ?? stringValue(node.id, randomId("node"), MAX_SCENE_ID_LENGTH),
     type: mapNodeType(type),
     x: numberValue(node.x, 0),
     y: numberValue(node.y, 0),
@@ -87,6 +94,7 @@ function convertNode(node: AnyRecord): SceneNode {
     tickPositions: numberArray(node.tick_positions, MAX_TICK_POSITIONS),
     style
   };
+  result.source = stringOptional(node.source, MAX_PROTOCOL_STRING_LENGTH);
   if (result.type === "operator") {
     result.text = result.symbol || result.text || "";
   }
@@ -97,7 +105,7 @@ function convertNode(node: AnyRecord): SceneNode {
   return result;
 }
 
-function convertEdge(edge: AnyRecord, nodes: SceneNode[]): SceneEdge {
+function convertEdge(edge: AnyRecord, nodes: SceneNode[], idMap: Map<string, string>): SceneEdge {
   /*
    * ========================================================================
    * 步骤1：转换边
@@ -106,10 +114,10 @@ function convertEdge(edge: AnyRecord, nodes: SceneNode[]): SceneEdge {
    *   1) 保留连接关系
    *   2) 解析端点坐标
    */
-  const from = stringOptional(edge.from);
-  const to = stringOptional(edge.to);
+  const from = endpointValue(edge.from, idMap);
+  const to = endpointValue(edge.to, idMap);
   return {
-    id: stringValue(edge.id, randomId("edge")),
+    id: stringValue(edge.id, randomId("edge"), MAX_SCENE_ID_LENGTH),
     type: mapEdgeType(stringValue(edge.type, "arrow_connector")),
     from,
     to,
@@ -144,9 +152,9 @@ function mapStyle(style: AnyRecord): SceneStyle {
     fill: stringOptional(style.fill),
     stroke: stringOptional(style.line ?? style.stroke),
     strokeWidth: numberOptional(style.line_weight_pt ?? style.strokeWidth),
-    fontFamily: stringOptional(style.font_family ?? style.fontFamily),
+    fontFamily: stringOptional(style.font_family ?? style.fontFamily, MAX_PROTOCOL_STRING_LENGTH),
     fontSize: numberOptional(style.font_size_pt ?? style.fontSize),
-    fontWeight: stringOptional(style.font_weight ?? style.fontWeight),
+    fontWeight: stringOptional(style.font_weight ?? style.fontWeight, MAX_PROTOCOL_STRING_LENGTH),
     color: stringOptional(style.text_color ?? style.color),
     opacity: numberOptional(style.opacity),
     dash: style.line_dash === "dash" ? "7 5" : undefined
@@ -172,8 +180,8 @@ function asRecord(value: unknown): AnyRecord {
   return isRecord(value) ? value : {};
 }
 
-function stringValue(value: unknown, fallback: string) {
-  return typeof value === "string" ? value : fallback;
+function stringValue(value: unknown, fallback: string, maxLength = MAX_PROTOCOL_STRING_LENGTH) {
+  return (typeof value === "string" ? value : fallback).slice(0, maxLength);
 }
 
 function stringOptional(value: unknown, maxLength?: number) {
@@ -181,6 +189,28 @@ function stringOptional(value: unknown, maxLength?: number) {
     return undefined;
   }
   return maxLength === undefined ? value : value.slice(0, maxLength);
+}
+
+function endpointValue(value: unknown, idMap: Map<string, string>) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const [rawId, rest] = value.split(":");
+  const id = idMap.get(rawId) ?? rawId;
+  return (rest ? `${id}:${rest}` : id).slice(0, MAX_PROTOCOL_STRING_LENGTH);
+}
+
+function uniqueId(baseId: string, usedIds: Set<string>) {
+  let candidate = baseId;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    const suffixText = `-${suffix}`;
+    const prefixLength = Math.max(1, MAX_SCENE_ID_LENGTH - suffixText.length);
+    candidate = `${baseId.slice(0, prefixLength)}${suffixText}`;
+    suffix += 1;
+  }
+  usedIds.add(candidate);
+  return candidate;
 }
 
 function numberValue(value: unknown, fallback: number) {

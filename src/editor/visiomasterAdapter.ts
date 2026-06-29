@@ -5,7 +5,9 @@ import {
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
   MAX_POLYLINE_POINTS,
+  MAX_PROTOCOL_STRING_LENGTH,
   MAX_SCENE_EDGES,
+  MAX_SCENE_ID_LENGTH,
   MAX_SCENE_NODES,
   MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS
@@ -84,9 +86,16 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
 
   // 1.2 转换节点和边
   const rawNodes = Array.isArray(input.nodes) ? input.nodes.filter(isRecord).slice(0, MAX_SCENE_NODES) : [];
-  const nodes = rawNodes.map(convertVisiomasterNode);
+  const idMap = new Map<string, string>();
+  const usedIds = new Set<string>();
+  const nodes = rawNodes.map((node, index) => {
+    const rawId = stringValue(node.id, createId("node"), MAX_PROTOCOL_STRING_LENGTH);
+    const id = uniqueId(stringValue(node.id, createId("node"), MAX_SCENE_ID_LENGTH), usedIds);
+    idMap.set(rawId, id);
+    return convertVisiomasterNode(node, id);
+  });
   const rawEdges = Array.isArray(input.edges) ? input.edges.filter(isRecord).slice(0, MAX_SCENE_EDGES) : [];
-  const edges = rawEdges.map((edge) => convertVisiomasterEdge(edge, nodes));
+  const edges = rawEdges.map((edge) => convertVisiomasterEdge(edge, nodes, idMap));
 
   const scene: Scene = {
     version: "0.1",
@@ -98,7 +107,7 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
     },
     metadata: {
       id: createId("scene"),
-      title: stringValue(metadata.title, "Imported Visiomaster Scene"),
+      title: stringValue(metadata.title, "Imported Visiomaster Scene", MAX_PROTOCOL_STRING_LENGTH),
       createdAt: new Date().toISOString(),
       engine: "scientific-drawing.visiomaster-adapter",
       notes: ["Imported from Visiomaster-style scene.json."]
@@ -111,7 +120,7 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
   return scene;
 }
 
-function convertVisiomasterNode(node: AnyRecord): SceneNode {
+function convertVisiomasterNode(node: AnyRecord, id?: string): SceneNode {
   /*
    * ========================================================================
    * 步骤1：转换 Visiomaster 节点
@@ -126,7 +135,7 @@ function convertVisiomasterNode(node: AnyRecord): SceneNode {
   const type = stringValue(node.type, "process_box");
   const style = mapStyle(asRecord(node.style));
   const base: SceneNode = {
-    id: stringValue(node.id, createId("node")),
+    id: id ?? stringValue(node.id, createId("node"), MAX_SCENE_ID_LENGTH),
     type: mapNodeType(type),
     x: numberValue(node.x, 0),
     y: numberValue(node.y, 0),
@@ -143,6 +152,7 @@ function convertVisiomasterNode(node: AnyRecord): SceneNode {
     tickPositions: numberArray(node.tick_positions, MAX_TICK_POSITIONS),
     style
   };
+  base.source = stringOptional(node.source, MAX_PROTOCOL_STRING_LENGTH);
 
   // 1.2 按类型补充样式
   if (base.type === "operator") {
@@ -157,7 +167,7 @@ function convertVisiomasterNode(node: AnyRecord): SceneNode {
   return base;
 }
 
-function convertVisiomasterEdge(edge: AnyRecord, nodes: SceneNode[]): SceneEdge {
+function convertVisiomasterEdge(edge: AnyRecord, nodes: SceneNode[], idMap: Map<string, string>): SceneEdge {
   /*
    * ========================================================================
    * 步骤1：转换 Visiomaster 连线
@@ -169,15 +179,15 @@ function convertVisiomasterEdge(edge: AnyRecord, nodes: SceneNode[]): SceneEdge 
   logger.info("开始转换 Visiomaster 连线...", { id: edge.id, type: edge.type });
 
   // 1.1 映射连线样式
-  const from = stringOptional(edge.from);
-  const to = stringOptional(edge.to);
+  const from = endpointValue(edge.from, idMap);
+  const to = endpointValue(edge.to, idMap);
   const explicitPoints = pointArray(edge.points);
   const fromPoint = pointValue(edge.from_point) ?? (from ? resolveEndpoint(from, nodes) : undefined);
   const toPoint = pointValue(edge.to_point) ?? (to ? resolveEndpoint(to, nodes) : undefined);
 
   // 1.2 组装连线
   const result: SceneEdge = {
-    id: stringValue(edge.id, createId("edge")),
+    id: stringValue(edge.id, createId("edge"), MAX_SCENE_ID_LENGTH),
     type: mapEdgeType(stringValue(edge.type, "arrow_connector")),
     from,
     to,
@@ -235,9 +245,9 @@ function mapStyle(style: AnyRecord): SceneStyle {
     fill: optionalColor(style.fill, "#FFFFFF"),
     stroke: optionalColor(style.line ?? style.stroke, "#111111"),
     strokeWidth: numberOptional(style.line_weight_pt ?? style.strokeWidth),
-    fontFamily: stringOptional(style.font_family ?? style.fontFamily),
+    fontFamily: stringOptional(style.font_family ?? style.fontFamily, MAX_PROTOCOL_STRING_LENGTH),
     fontSize: numberOptional(style.font_size_pt ?? style.fontSize),
-    fontWeight: stringOptional(style.font_weight ?? style.fontWeight),
+    fontWeight: stringOptional(style.font_weight ?? style.fontWeight, MAX_PROTOCOL_STRING_LENGTH),
     color: optionalColor(style.text_color ?? style.color, "#111111"),
     opacity: numberOptional(style.opacity),
     dash: style.line_dash === "dash" ? "7 5" : undefined
@@ -261,8 +271,8 @@ function asRecord(value: unknown): AnyRecord {
   return isRecord(value) ? value : {};
 }
 
-function stringValue(value: unknown, fallback: string) {
-  return typeof value === "string" ? value : fallback;
+function stringValue(value: unknown, fallback: string, maxLength = MAX_PROTOCOL_STRING_LENGTH) {
+  return (typeof value === "string" ? value : fallback).slice(0, maxLength);
 }
 
 function stringOptional(value: unknown, maxLength?: number) {
@@ -270,6 +280,28 @@ function stringOptional(value: unknown, maxLength?: number) {
     return undefined;
   }
   return maxLength === undefined ? value : value.slice(0, maxLength);
+}
+
+function endpointValue(value: unknown, idMap: Map<string, string>) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const [rawId, rest] = value.split(":");
+  const id = idMap.get(rawId) ?? rawId;
+  return (rest ? `${id}:${rest}` : id).slice(0, MAX_PROTOCOL_STRING_LENGTH);
+}
+
+function uniqueId(baseId: string, usedIds: Set<string>) {
+  let candidate = baseId;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    const suffixText = `-${suffix}`;
+    const prefixLength = Math.max(1, MAX_SCENE_ID_LENGTH - suffixText.length);
+    candidate = `${baseId.slice(0, prefixLength)}${suffixText}`;
+    suffix += 1;
+  }
+  usedIds.add(candidate);
+  return candidate;
 }
 
 function numberValue(value: unknown, fallback: number) {
