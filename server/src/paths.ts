@@ -22,6 +22,7 @@ const LOCAL_ASSET_DIRS: ReadonlyArray<readonly [string, string]> = [
   ["uploads", uploadDir],
   ["eval-suite", evalSuiteDir]
 ];
+const LOCAL_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 export function resolveUploadedAssetPath(source: unknown): string | null {
   /*
@@ -76,6 +77,9 @@ function resolveLocalAssetPathInBucket(source: unknown, name: string, baseDir: s
   }
   const rest = normalized.slice(marker.length);
   if (!rest) {
+    return null;
+  }
+  if (!LOCAL_IMAGE_EXTENSIONS.has(path.extname(rest).toLowerCase())) {
     return null;
   }
   const resolved = path.resolve(baseDir, rest);

@@ -32,6 +32,20 @@ describe("resolveLocalAssetPath (导出图片来源防路径穿越)", () => {
     assert.equal(resolveLocalAssetPath("/eval-suite/../config.json"), null);
   });
 
+  it("拒绝白名单目录内的非图片文件", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证本地资源只解析图片后缀
+     * ========================================================================
+     * 目标：
+     *   1) SVG 导出内嵌图片前不能把 manifest/config 等 JSON 当图片读盘
+     *   2) 局部重建上传原图解析同样只接受图片后缀
+     */
+    assert.equal(resolveLocalAssetPath("/eval-suite/manifest.json"), null);
+    assert.equal(resolveLocalAssetPath("/uploads/readme.txt"), null);
+    assert.equal(resolveUploadedAssetPath("/uploads/base.json"), null);
+  });
+
   it("拒绝非白名单 / 绝对路径 / 外部 URL / 空值", () => {
     /*
      * ========================================================================
