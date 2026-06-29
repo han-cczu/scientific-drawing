@@ -244,12 +244,14 @@ describe("editor scene operations", () => {
     const backward = moveNodeLayer(forward, "a", "backward");
     const front = moveNodeLayer(backward, "line", "front");
     const back = moveNodeLayer(front, "line", "back");
+    const baseMoved = moveNodeLayer(editorScene(), "base", "front");
 
     // 1.2 校验顺序
     assert.deepEqual(forward.nodes.map((node) => node.id), ["base", "b", "a", "line", "arrow"]);
     assert.deepEqual(backward.nodes.map((node) => node.id), ["base", "a", "b", "line", "arrow"]);
     assert.equal(front.nodes.at(-1)?.id, "line");
-    assert.equal(back.nodes[0]?.id, "line");
+    assert.deepEqual(back.nodes.map((node) => node.id), ["base", "line", "a", "b", "arrow"]);
+    assert.deepEqual(baseMoved.nodes.map((node) => node.id), editorScene().nodes.map((node) => node.id));
     assert.equal(back.nodes.length, editorScene().nodes.length);
   });
 

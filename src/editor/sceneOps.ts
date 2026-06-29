@@ -459,9 +459,14 @@ export function moveNodeLayer(scene: Scene, nodeId: string, direction: LayerMove
     logger.warn("调整节点图层顺序失败，节点不存在", { nodeId });
     return scene;
   }
+  const targetNode = scene.nodes[index];
+  if (isLockedImageLayer(targetNode)) {
+    logger.info("调整节点图层顺序完成，锁定底图保持最底层", { nodeId });
+    return scene;
+  }
 
   // 1.2 计算目标位置
-  const target = targetLayerIndex(index, scene.nodes.length, direction);
+  const target = targetLayerIndex(index, scene.nodes.length, direction, firstEditableLayerIndex(scene.nodes));
   if (target === index) {
     logger.info("调整节点图层顺序完成，顺序未变化", { nodeId });
     return scene;
@@ -469,14 +474,14 @@ export function moveNodeLayer(scene: Scene, nodeId: string, direction: LayerMove
 
   // 1.3 移动节点
   const nodes = [...scene.nodes];
-  const [node] = nodes.splice(index, 1);
-  nodes.splice(target, 0, node);
+  const [movedNode] = nodes.splice(index, 1);
+  nodes.splice(target, 0, movedNode);
 
   logger.info("调整节点图层顺序完成", { nodeId, target });
   return { ...scene, nodes };
 }
 
-function targetLayerIndex(index: number, length: number, direction: LayerMoveDirection) {
+function targetLayerIndex(index: number, length: number, direction: LayerMoveDirection, minIndex = 0) {
   /*
    * ========================================================================
    * 步骤1：计算目标图层位置
@@ -491,15 +496,24 @@ function targetLayerIndex(index: number, length: number, direction: LayerMoveDir
   const target = direction === "front"
     ? length - 1
     : direction === "back"
-      ? 0
+      ? minIndex
       : direction === "forward"
         ? index + 1
         : index - 1;
 
   // 1.2 夹紧索引
-  const result = Math.max(0, Math.min(length - 1, target));
+  const result = Math.max(minIndex, Math.min(length - 1, target));
   logger.info("计算目标图层位置完成", { result });
   return result;
+}
+
+function firstEditableLayerIndex(nodes: SceneNode[]) {
+  const index = nodes.findIndex((node) => !isLockedImageLayer(node));
+  return index >= 0 ? index : nodes.length - 1;
+}
+
+function isLockedImageLayer(node: SceneNode) {
+  return node.locked === true && node.type === "image";
 }
 
 function nodeBox(node: SceneNode): SceneBox {
