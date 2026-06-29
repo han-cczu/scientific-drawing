@@ -5,7 +5,7 @@ import express from "express";
 import multer from "multer";
 import sharp from "sharp";
 import { logger } from "../logger";
-import { sceneDir, uploadDir } from "../paths";
+import { resolveUploadedAssetPath, sceneDir, uploadDir } from "../paths";
 import { analyzeImage } from "../scene/analyzeImage";
 import {
   buildSafeAiProviderConfig,
@@ -407,7 +407,11 @@ apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (re
       res.status(400).json({ error: "Scene does not contain a source image." });
       return;
     }
-    const sourcePath = uploadPathFromSourceUrl(sourceUrl);
+    const sourcePath = resolveUploadedAssetPath(sourceUrl);
+    if (!sourcePath) {
+      res.status(400).json({ error: "Source image must be a local upload." });
+      return;
+    }
 
     // 1.3 裁剪局部图片
     const sourceMetadata = await sharp(sourcePath).metadata();
@@ -871,32 +875,6 @@ function sceneBoxValue(value: unknown): SceneBox | null {
 
   logger.info("读取 scene 区域完成", region);
   return region;
-}
-
-function uploadPathFromSourceUrl(sourceUrl: string) {
-  /*
-   * ========================================================================
-   * 步骤1：解析上传文件路径
-   * ========================================================================
-   * 目标：
-   *   1) 只允许 /uploads/ 下的运行产物
-   *   2) 使用 basename 防止路径穿越
-   */
-  logger.info("开始解析上传文件路径...", { sourceUrl });
-
-  // 1.1 校验上传 URL
-  const normalized = sourceUrl.replaceAll("\\", "/");
-  const marker = "/uploads/";
-  const index = normalized.indexOf(marker);
-  if (index < 0) {
-    throw new Error("Source image must be a local upload.");
-  }
-
-  // 1.2 返回本地路径
-  const fileName = path.basename(normalized.slice(index + marker.length));
-  const filePath = path.join(uploadDir, fileName);
-  logger.info("解析上传文件路径完成", { filePath });
-  return filePath;
 }
 
 export function isAllowedImageMime(mime: string) {

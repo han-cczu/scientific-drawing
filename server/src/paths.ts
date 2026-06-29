@@ -23,6 +23,18 @@ const LOCAL_ASSET_DIRS: ReadonlyArray<readonly [string, string]> = [
   ["eval-suite", evalSuiteDir]
 ];
 
+export function resolveUploadedAssetPath(source: unknown): string | null {
+  /*
+   * ========================================================================
+   * 步骤1：严格解析上传资源 URL
+   * ========================================================================
+   * 目标：
+   *   1) 只接受项目生成的 /uploads/... 相对 URL
+   *   2) 拒绝外部 URL 中夹带的 /uploads/ 片段
+   */
+  return resolveLocalAssetPathInBucket(source, "uploads", uploadDir);
+}
+
 export function resolveLocalAssetPath(source: unknown): string | null {
   /*
    * ========================================================================
@@ -39,29 +51,40 @@ export function resolveLocalAssetPath(source: unknown): string | null {
     return null;
   }
 
-  // 1.2 逐个白名单目录匹配标记并做包含校验
-  const normalized = source.replaceAll("\\", "/");
+  // 1.2 逐个白名单目录匹配前缀并做包含校验。必须是以 /uploads/ 或 /eval-suite/
+  //     开头的项目相对 URL；不能用 indexOf 匹配任意位置，否则外部 URL
+  //     https://evil.test/uploads/x.png 会被误当成本地文件。
   for (const [name, baseDir] of LOCAL_ASSET_DIRS) {
-    const marker = `/${name}/`;
-    const index = normalized.indexOf(marker);
-    if (index < 0) {
-      continue;
+    const resolved = resolveLocalAssetPathInBucket(source, name, baseDir);
+    if (resolved) {
+      return resolved;
     }
-    const rest = normalized.slice(index + marker.length);
-    if (!rest) {
-      return null;
-    }
-    const resolved = path.resolve(baseDir, rest);
-    const relative = path.relative(baseDir, resolved);
-    // relative 以 '..' 开头或为绝对路径 → 解析结果逃出 baseDir，拒绝
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-      return null;
-    }
-    return resolved;
   }
 
   // 1.3 非受控来源（外部 URL / 绝对路径 / 非法字符串）
   return null;
+}
+
+function resolveLocalAssetPathInBucket(source: unknown, name: string, baseDir: string): string | null {
+  if (typeof source !== "string" || !source) {
+    return null;
+  }
+  const normalized = source.replaceAll("\\", "/");
+  const marker = `/${name}/`;
+  if (!normalized.startsWith(marker)) {
+    return null;
+  }
+  const rest = normalized.slice(marker.length);
+  if (!rest) {
+    return null;
+  }
+  const resolved = path.resolve(baseDir, rest);
+  const relative = path.relative(baseDir, resolved);
+  // relative 以 '..' 开头或为绝对路径 → 解析结果逃出 baseDir，拒绝
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+  return resolved;
 }
 
 export function ensureDataDirs(logger: { info: (message: string, meta?: Record<string, unknown>) => void }) {
