@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import path from "node:path";
 import express from "express";
+import sharp from "sharp";
 import { apiRouter } from "../server/src/routes/api";
 import { httpErrorHandler } from "../server/src/httpErrorHandler";
 import { sceneDir, uploadDir } from "../server/src/paths";
@@ -74,6 +75,35 @@ function sceneWithMissingSourceImage(): Scene {
   };
 }
 
+function sceneWithSourceImage(sourceImage: string): Scene {
+  return {
+    version: "0.1",
+    page: { width: 400, height: 200, background: "#FFFFFF", units: "px" },
+    metadata: {
+      id: "region-scene",
+      title: "Region Scene",
+      sourceImage,
+      createdAt: "2026-06-29T00:00:00.000Z",
+      engine: "test",
+      notes: []
+    },
+    nodes: [
+      {
+        id: "source-image",
+        type: "image",
+        x: 0,
+        y: 0,
+        w: 400,
+        h: 200,
+        source: sourceImage,
+        locked: true,
+        style: { opacity: 1 }
+      }
+    ],
+    edges: []
+  };
+}
+
 describe("reconstruct-region route", () => {
   it("returns a client error when the local source image referenced by the scene is missing", async () => {
     const baseUrl = await startTestServer();
@@ -92,6 +122,39 @@ describe("reconstruct-region route", () => {
     assert.equal(response.status, 400);
     assert.match(body.error, /source image.*not found/i);
     assert.doesNotMatch(body.error, /internal server error/i);
+  });
+
+  it("returns a client error when the region does not overlap the scene page", async () => {
+    const imageName = `${randomUUID()}.png`;
+    const imagePath = path.join(uploadDir, imageName);
+    try {
+      const baseUrl = await startTestServer();
+      await sharp({
+        create: {
+          width: 16,
+          height: 16,
+          channels: 3,
+          background: "#ffffff"
+        }
+      }).png().toFile(imagePath);
+
+      const response = await fetch(`${baseUrl}/api/reconstruct-region`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          scene: sceneWithSourceImage(`/uploads/${imageName}`),
+          region: { x: 500, y: 50, w: 20, h: 20 },
+          mode: "color",
+          mergeMode: "replace"
+        })
+      });
+
+      const body = await response.json() as { error: string | { code?: string; message?: string } };
+      assert.equal(response.status, 400);
+      assert.match(typeof body.error === "string" ? body.error : body.error.message ?? "", /invalid region/i);
+    } finally {
+      await unlink(imagePath).catch(() => undefined);
+    }
   });
 });
 

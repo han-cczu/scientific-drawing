@@ -418,7 +418,7 @@ apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (re
     const scene = sceneValidation.scene;
 
     // 1.2 校验区域和原图来源
-    const region = sceneBoxValue(req.body?.region);
+    const region = sceneBoxValue(req.body?.region, scene.page);
     if (!region) {
       res.status(400).json({ error: "Invalid region." });
       return;
@@ -881,7 +881,7 @@ function regionMergeModeValue(value: unknown): RegionMergeMode {
   return mode;
 }
 
-function sceneBoxValue(value: unknown): SceneBox | null {
+function sceneBoxValue(value: unknown, page?: Scene["page"]): SceneBox | null {
   /*
    * ========================================================================
    * 步骤1：读取 scene 区域
@@ -889,6 +889,7 @@ function sceneBoxValue(value: unknown): SceneBox | null {
    * 目标：
    *   1) 校验 x/y/w/h 是有限数字
    *   2) 拒绝过小区域
+   *   3) 拒绝与当前 page 无有效交集的区域，避免把无效输入夹成 1px 裁剪
    */
   logger.info("开始读取 scene 区域...", { value });
 
@@ -914,9 +915,31 @@ function sceneBoxValue(value: unknown): SceneBox | null {
     logger.warn("读取 scene 区域失败，区域过小");
     return null;
   }
+  if (page) {
+    const normalized = normalizeSceneBox(region);
+    const left = Math.max(0, normalized.x);
+    const top = Math.max(0, normalized.y);
+    const right = Math.min(page.width, normalized.x + normalized.w);
+    const bottom = Math.min(page.height, normalized.y + normalized.h);
+    if (right - left < 4 || bottom - top < 4) {
+      logger.warn("读取 scene 区域失败，与画布无有效交集");
+      return null;
+    }
+  }
 
   logger.info("读取 scene 区域完成", region);
   return region;
+}
+
+function normalizeSceneBox(region: SceneBox): SceneBox {
+  const x = region.w < 0 ? region.x + region.w : region.x;
+  const y = region.h < 0 ? region.y + region.h : region.y;
+  return {
+    x,
+    y,
+    w: Math.abs(region.w),
+    h: Math.abs(region.h)
+  };
 }
 
 export function isAllowedImageMime(mime: string) {
