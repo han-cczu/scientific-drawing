@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { resolveEndpoint } from "../src/shared/geometry";
 import { createEdgeBetweenNodes, duplicateNode, moveNodeLayer, moveNodes, normalizeBox, removeNode, resizeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked, updateNode, updateNodeStyle } from "../src/editor/sceneOps";
 import type { Scene } from "../src/shared/scene";
-import { MAX_GEOMETRY_COORDINATE, MAX_NODE_SIZE, MAX_STYLE_FONT_SIZE, MAX_STYLE_STROKE_WIDTH, MAX_TEXT_LENGTH, validateScene } from "../src/shared/sceneValidation";
+import { MAX_GEOMETRY_COORDINATE, MAX_NODE_SIZE, MAX_PROTOCOL_STRING_LENGTH, MAX_STYLE_FONT_SIZE, MAX_STYLE_STROKE_WIDTH, MAX_TEXT_LENGTH, validateScene } from "../src/shared/sceneValidation";
 
 function editorScene(): Scene {
   /*
@@ -194,8 +194,14 @@ describe("editor scene operations", () => {
       text: "x".repeat(MAX_TEXT_LENGTH + 100)
     });
     scene = updateNodeStyle(scene, "a", {
+      fill: "red",
+      stroke: "url(javascript:alert(1))",
+      color: "not-a-color",
       strokeWidth: MAX_STYLE_STROKE_WIDTH + 100,
-      fontSize: MAX_STYLE_FONT_SIZE + 100
+      fontSize: MAX_STYLE_FONT_SIZE + 100,
+      fontFamily: "f".repeat(MAX_PROTOCOL_STRING_LENGTH + 100),
+      fontWeight: "w".repeat(MAX_PROTOCOL_STRING_LENGTH + 100),
+      dash: "d".repeat(MAX_PROTOCOL_STRING_LENGTH + 100)
     });
 
     // 1.2 编辑后的 scene 仍应可持久化/导出
@@ -205,8 +211,14 @@ describe("editor scene operations", () => {
     assert.equal(node?.w, MAX_NODE_SIZE);
     assert.equal(node?.h, MAX_NODE_SIZE);
     assert.equal(node?.text?.length, MAX_TEXT_LENGTH);
+    assert.equal(node?.style.fill, "#FFFFFF");
+    assert.equal(node?.style.stroke, "none");
+    assert.equal(node?.style.color, "#111111");
     assert.equal(node?.style.strokeWidth, MAX_STYLE_STROKE_WIDTH);
     assert.equal(node?.style.fontSize, MAX_STYLE_FONT_SIZE);
+    assert.equal(node?.style.fontFamily?.length, MAX_PROTOCOL_STRING_LENGTH);
+    assert.equal(node?.style.fontWeight?.length, MAX_PROTOCOL_STRING_LENGTH);
+    assert.equal(node?.style.dash?.length, MAX_PROTOCOL_STRING_LENGTH);
     assert.equal(validateScene(scene).ok, true);
 
     // 1.3 画布拖拽入口同样不能写出非法几何

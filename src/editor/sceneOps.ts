@@ -1,10 +1,11 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
-import { clampNumber, endpointReferencesNode } from "../shared/geometry";
+import { clampNumber, endpointReferencesNode, isNormalizedHexColor, normalizeHexColor } from "../shared/geometry";
 import type { Scene, SceneEdge, SceneNode, SceneNodeType, SceneStyle } from "../shared/scene";
 import {
   MAX_GEOMETRY_COORDINATE,
   MAX_NODE_SIZE,
+  MAX_PROTOCOL_STRING_LENGTH,
   MAX_STYLE_FONT_SIZE,
   MAX_STYLE_STROKE_WIDTH,
   MAX_TEXT_LENGTH
@@ -676,6 +677,24 @@ function sanitizeNode(node: SceneNode): SceneNode {
 
 function sanitizeStyle(style: SceneStyle): SceneStyle {
   const next = { ...style };
+  if (style.fill !== undefined) {
+    next.fill = paint(style.fill, "#FFFFFF");
+  }
+  if (style.stroke !== undefined) {
+    next.stroke = paint(style.stroke, "none");
+  }
+  if (style.color !== undefined) {
+    next.color = paint(style.color, "#111111");
+  }
+  if (style.fontFamily !== undefined) {
+    next.fontFamily = truncateProtocolString(style.fontFamily);
+  }
+  if (style.fontWeight !== undefined) {
+    next.fontWeight = truncateProtocolString(style.fontWeight);
+  }
+  if (style.dash !== undefined) {
+    next.dash = truncateProtocolString(style.dash);
+  }
   if (style.strokeWidth !== undefined) {
     next.strokeWidth = strokeWidth(style.strokeWidth);
   }
@@ -683,6 +702,14 @@ function sanitizeStyle(style: SceneStyle): SceneStyle {
     next.fontSize = fontSize(style.fontSize);
   }
   return next;
+}
+
+function paint(value: string, fallback: string) {
+  if (value === "none") {
+    return "none";
+  }
+  const normalized = normalizeHexColor(value);
+  return isNormalizedHexColor(normalized) ? normalized : fallback;
 }
 
 function coordinate(value: number) {
@@ -714,4 +741,8 @@ function finite(value: number, fallback: number) {
 
 function truncateText(value: string | undefined) {
   return typeof value === "string" ? value.slice(0, MAX_TEXT_LENGTH) : undefined;
+}
+
+function truncateProtocolString(value: string | undefined) {
+  return typeof value === "string" ? value.slice(0, MAX_PROTOCOL_STRING_LENGTH) : undefined;
 }
