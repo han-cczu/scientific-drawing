@@ -155,4 +155,22 @@ describe("region reconstruction helpers", () => {
     assert.equal(scene.nodes.some((node) => node.id === "outside-2"), true);
     assert.equal(scene.edges.some((edge) => edge.id === "region-edge"), true);
   });
+
+  it("does not replace nodes that only touch the region boundary", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证替换边界
+     * ========================================================================
+     * 目标：
+     *   1) 框选右边界贴到节点左边界时不视为区域内节点
+     *   2) 避免 replace 模式误删相邻但未覆盖的旧内容
+     */
+
+    // 1.1 合并一个刚好贴到 outside 左边界的区域
+    const scene = mergeRegionReconstruction(baseScene(), regionScene(), { x: 100, y: 50, w: 160, h: 80 }, "replace");
+
+    // 1.2 校验贴边的外部节点仍保留；引用已删除 inside 的旧边应被清理
+    assert.equal(scene.nodes.some((node) => node.id === "outside"), true);
+    assert.equal(scene.edges.some((edge) => edge.id === "old-edge"), false);
+  });
 });
