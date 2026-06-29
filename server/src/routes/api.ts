@@ -496,6 +496,13 @@ apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (re
     if (res.writableEnded) {
       return;
     }
+    if (isInvalidImageDataError(error)) {
+      logger.warn("AI 局部重建失败，原图内容非法", { error: String(error) });
+      res.status(400).json({
+        error: { code: "INVALID_IMAGE", message: "Invalid image data.", hint: "请上传有效的 PNG、JPEG 或 WebP 图片" }
+      });
+      return;
+    }
     const envelope = toReconstructEnvelope(error);
     logger.error("AI 局部重建失败", { error: String(error), code: envelope.code });
     res.status(envelope.status).json({

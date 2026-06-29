@@ -124,6 +124,42 @@ describe("reconstruct-region route", () => {
     assert.doesNotMatch(body.error, /internal server error/i);
   });
 
+  it("returns an INVALID_IMAGE envelope when the local source image is corrupt", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证局部重建原图内容校验
+     * ========================================================================
+     * 目标：
+     *   1) /uploads 下文件存在不代表图片内容有效
+     *   2) sharp 读取损坏原图失败时应返回客户端可恢复错误，而不是 UNKNOWN 500
+     */
+    const imageName = `${randomUUID()}.png`;
+    const imagePath = path.join(uploadDir, imageName);
+    try {
+      const baseUrl = await startTestServer();
+      await writeFile(imagePath, "not a real png", "utf-8");
+
+      const response = await fetch(`${baseUrl}/api/reconstruct-region`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          scene: sceneWithSourceImage(`/uploads/${imageName}`),
+          region: { x: 40, y: 30, w: 120, h: 80 },
+          mode: "color",
+          mergeMode: "replace"
+        })
+      });
+
+      const body = await response.json() as { error: { code?: string; message?: string; hint?: string } };
+      assert.equal(response.status, 400);
+      assert.equal(body.error.code, "INVALID_IMAGE");
+      assert.match(body.error.message ?? "", /invalid image/i);
+      assert.match(body.error.hint ?? "", /PNG|JPEG|WebP/i);
+    } finally {
+      await unlink(imagePath).catch(() => undefined);
+    }
+  });
+
   it("returns a client error when the region does not overlap the scene page", async () => {
     const imageName = `${randomUUID()}.png`;
     const imagePath = path.join(uploadDir, imageName);
