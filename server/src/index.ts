@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import express from "express";
 import { logger } from "./logger";
+import { httpErrorHandler } from "./httpErrorHandler";
 import { apiRouter } from "./routes/api";
 import { cleanupDataFiles, DEFAULT_RETENTION_DAYS } from "./files/retention";
 import { ensureDataDirs, exportDir, sceneDir, uploadDir } from "./paths";
@@ -69,11 +70,7 @@ if (distAvailable) {
 }
 
 // 1.5 注册错误处理
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  // 内部错误细节只写日志，对外统一返回通用文案，避免泄露上游响应/内部异常信息
-  logger.error("HTTP 请求处理失败", { error: String(error) });
-  res.status(500).json({ error: "Internal server error." });
-});
+app.use(httpErrorHandler);
 
 // 1.6 启动监听
 const port = Number(process.env.PORT || 8787);
