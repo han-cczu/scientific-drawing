@@ -6,6 +6,12 @@ import { sceneToSvg } from "../server/src/scene/svg";
 import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
 import { shadeColor } from "../src/shared/geometry";
 import type { Scene } from "../src/shared/scene";
+import {
+  MAX_POLYLINE_POINTS,
+  MAX_SCENE_EDGES,
+  MAX_SCENE_NODES,
+  validateScene
+} from "../src/shared/sceneValidation";
 
 function sampleScene(): Scene {
   /*
@@ -429,6 +435,47 @@ describe("visiomaster adapter", () => {
     assert.equal(container?.style.dash, undefined);
     assert.equal(blocks?.cells?.[0]?.text, "1");
     assert.equal(blocks?.cells?.[1]?.text, "4");
+  });
+
+  it("clamps top-level arrays and edge points before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 适配层规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身不完整展开超长 nodes/edges
+     *   2) edge.points 在进入 repairScene 前已钳到共享上界
+     */
+
+    // 1.1 构造超长 Visiomaster 场景
+    const points = Array.from({ length: MAX_POLYLINE_POINTS + 10 }, (_, index) => [index, index]);
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: Array.from({ length: MAX_SCENE_NODES + 10 }, (_, index) => ({
+        id: `n-${index}`,
+        type: "process_box",
+        x: index,
+        y: 0,
+        w: 1,
+        h: 1,
+        style: {}
+      })),
+      edges: Array.from({ length: MAX_SCENE_EDGES + 10 }, (_, index) => ({
+        id: `e-${index}`,
+        type: "line_segment",
+        from: "n-0",
+        to: "n-1",
+        points,
+        style: {}
+      }))
+    });
+
+    // 1.2 适配结果已符合共享校验上界
+    assert.equal(scene.nodes.length, MAX_SCENE_NODES);
+    assert.equal(scene.edges.length, MAX_SCENE_EDGES);
+    assert.equal(scene.edges[0].points?.length, MAX_POLYLINE_POINTS);
+    assert.equal(validateScene(scene).ok, true);
   });
 });
 

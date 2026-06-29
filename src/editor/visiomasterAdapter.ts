@@ -1,7 +1,13 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
 import { isNormalizedHexColor, normalizeHexColor, resolveEndpoint } from "../shared/geometry";
-import { MAX_GRID_CELLS, MAX_GRID_DIMENSION } from "../shared/sceneValidation";
+import {
+  MAX_GRID_CELLS,
+  MAX_GRID_DIMENSION,
+  MAX_POLYLINE_POINTS,
+  MAX_SCENE_EDGES,
+  MAX_SCENE_NODES
+} from "../shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "../shared/scene";
 
 type AnyRecord = Record<string, unknown>;
@@ -75,9 +81,9 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
   const height = numberValue(page.height, 720);
 
   // 1.2 转换节点和边
-  const rawNodes = Array.isArray(input.nodes) ? input.nodes.filter(isRecord) : [];
+  const rawNodes = Array.isArray(input.nodes) ? input.nodes.filter(isRecord).slice(0, MAX_SCENE_NODES) : [];
   const nodes = rawNodes.map(convertVisiomasterNode);
-  const rawEdges = Array.isArray(input.edges) ? input.edges.filter(isRecord) : [];
+  const rawEdges = Array.isArray(input.edges) ? input.edges.filter(isRecord).slice(0, MAX_SCENE_EDGES) : [];
   const edges = rawEdges.map((edge) => convertVisiomasterEdge(edge, nodes));
 
   const scene: Scene = {
@@ -308,7 +314,8 @@ function pointArray(value: unknown) {
   }
   return value
     .map(pointValue)
-    .filter((point): point is { x: number; y: number } => Boolean(point));
+    .filter((point): point is { x: number; y: number } => Boolean(point))
+    .slice(0, MAX_POLYLINE_POINTS);
 }
 
 function cellArray(value: unknown, labels?: unknown) {

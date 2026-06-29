@@ -1,4 +1,5 @@
 import { resolveEndpoint } from "@shared/geometry";
+import { MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
 type AnyRecord = Record<string, unknown>;
@@ -33,9 +34,9 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
    */
   const page = asRecord(input.page);
   const metadata = asRecord(input.metadata);
-  const rawNodes = Array.isArray(input.nodes) ? input.nodes.filter(isRecord) : [];
+  const rawNodes = Array.isArray(input.nodes) ? input.nodes.filter(isRecord).slice(0, MAX_SCENE_NODES) : [];
   const nodes = rawNodes.map(convertNode);
-  const rawEdges = Array.isArray(input.edges) ? input.edges.filter(isRecord) : [];
+  const rawEdges = Array.isArray(input.edges) ? input.edges.filter(isRecord).slice(0, MAX_SCENE_EDGES) : [];
   const edges = rawEdges.map((edge) => convertEdge(edge, nodes));
   return {
     version: "0.1",
@@ -207,7 +208,10 @@ function pointValue(value: unknown) {
 
 function pointArray(value: unknown) {
   if (!Array.isArray(value)) return undefined;
-  return value.map(pointValue).filter((point): point is { x: number; y: number } => Boolean(point));
+  return value
+    .map(pointValue)
+    .filter((point): point is { x: number; y: number } => Boolean(point))
+    .slice(0, MAX_POLYLINE_POINTS);
 }
 
 function cellArray(value: unknown, labels?: unknown) {

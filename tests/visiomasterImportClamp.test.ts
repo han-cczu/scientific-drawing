@@ -1,7 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeImportedScene } from "../src/editor/visiomasterAdapter";
-import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, validateScene } from "../src/shared/sceneValidation";
+import {
+  MAX_GRID_CELLS,
+  MAX_GRID_DIMENSION,
+  MAX_POLYLINE_POINTS,
+  MAX_SCENE_EDGES,
+  MAX_SCENE_NODES,
+  validateScene
+} from "../src/shared/sceneValidation";
 
 describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", () => {
   it("把超界的 Visiomaster 网格 rows/cols 钳到上界，使客户端导入通过校验", () => {
@@ -117,6 +124,48 @@ describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", (
     assert.deepEqual(grid?.rowColors, ["#FFFFFF", "#AABBCC"]);
     assert.equal(grid?.cells?.[0].fill, "#FFFFFF");
     assert.equal(grid?.cells?.[0].color, "#111111");
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("钳制 Visiomaster 顶层数组和边 points，避免前端导入放大渲染链路", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端导入路径的规模上界
+     * ========================================================================
+     * 目标：
+     *   1) Visiomaster nodes/edges 在适配器层钳到共享上界
+     *   2) edge.points 同样钳到共享上界，使导入后 scene 可直接校验
+     */
+
+    // 1.1 构造超长 Visiomaster 场景
+    const points = Array.from({ length: MAX_POLYLINE_POINTS + 10 }, (_, index) => [index, index]);
+    const input = {
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: Array.from({ length: MAX_SCENE_NODES + 10 }, (_, index) => ({
+        id: `n-${index}`,
+        type: "process_box",
+        x: index,
+        y: 0,
+        w: 1,
+        h: 1,
+        style: {}
+      })),
+      edges: Array.from({ length: MAX_SCENE_EDGES + 10 }, (_, index) => ({
+        id: `e-${index}`,
+        type: "line_segment",
+        from: "n-0",
+        to: "n-1",
+        points,
+        style: {}
+      }))
+    };
+
+    // 1.2 导入后钳制并通过校验
+    const scene = normalizeImportedScene(input);
+    assert.equal(scene.nodes.length, MAX_SCENE_NODES);
+    assert.equal(scene.edges.length, MAX_SCENE_EDGES);
+    assert.equal(scene.edges[0].points?.length, MAX_POLYLINE_POINTS);
     assert.equal(validateScene(scene).ok, true);
   });
 });
