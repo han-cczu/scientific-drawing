@@ -66,10 +66,14 @@ function isStoredPreset(value: unknown): value is StoredPreset {
   const v = value as Record<string, unknown>;
   return (
     typeof v.id === "string" &&
-    typeof v.fill === "string" &&
-    typeof v.stroke === "string" &&
+    isSceneColor(v.fill) &&
+    isSceneColor(v.stroke) &&
     typeof v.createdAt === "number"
   );
+}
+
+function isSceneColor(value: unknown): value is string {
+  return typeof value === "string" && (value === "none" || /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value));
 }
 
 function readFromStorage(): StoredPreset[] {
