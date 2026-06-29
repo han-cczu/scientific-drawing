@@ -192,7 +192,10 @@ function numberOptional(value: unknown) {
 }
 
 function intOptional(value: unknown) {
-  return typeof value === "number" ? Math.max(1, Math.round(value)) : undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.min(MAX_GRID_DIMENSION, Math.max(1, Math.round(value)));
 }
 
 function stringArray(value: unknown, maxItems?: number) {

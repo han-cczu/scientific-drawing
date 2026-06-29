@@ -441,6 +441,32 @@ describe("visiomaster adapter", () => {
     assert.equal(blocks?.cells?.[1]?.text, "4");
   });
 
+  it("clamps grid rows and cols before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 网格维度规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身把 rows/cols 钳到共享上界
+     *   2) 行为与前端导入适配器保持一致
+     */
+
+    // 1.1 构造超界 Visiomaster 网格维度
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        { id: "grid", type: "grid_matrix", x: 0, y: 0, w: 100, h: 100, rows: 1000, cols: 5, style: {} }
+      ],
+      edges: []
+    });
+
+    // 1.2 适配结果已符合共享校验上界
+    assert.equal(scene.nodes[0].rows, MAX_GRID_DIMENSION);
+    assert.equal(scene.nodes[0].cols, 5);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
   it("clamps top-level arrays and edge points before repair", () => {
     /*
      * ========================================================================
