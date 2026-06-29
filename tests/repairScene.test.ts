@@ -217,4 +217,38 @@ describe("scene repair", () => {
     assert.equal(new Set(ids).size, ids.length);
     assert.equal(validateScene(repaired).ok, true);
   });
+
+  it("deduplicates repeated edge ids before validation", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证重复 edge id 的修复
+     * ========================================================================
+     * 目标：
+     *   1) AI 输出重复 edge id 时，repairScene 应生成唯一 id
+     *   2) 修复后的 scene 不应再被 validateScene 的 duplicate_edge_id 拒绝
+     */
+
+    // 1.1 构造重复 edge id 和空 edge id
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        { id: "a", type: "rect", x: 0, y: 0, w: 10, h: 10, style: {} },
+        { id: "b", type: "rect", x: 20, y: 0, w: 10, h: 10, style: {} }
+      ],
+      edges: [
+        { id: "same", type: "arrow", from: "a", to: "b", style: {} },
+        { id: "same", type: "line", from: "b", to: "a", style: {} },
+        { id: "", type: "join", from: "a", to: "b", style: {} },
+        { id: "", type: "fork", from: "b", to: "a", style: {} }
+      ]
+    } as unknown as Scene;
+
+    // 1.2 去重后全部唯一且校验通过
+    const repaired = repairScene(scene);
+    const ids = repaired.edges.map((edge) => edge.id);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.equal(validateScene(repaired).ok, true);
+  });
 });

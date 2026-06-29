@@ -53,10 +53,11 @@ export function repairScene(scene: Scene): Scene {
   //   idMap：原始 id → 首个分配 id（供边端点重写）；usedIds：所有已分配 id（保证唯一）
   const idMap = new Map<string, string>();
   const usedIds = new Set<string>();
+  const edgeUsedIds = new Set<string>();
   next.nodes = Array.isArray(scene.nodes) ? scene.nodes.map((node, index) => repairNode(node, index, idMap, usedIds)) : [];
   next.edges = Array.isArray(scene.edges)
     ? scene.edges
-      .map((edge, index) => repairEdge(edge, index, idMap, next.nodes))
+      .map((edge, index) => repairEdge(edge, index, idMap, next.nodes, edgeUsedIds))
       .filter((edge): edge is SceneEdge => Boolean(edge))
     : [];
 
@@ -124,7 +125,7 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
   return repaired;
 }
 
-function repairEdge(edge: SceneEdge, index: number, idMap: Map<string, string>, nodes: SceneNode[]): SceneEdge | undefined {
+function repairEdge(edge: SceneEdge, index: number, idMap: Map<string, string>, nodes: SceneNode[], usedIds: Set<string>): SceneEdge | undefined {
   /*
    * ========================================================================
    * 步骤1：修复连线
@@ -149,9 +150,10 @@ function repairEdge(edge: SceneEdge, index: number, idMap: Map<string, string>, 
   }
 
   // 1.2 返回修复后的边
+  const originalId = nonEmpty(edge.id, `edge-${index + 1}`);
   return {
     ...edge,
-    id: nonEmpty(edge.id, `edge-${index + 1}`),
+    id: uniqueStandaloneId(originalId, usedIds),
     type: EDGE_TYPES.has(edge.type) ? edge.type : "arrow",
     from,
     to,
@@ -222,6 +224,17 @@ function uniqueId(originalId: string, idMap: Map<string, string>, usedIds: Set<s
   if (!idMap.has(originalId)) {
     idMap.set(originalId, candidate);
   }
+  return candidate;
+}
+
+function uniqueStandaloneId(originalId: string, usedIds: Set<string>) {
+  let candidate = originalId;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `${originalId}-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(candidate);
   return candidate;
 }
 
