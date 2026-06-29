@@ -202,7 +202,13 @@ export async function testAppConfig(payload: WritableAppConfig): Promise<TestCon
     logger.warn("测试 AI 配置响应非 JSON", { status: response.status });
     return { ok: false, code: "INVALID_RESPONSE", error: `服务返回异常（HTTP ${response.status}）。`, models: [] };
   }
-  const data = await response.json() as TestConfigResult;
+  let data: TestConfigResult;
+  try {
+    data = await response.json() as TestConfigResult;
+  } catch (error) {
+    logger.warn("测试 AI 配置响应 JSON 解析失败", { status: response.status, error: String(error) });
+    return { ok: false, code: "INVALID_RESPONSE", error: `服务响应 JSON 解析失败（HTTP ${response.status}）。`, models: [] };
+  }
   logger.info("测试 AI 配置完成", { ok: data.ok });
   return data;
 }
