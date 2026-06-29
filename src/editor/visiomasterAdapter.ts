@@ -1,6 +1,6 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
-import { resolveEndpoint } from "../shared/geometry";
+import { isNormalizedHexColor, normalizeHexColor, resolveEndpoint } from "../shared/geometry";
 import { MAX_GRID_CELLS, MAX_GRID_DIMENSION } from "../shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "../shared/scene";
 
@@ -85,7 +85,7 @@ function normalizeVisiomasterScene(input: AnyRecord): Scene {
     page: {
       width,
       height,
-      background: stringValue(page.background, "#FFFFFF"),
+      background: safeColor(page.background, "#FFFFFF"),
       units: "px"
     },
     metadata: {
@@ -224,13 +224,13 @@ function mapEdgeType(type: string): SceneEdge["type"] {
 
 function mapStyle(style: AnyRecord): SceneStyle {
   return {
-    fill: stringOptional(style.fill),
-    stroke: stringOptional(style.line ?? style.stroke),
+    fill: optionalColor(style.fill, "#FFFFFF"),
+    stroke: optionalColor(style.line ?? style.stroke, "#111111"),
     strokeWidth: numberOptional(style.line_weight_pt ?? style.strokeWidth),
     fontFamily: stringOptional(style.font_family ?? style.fontFamily),
     fontSize: numberOptional(style.font_size_pt ?? style.fontSize),
     fontWeight: stringOptional(style.font_weight ?? style.fontWeight),
-    color: stringOptional(style.text_color ?? style.color),
+    color: optionalColor(style.text_color ?? style.color, "#111111"),
     opacity: numberOptional(style.opacity),
     dash: style.line_dash === "dash" ? "7 5" : undefined
   };
@@ -279,7 +279,13 @@ function intOptional(value: unknown) {
 }
 
 function stringArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const colors = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => safeColor(item, "#FFFFFF"));
+  return colors.length > 0 ? colors : undefined;
 }
 
 function numberArray(value: unknown) {
@@ -316,9 +322,9 @@ function cellArray(value: unknown, labels?: unknown) {
       return [{
         row: cell[0],
         col: cell[1],
-        fill: stringOptional(cell[2]),
+        fill: optionalColor(cell[2], "#FFFFFF"),
         text: stringOptional(cell[3]) ?? label?.text,
-        color: stringOptional(cell[4]) ?? label?.color
+        color: optionalColor(cell[4], "#111111") ?? label?.color
       }];
     }
     if (isRecord(cell) && typeof cell.row === "number" && typeof cell.col === "number") {
@@ -326,9 +332,9 @@ function cellArray(value: unknown, labels?: unknown) {
       return [{
         row: cell.row,
         col: cell.col,
-        fill: stringOptional(cell.fill),
+        fill: optionalColor(cell.fill, "#FFFFFF"),
         text: stringOptional(cell.text ?? cell.label) ?? label?.text,
-        color: stringOptional(cell.color ?? cell.text_color) ?? label?.color
+        color: optionalColor(cell.color ?? cell.text_color, "#111111") ?? label?.color
       }];
     }
     return [];
@@ -356,12 +362,12 @@ function cellLabelMap(value: unknown) {
     if (Array.isArray(item) && typeof item[0] === "number" && typeof item[1] === "number") {
       labels.set(`${item[0]}:${item[1]}`, {
         text: stringOptional(item[2]),
-        color: stringOptional(item[3])
+        color: optionalColor(item[3], "#111111")
       });
     } else if (isRecord(item) && typeof item.row === "number" && typeof item.col === "number") {
       labels.set(`${item.row}:${item.col}`, {
         text: stringOptional(item.text ?? item.label),
-        color: stringOptional(item.color ?? item.text_color)
+        color: optionalColor(item.color ?? item.text_color, "#111111")
       });
     }
   }
@@ -374,4 +380,22 @@ function orientationValue(value: unknown) {
     return value;
   }
   return undefined;
+}
+
+function optionalColor(value: unknown, fallback: string) {
+  if (value === undefined) {
+    return undefined;
+  }
+  return safeColor(value, fallback);
+}
+
+function safeColor(value: unknown, fallback: string) {
+  if (value === "none") {
+    return "none";
+  }
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const normalized = normalizeHexColor(value);
+  return isNormalizedHexColor(normalized) ? normalized : fallback;
 }

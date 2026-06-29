@@ -59,4 +59,64 @@ describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", (
     assert.equal(grid?.cells?.length, MAX_GRID_CELLS);
     assert.equal(validateScene(scene).ok, true);
   });
+
+  it("清洗 Visiomaster 样式颜色，避免命名色导致前端导入失败", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端导入路径的颜色修复
+     * ========================================================================
+     * 目标：
+     *   1) 前端导入不经 server repairScene，适配器必须自行清洗颜色
+     *   2) Visiomaster/AI 常见 named color 或坏色不能让 validateScene 拒绝导入
+     */
+
+    // 1.1 构造含 named color / 坏色的 Visiomaster 输入
+    const input = {
+      page: { width: 320, height: 180, background: "white" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "box",
+          type: "process_box",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 40,
+          style: {
+            fill: "white",
+            stroke: "black",
+            text_color: "blue"
+          }
+        },
+        {
+          id: "grid",
+          type: "grid_matrix",
+          x: 0,
+          y: 50,
+          w: 100,
+          h: 40,
+          rows: 1,
+          cols: 1,
+          row_colors: ["red", "#ABC"],
+          colored_cells: [[0, 0, "not-a-color", "1"]],
+          cell_labels: [[0, 0, "1", "green"]],
+          style: { stroke: "#111111" }
+        }
+      ],
+      edges: []
+    };
+
+    // 1.2 导入后颜色落到 scene 协议可接受范围
+    const scene = normalizeImportedScene(input);
+    const box = scene.nodes.find((node) => node.id === "box");
+    const grid = scene.nodes.find((node) => node.id === "grid");
+
+    assert.equal(box?.style.fill, "#FFFFFF");
+    assert.equal(box?.style.stroke, "#111111");
+    assert.equal(box?.style.color, "#111111");
+    assert.deepEqual(grid?.rowColors, ["#FFFFFF", "#AABBCC"]);
+    assert.equal(grid?.cells?.[0].fill, "#FFFFFF");
+    assert.equal(grid?.cells?.[0].color, "#111111");
+    assert.equal(validateScene(scene).ok, true);
+  });
 });
