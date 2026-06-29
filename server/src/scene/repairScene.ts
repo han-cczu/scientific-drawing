@@ -1,5 +1,11 @@
 import { clampNumber, isNormalizedHexColor, normalizeHexColor } from "@shared/geometry";
-import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS } from "@shared/sceneValidation";
+import {
+  MAX_GRID_CELLS,
+  MAX_GRID_DIMENSION,
+  MAX_POLYLINE_POINTS,
+  MAX_SCENE_EDGES,
+  MAX_SCENE_NODES
+} from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneStyle } from "./types";
 
 const NODE_TYPES = new Set<SceneNodeType>([
@@ -54,9 +60,12 @@ export function repairScene(scene: Scene): Scene {
   const idMap = new Map<string, string>();
   const usedIds = new Set<string>();
   const edgeUsedIds = new Set<string>();
-  next.nodes = Array.isArray(scene.nodes) ? scene.nodes.map((node, index) => repairNode(node, index, idMap, usedIds)) : [];
+  next.nodes = Array.isArray(scene.nodes)
+    ? scene.nodes.slice(0, MAX_SCENE_NODES).map((node, index) => repairNode(node, index, idMap, usedIds))
+    : [];
   next.edges = Array.isArray(scene.edges)
     ? scene.edges
+      .slice(0, MAX_SCENE_EDGES)
       .map((edge, index) => repairEdge(edge, index, idMap, next.nodes, edgeUsedIds))
       .filter((edge): edge is SceneEdge => Boolean(edge))
     : [];

@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { assertScene, MAX_POLYLINE_POINTS, validateScene } from "../src/shared/sceneValidation";
+import {
+  assertScene,
+  MAX_POLYLINE_POINTS,
+  MAX_SCENE_EDGES,
+  MAX_SCENE_NODES,
+  validateScene
+} from "../src/shared/sceneValidation";
 import type { Scene } from "../src/shared/scene";
 
 function validScene(): Scene {
@@ -267,6 +273,40 @@ describe("scene validation", () => {
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].points" && issue.code === "too_many_points"));
     assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].points" && issue.code === "too_many_points"));
+  });
+
+  it("rejects oversized top-level node and edge arrays", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证顶层数组规模上界
+     * ========================================================================
+     * 目标：
+     *   1) nodes 数量不能无限增长并放大渲染/导出
+     *   2) edges 数量不能无限增长并放大端点校验和导出
+     */
+    const scene = validScene();
+    scene.nodes = Array.from({ length: MAX_SCENE_NODES + 1 }, (_, index) => ({
+      id: `n-${index}`,
+      type: "rect",
+      x: index,
+      y: 0,
+      w: 1,
+      h: 1,
+      style: {}
+    }));
+    scene.edges = Array.from({ length: MAX_SCENE_EDGES + 1 }, (_, index) => ({
+      id: `e-${index}`,
+      type: "line",
+      from: "n-0",
+      to: "n-1",
+      style: {}
+    }));
+
+    const result = validateScene(scene);
+
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes" && issue.code === "too_many_nodes"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges" && issue.code === "too_many_edges"));
   });
 
   it("rejects invalid optional node fields used by renderers and exporters", () => {

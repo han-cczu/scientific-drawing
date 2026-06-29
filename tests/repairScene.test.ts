@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { MAX_POLYLINE_POINTS, validateScene } from "../src/shared/sceneValidation";
+import { MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -325,6 +325,46 @@ describe("scene repair", () => {
     const repaired = repairScene(scene);
     assert.equal(repaired.nodes[0].points?.length, MAX_POLYLINE_POINTS);
     assert.equal(repaired.edges[0].points?.length, MAX_POLYLINE_POINTS);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps oversized top-level node and edge arrays so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证顶层数组钳制
+     * ========================================================================
+     * 目标：
+     *   1) AI 输出超长 nodes/edges 时 repairScene 钳到校验上界
+     *   2) 钳制后修复结果仍可通过 validateScene
+     */
+
+    // 1.1 构造超长节点和边数组
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: Array.from({ length: MAX_SCENE_NODES + 10 }, (_, index) => ({
+        id: `n-${index}`,
+        type: "rect",
+        x: index,
+        y: 0,
+        w: 1,
+        h: 1,
+        style: {}
+      })),
+      edges: Array.from({ length: MAX_SCENE_EDGES + 10 }, (_, index) => ({
+        id: `e-${index}`,
+        type: "line",
+        from: "n-0",
+        to: "n-1",
+        style: {}
+      }))
+    } as unknown as Scene;
+
+    // 1.2 修复后顶层数组钳到上界且 scene 合法
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes.length, MAX_SCENE_NODES);
+    assert.equal(repaired.edges.length, MAX_SCENE_EDGES);
     assert.equal(validateScene(repaired).ok, true);
   });
 

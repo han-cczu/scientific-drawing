@@ -13,6 +13,10 @@ export const MAX_GRID_CELLS = MAX_GRID_DIMENSION * MAX_GRID_DIMENSION;
 // 未限制会让 20MB JSON 请求在导出阶段进一步放大 CPU 和输出体积。
 export const MAX_POLYLINE_POINTS = 4096;
 
+// 顶层 scene 数组上界：nodes/edges 会直接驱动画布渲染、端点校验与导出循环。
+export const MAX_SCENE_NODES = 2048;
+export const MAX_SCENE_EDGES = 2048;
+
 export type ValidationIssue = {
   path: string;
   code: string;
@@ -180,6 +184,10 @@ function validateNodeList(value: unknown, issues: ValidationIssue[]) {
     addIssue(issues, "$.nodes", "nodes_not_array", "Nodes must be an array.");
     return [];
   }
+  if (value.length > MAX_SCENE_NODES) {
+    addIssue(issues, "$.nodes", "too_many_nodes", `Nodes must not exceed ${MAX_SCENE_NODES}.`);
+    return [];
+  }
 
   // 1.2 校验单个节点
   const seen = new Set<string>();
@@ -321,6 +329,10 @@ function validateEdges(value: unknown, nodes: SceneNode[], issues: ValidationIss
   }
   if (!Array.isArray(value)) {
     addIssue(issues, "$.edges", "edges_not_array", "Edges must be an array.");
+    return;
+  }
+  if (value.length > MAX_SCENE_EDGES) {
+    addIssue(issues, "$.edges", "too_many_edges", `Edges must not exceed ${MAX_SCENE_EDGES}.`);
     return;
   }
 
