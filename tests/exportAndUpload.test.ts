@@ -589,6 +589,59 @@ describe("visiomaster adapter", () => {
     assert.equal(validateScene(scene).ok, true);
   });
 
+  it("drops non-finite numbers before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 数值字段有限性
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 不保留 Infinity/NaN 到 page/node/style
+     *   2) edge points 中的非有限坐标在适配层丢弃
+     */
+
+    // 1.1 构造包含非有限数值的 Visiomaster 输入
+    const scene = normalizeImportedScene({
+      page: { width: Number.POSITIVE_INFINITY, height: Number.NaN, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "box",
+          type: "process_box",
+          x: Number.POSITIVE_INFINITY,
+          y: Number.NaN,
+          w: Number.NEGATIVE_INFINITY,
+          h: Number.NaN,
+          style: {
+            line_weight_pt: Number.POSITIVE_INFINITY,
+            font_size_pt: Number.NaN,
+            opacity: Number.POSITIVE_INFINITY
+          }
+        }
+      ],
+      edges: [
+        {
+          id: "edge",
+          type: "line_segment",
+          points: [[0, 0], [Number.POSITIVE_INFINITY, 1], [2, Number.NaN]],
+          style: {}
+        }
+      ]
+    });
+
+    // 1.2 适配结果已符合共享校验上界
+    assert.equal(scene.page.width, 1280);
+    assert.equal(scene.page.height, 720);
+    assert.equal(scene.nodes[0].x, 0);
+    assert.equal(scene.nodes[0].y, 0);
+    assert.equal(scene.nodes[0].w, 100);
+    assert.equal(scene.nodes[0].h, 40);
+    assert.equal(scene.nodes[0].style.strokeWidth, undefined);
+    assert.equal(scene.nodes[0].style.fontSize, undefined);
+    assert.equal(scene.nodes[0].style.opacity, undefined);
+    assert.deepEqual(scene.edges[0].points, [{ x: 0, y: 0 }]);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
   it("clamps bracket tick positions before repair", () => {
     /*
      * ========================================================================

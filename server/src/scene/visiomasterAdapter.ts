@@ -184,11 +184,11 @@ function stringOptional(value: unknown, maxLength?: number) {
 }
 
 function numberValue(value: unknown, fallback: number) {
-  return typeof value === "number" ? value : fallback;
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function numberOptional(value: unknown) {
-  return typeof value === "number" ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function intOptional(value: unknown) {
@@ -204,13 +204,13 @@ function stringArray(value: unknown, maxItems?: number) {
 }
 
 function numberArray(value: unknown, maxItems?: number) {
-  const numbers = Array.isArray(value) ? value.filter((item): item is number => typeof item === "number") : undefined;
+  const numbers = Array.isArray(value) ? value.filter((item): item is number => typeof item === "number" && Number.isFinite(item)) : undefined;
   return maxItems === undefined ? numbers : numbers?.slice(0, maxItems);
 }
 
 function pointValue(value: unknown) {
   if (!Array.isArray(value) || value.length < 2) return undefined;
-  if (typeof value[0] !== "number" || typeof value[1] !== "number") return undefined;
+  if (typeof value[0] !== "number" || !Number.isFinite(value[0]) || typeof value[1] !== "number" || !Number.isFinite(value[1])) return undefined;
   return { x: value[0], y: value[1] };
 }
 
@@ -226,7 +226,7 @@ function cellArray(value: unknown, labels?: unknown) {
   if (!Array.isArray(value)) return undefined;
   const labelMap = cellLabelMap(labels);
   return value.flatMap((cell) => {
-    if (Array.isArray(cell) && typeof cell[0] === "number" && typeof cell[1] === "number") {
+    if (Array.isArray(cell) && typeof cell[0] === "number" && Number.isFinite(cell[0]) && typeof cell[1] === "number" && Number.isFinite(cell[1])) {
       const label = labelMap.get(`${cell[0]}:${cell[1]}`);
       return [{
         row: cell[0],
@@ -236,7 +236,7 @@ function cellArray(value: unknown, labels?: unknown) {
         color: stringOptional(cell[4]) ?? label?.color
       }];
     }
-    if (isRecord(cell) && typeof cell.row === "number" && typeof cell.col === "number") {
+    if (isRecord(cell) && typeof cell.row === "number" && Number.isFinite(cell.row) && typeof cell.col === "number" && Number.isFinite(cell.col)) {
       const label = labelMap.get(`${cell.row}:${cell.col}`);
       return [{
         row: cell.row,
@@ -268,12 +268,12 @@ function cellLabelMap(value: unknown) {
 
   // 1.2 解析标签数组
   for (const item of value.slice(0, MAX_GRID_CELLS)) {
-    if (Array.isArray(item) && typeof item[0] === "number" && typeof item[1] === "number") {
+    if (Array.isArray(item) && typeof item[0] === "number" && Number.isFinite(item[0]) && typeof item[1] === "number" && Number.isFinite(item[1])) {
       labels.set(`${item[0]}:${item[1]}`, {
         text: stringOptional(item[2], MAX_TEXT_LENGTH),
         color: stringOptional(item[3])
       });
-    } else if (isRecord(item) && typeof item.row === "number" && typeof item.col === "number") {
+    } else if (isRecord(item) && typeof item.row === "number" && Number.isFinite(item.row) && typeof item.col === "number" && Number.isFinite(item.col)) {
       labels.set(`${item.row}:${item.col}`, {
         text: stringOptional(item.text ?? item.label, MAX_TEXT_LENGTH),
         color: stringOptional(item.color ?? item.text_color)
