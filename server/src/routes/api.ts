@@ -412,6 +412,10 @@ apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (re
       res.status(400).json({ error: "Source image must be a local upload." });
       return;
     }
+    if (!(await isExistingFile(sourcePath))) {
+      res.status(400).json({ error: "Source image was not found." });
+      return;
+    }
 
     // 1.3 裁剪局部图片
     const sourceMetadata = await sharp(sourcePath).metadata();
@@ -1015,6 +1019,11 @@ async function cleanupUpload(tempPath?: string, savedPath?: string) {
   }
 
   logger.info("清理失败上传文件完成", { files: paths.length });
+}
+
+async function isExistingFile(filePath: string) {
+  const stat = await fs.stat(filePath).catch(() => undefined);
+  return Boolean(stat?.isFile());
 }
 
 export function ensureReplicaBaseLayer(scene: Scene, sourceUrl: string) {
