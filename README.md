@@ -42,7 +42,7 @@ npm run dev
 - `npm run build`：`tsc -b && vite build`，前端生产构建
 - `npm run server:start` / `npm run client:dev`：单独拉起后端或前端
 
-需要 Node.js 20 或更高版本。CI（`.github/workflows/ci.yml`）会跑 `npm ci`、`typecheck`、`test`、`build` 与 `evaluate`，并对评估指标做严格 delta 门禁。
+需要 Node.js ^20.19.0 或 >=22.12.0。CI（`.github/workflows/ci.yml`）会跑 `npm ci`、`typecheck`、`test`、`build` 与 `evaluate`，并对评估指标做严格 delta 门禁。
 
 ## Docker 部署
 

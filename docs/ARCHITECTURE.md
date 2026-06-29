@@ -444,7 +444,7 @@ npm run build        # tsc -b && vite build
 npm run evaluate     # 批量评估脚本
 ```
 
-需要 Node.js 20 或更高版本。GitHub Actions 会在 push 和 pull request 上运行 `npm ci`、`npm run typecheck`、`npm test` 和 `npm run build`。
+需要 Node.js ^20.19.0 或 >=22.12.0。GitHub Actions 会在 push 和 pull request 上运行 `npm ci`、`npm run typecheck`、`npm test` 和 `npm run build`。
 
 ### 7.2 测试覆盖
 
