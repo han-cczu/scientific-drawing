@@ -136,6 +136,35 @@ describe("scene repair", () => {
     assert.equal(validateScene(repaired).ok, true);
   });
 
+  it("clamps oversized cells arrays so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证超长 cells 钳制
+     * ========================================================================
+     * 目标：
+     *   1) 超过 MAX_GRID_CELLS 的（仍合法的）cells 经 repair 被钳制，
+     *      而非透传后被 validateScene 的 too_many_grid_cells 拒绝返回 500
+     *   2) 钳制后修复结果仍可通过校验
+     */
+
+    // 1.1 构造超长 cells（全部合法位置）
+    const cells = Array.from({ length: 256 * 256 + 50 }, () => ({ row: 0, col: 0 }));
+    const scene = {
+      version: "0.1",
+      page: { width: 320, height: 180, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        { id: "g1", type: "grid", x: 0, y: 0, w: 100, h: 100, rows: 1, cols: 1, style: {}, cells }
+      ],
+      edges: []
+    } as unknown as Scene;
+
+    // 1.2 钳到上界且修复结果可通过校验
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes[0].cells?.length, 256 * 256);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
   it("keeps replica base layer compatible with repaired scenes", () => {
     /*
      * ========================================================================

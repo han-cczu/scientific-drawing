@@ -263,6 +263,30 @@ describe("scene export", () => {
     assert.match(svg, /stroke-dasharray="2 2"/);
   });
 
+  it("survives non-string unvalidated fields in SVG export without throwing", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证导出路径对脏字段的兜底
+     * ========================================================================
+     * 目标：
+     *   1) 导出路径不经 repair，未校验的 rowColors/text/fontWeight 等非字符串值不应让导出 500
+     *   2) 渲染器对脏数据降级而非抛 TypeError
+     */
+
+    // 1.1 构造含非字符串脏字段的 scene（绕过类型）
+    const scene = sampleScene();
+    const grid = scene.nodes.find((node) => node.id === "grid") as unknown as { rowColors: unknown[] };
+    grid.rowColors = [123, 456];
+    const label = scene.nodes.find((node) => node.id === "label") as unknown as { text: unknown; style: { fontWeight: unknown } };
+    label.text = 789;
+    label.style.fontWeight = 700;
+
+    // 1.2 导出不抛异常且产出 SVG
+    let svg = "";
+    await assert.doesNotReject(async () => { svg = await sceneToSvg(scene); });
+    assert.match(svg, /^<svg/);
+  });
+
   it("maps dash presets to PPTX dashType", () => {
     /*
      * ========================================================================

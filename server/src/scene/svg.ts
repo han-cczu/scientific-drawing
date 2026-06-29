@@ -277,9 +277,11 @@ function bracketToSvg(node: SceneNode): string {
 }
 
 function escapeAttr(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+  // String() 兜底：导出路径不经 repair，未校验的 fontWeight/dash 等可能是数字，
+  // 直接 .replaceAll 会抛 TypeError 让整次导出 500（数字字重转 "700" 仍是合法属性值）
+  return String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
 }
 
 function escapeText(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }

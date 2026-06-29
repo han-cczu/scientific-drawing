@@ -46,6 +46,30 @@ describe("editor viewport", () => {
     assert.equal((50 - next.offset.y) / next.scale, 50);
   });
 
+  it("guards against zero-sized rects to avoid NaN scene coordinates", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证零尺寸 rect 的除零兜底
+     * ========================================================================
+     * 目标：
+     *   1) rect 宽高为 0 时不产出 Infinity/NaN（否则会经 zoomViewportAt 永久污染 offset 致画布卡死）
+     *   2) 返回有限数，画布保持可交互
+     */
+
+    // 1.1 零尺寸 rect 不产出非有限数
+    const point = clientPointToScene({
+      clientX: 50,
+      clientY: 30,
+      rect: { left: 0, top: 0, width: 0, height: 0 },
+      page: { width: 400, height: 200 },
+      viewport: { scale: 1, offset: { x: 0, y: 0 } }
+    });
+
+    // 1.2 校验结果有限
+    assert.equal(Number.isFinite(point.x), true);
+    assert.equal(Number.isFinite(point.y), true);
+  });
+
   it("clamps scale and pans offsets", () => {
     /*
      * ========================================================================

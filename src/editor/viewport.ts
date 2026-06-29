@@ -62,8 +62,12 @@ export function clientPointToScene(input: ClientPointInput) {
   logger.info("开始转换浏览器坐标...");
 
   // 1.1 换算到未变换的 scene 坐标
-  const rawX = ((input.clientX - input.rect.left) / input.rect.width) * input.page.width;
-  const rawY = ((input.clientY - input.rect.top) / input.rect.height) * input.page.height;
+  //   rect 宽高为 0 时（SVG 尚未布局/被折叠）回退 1，避免除零产出 Infinity/NaN，
+  //   该值会经 zoomViewportAt 永久写入 viewport.offset（offset 无再钳制路径）导致画布失去交互
+  const rectWidth = input.rect.width || 1;
+  const rectHeight = input.rect.height || 1;
+  const rawX = ((input.clientX - input.rect.left) / rectWidth) * input.page.width;
+  const rawY = ((input.clientY - input.rect.top) / rectHeight) * input.page.height;
 
   // 1.2 还原 viewport 变换
   const point = {

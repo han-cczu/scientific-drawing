@@ -92,7 +92,11 @@ export function normalizeHexColor(value: string) {
    *   2) 非法颜色保持原值
    */
 
-  // 1.1 清理输入
+  // 1.1 清理输入（防御非字符串：未校验的 rowColors 等字段可能传入数字/对象，
+  //     直接 .trim 会抛 TypeError 并 crash Canvas/SVG/PPTX 渲染；honor "非法颜色保持原值" 契约）
+  if (typeof value !== "string") {
+    return value;
+  }
   const raw = value.trim();
   const body = raw.startsWith("#") ? raw.slice(1) : raw;
 

@@ -74,6 +74,25 @@ describe("shared geometry", () => {
     assert.equal(shadeColor("none", 0.5), "none");
   });
 
+  it("tolerates non-string colors without throwing", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证非字符串颜色兜底
+     * ========================================================================
+     * 目标：
+     *   1) 未校验的 rowColors 数字/空值项不会让 normalizeHexColor/shadeColor 抛 TypeError
+     *   2) 防止 Canvas/SVG/PPTX 网格渲染因脏数据整体崩溃
+     */
+
+    // 1.1 非字符串输入不抛异常
+    assert.doesNotThrow(() => normalizeHexColor(123 as unknown as string));
+    assert.doesNotThrow(() => shadeColor(123 as unknown as string, 0.25));
+    assert.doesNotThrow(() => shadeColor(null as unknown as string, 0.5));
+
+    // 1.2 合法颜色行为不变
+    assert.equal(shadeColor("#808080", 0.5), "#404040");
+  });
+
   it("keeps endpoint and color helpers centralized", async () => {
     /*
      * ========================================================================

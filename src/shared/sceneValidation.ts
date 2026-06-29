@@ -381,7 +381,7 @@ function validateStyle(value: unknown, path: string, issues: ValidationIssue[]) 
 }
 
 function validateEndpoint(
-  endpoint: string | undefined,
+  endpoint: unknown,
   nodeIds: Set<string>,
   path: string,
   code: string,
@@ -401,7 +401,14 @@ function validateEndpoint(
     return;
   }
 
-  // 1.2 校验端点节点存在
+  // 1.2 守卫非字符串端点：from/to 来自不可信 JSON，直接 .split 会抛 TypeError，
+  //     违反“只返错误列表不抛不透明异常”契约（与 cells 元素守卫同理）
+  if (typeof endpoint !== "string") {
+    addIssue(issues, path, code, "Endpoint must be a string.");
+    return;
+  }
+
+  // 1.3 校验端点节点存在
   const nodeId = endpoint.split(":")[0];
   if (!nodeIds.has(nodeId)) {
     addIssue(issues, path, code, `Endpoint node ${nodeId} does not exist.`);

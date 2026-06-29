@@ -375,13 +375,20 @@ export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {
   }
 
   // 1.2 创建副本
+  //   深拷贝所有可变嵌套字段：否则副本与源节点共享 style/cells 等引用，
+  //   后续任一处就地修改会污染另一个（其余 ...source 透传的是不可变原始值）
   const copy: SceneNode = {
     ...source,
     id: createId(source.type),
     x: source.x + 18,
     y: source.y + 18,
     locked: false,
-    points: source.points?.map((point) => ({ x: point.x + 18, y: point.y + 18 }))
+    style: { ...source.style },
+    points: source.points?.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
+    cells: source.cells?.map((cell) => ({ ...cell })),
+    rowColors: source.rowColors ? [...source.rowColors] : undefined,
+    columnShades: source.columnShades ? [...source.columnShades] : undefined,
+    tickPositions: source.tickPositions ? [...source.tickPositions] : undefined
   };
 
   logger.info("复制节点完成", { nodeId, copyId: copy.id });

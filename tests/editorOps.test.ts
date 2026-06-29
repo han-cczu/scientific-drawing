@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolveEndpoint } from "../src/shared/geometry";
-import { createEdgeBetweenNodes, moveNodeLayer, moveNodes, normalizeBox, removeNode, resizeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked } from "../src/editor/sceneOps";
+import { createEdgeBetweenNodes, duplicateNode, moveNodeLayer, moveNodes, normalizeBox, removeNode, resizeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked } from "../src/editor/sceneOps";
 import type { Scene } from "../src/shared/scene";
 
 function editorScene(): Scene {
@@ -243,6 +243,45 @@ describe("editor scene operations", () => {
     assert.deepEqual(arrow?.points, [{ x: 210, y: 140 }, { x: 300, y: 160 }]);
     assert.equal(arrow?.x, 210);
     assert.equal(arrow?.y, 140);
+  });
+
+  it("duplicates a node into a reference-independent copy", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证复制节点的引用独立性
+     * ========================================================================
+     * 目标：
+     *   1) 副本带坐标偏移、解锁、新 id
+     *   2) style/cells/rowColors 等可变字段不与源节点共享引用，避免后续就地修改互相污染
+     */
+
+    // 1.1 用含可变嵌套字段的网格节点复制
+    const scene = editorScene();
+    scene.nodes[1] = {
+      id: "grid",
+      type: "grid",
+      x: 20,
+      y: 30,
+      w: 80,
+      h: 40,
+      rows: 1,
+      cols: 2,
+      rowColors: ["#FFFFFF"],
+      cells: [{ row: 0, col: 0, fill: "#FFFFFF" }],
+      style: { fill: "#FFFFFF", stroke: "#111111" }
+    } as Scene["nodes"][number];
+    const copy = duplicateNode(scene, "grid");
+
+    // 1.2 校验偏移与引用独立
+    assert.ok(copy);
+    assert.notEqual(copy?.id, "grid");
+    assert.equal(copy?.x, 38);
+    assert.equal(copy?.locked, false);
+    assert.notEqual(copy?.style, scene.nodes[1].style);
+    assert.notEqual(copy?.cells, scene.nodes[1].cells);
+    assert.notEqual(copy?.cells?.[0], scene.nodes[1].cells?.[0]);
+    assert.notEqual(copy?.rowColors, scene.nodes[1].rowColors);
+    assert.deepEqual(copy?.style, scene.nodes[1].style);
   });
 
   it("creates semantic edges and keeps endpoint behavior tied to nodes", () => {

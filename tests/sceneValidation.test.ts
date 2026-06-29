@@ -201,6 +201,24 @@ describe("scene validation", () => {
     assert.ok(result?.issues.some((issue) => issue.code === "invalid_grid_cell"));
   });
 
+  it("rejects non-string edge endpoints without throwing (no opaque exception)", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证非字符串端点不抛异常
+     * ========================================================================
+     * 目标：
+     *   1) from/to 为数字/对象等不可信值时只返错误列表，绝不抛 TypeError（与 cells 守卫同契约）
+     *   2) 导出路径（validateSceneForExport→validateScene，不经 repair）从不可信 JSON 可达
+     */
+    const scene = validScene();
+    (scene.edges[0] as unknown as { from: unknown }).from = 123;
+
+    let result: ReturnType<typeof validateScene> | undefined;
+    assert.doesNotThrow(() => { result = validateScene(scene); });
+    assert.equal(result?.ok, false);
+    assert.ok(result?.issues.some((issue) => issue.code === "missing_edge_source"));
+  });
+
   it("rejects grid cells arrays exceeding the size cap", () => {
     /*
      * ========================================================================
