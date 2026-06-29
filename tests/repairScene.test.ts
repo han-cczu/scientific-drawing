@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
+import { MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -526,6 +526,51 @@ describe("scene repair", () => {
     assert.equal(grid?.cells?.[0].color, "#AABBCC");
     assert.equal(bracket?.orientation, undefined);
     assert.deepEqual(bracket?.tickPositions, [0.5]);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps oversized text fields so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证文本字段修复规模上界
+     * ========================================================================
+     * 目标：
+     *   1) repairScene 需要裁剪 node.text/symbol
+     *   2) repairScene 需要裁剪 grid cell text 和 edge label
+     */
+
+    // 1.1 构造包含超长文本字段的 scene
+    const longText = "x".repeat(MAX_TEXT_LENGTH + 10);
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        { id: "a", type: "text", x: 0, y: 0, w: 50, h: 20, text: longText, symbol: longText, style: {} },
+        {
+          id: "b",
+          type: "grid",
+          x: 0,
+          y: 30,
+          w: 50,
+          h: 50,
+          rows: 1,
+          cols: 1,
+          cells: [{ row: 0, col: 0, text: longText }],
+          style: {}
+        }
+      ],
+      edges: [
+        { id: "e", type: "arrow", from: "a", to: "b", label: longText, style: {} }
+      ]
+    } as unknown as Scene;
+
+    // 1.2 修复后文本被裁剪且 scene 合法
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes[0].text?.length, MAX_TEXT_LENGTH);
+    assert.equal(repaired.nodes[0].symbol?.length, MAX_TEXT_LENGTH);
+    assert.equal(repaired.nodes[1].cells?.[0]?.text?.length, MAX_TEXT_LENGTH);
+    assert.equal(repaired.edges[0].label?.length, MAX_TEXT_LENGTH);
     assert.equal(validateScene(repaired).ok, true);
   });
 });

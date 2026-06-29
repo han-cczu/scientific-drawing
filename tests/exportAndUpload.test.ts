@@ -12,6 +12,7 @@ import {
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
+  MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS,
   validateScene
 } from "../src/shared/sceneValidation";
@@ -594,6 +595,51 @@ describe("visiomaster adapter", () => {
 
     // 1.2 适配结果已符合共享校验上界
     assert.equal(scene.nodes[0].tickPositions?.length, MAX_TICK_POSITIONS);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("clamps text fields before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 文本字段规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身裁剪 node.text/symbol 和 cell label
+     *   2) normalizeImportedScene 自身裁剪 edge.label
+     */
+
+    // 1.1 构造超长文本字段
+    const longText = "x".repeat(MAX_TEXT_LENGTH + 10);
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "grid",
+          type: "grid_matrix",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          rows: 1,
+          cols: 1,
+          text: longText,
+          symbol: longText,
+          colored_cells: [[0, 0, "#ABC"]],
+          cell_labels: [[0, 0, longText, "#111111"]],
+          style: {}
+        }
+      ],
+      edges: [
+        { id: "edge", type: "line_segment", from: "grid", to: "grid", label: longText, style: {} }
+      ]
+    });
+
+    // 1.2 适配结果已符合共享校验上界
+    assert.equal(scene.nodes[0].text?.length, MAX_TEXT_LENGTH);
+    assert.equal(scene.nodes[0].symbol?.length, MAX_TEXT_LENGTH);
+    assert.equal(scene.nodes[0].cells?.[0]?.text?.length, MAX_TEXT_LENGTH);
+    assert.equal(scene.edges[0].label?.length, MAX_TEXT_LENGTH);
     assert.equal(validateScene(scene).ok, true);
   });
 });

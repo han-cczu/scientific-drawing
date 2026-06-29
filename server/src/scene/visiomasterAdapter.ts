@@ -1,5 +1,5 @@
 import { resolveEndpoint } from "@shared/geometry";
-import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
+import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
 type AnyRecord = Record<string, unknown>;
@@ -76,8 +76,8 @@ function convertNode(node: AnyRecord): SceneNode {
     y: numberValue(node.y, 0),
     w: numberValue(node.w, 100),
     h: numberValue(node.h, 40),
-    text: stringOptional(node.text),
-    symbol: stringOptional(node.symbol),
+    text: stringOptional(node.text, MAX_TEXT_LENGTH),
+    symbol: stringOptional(node.symbol, MAX_TEXT_LENGTH),
     rows: intOptional(node.rows),
     cols: intOptional(node.cols ?? node.columns),
     rowColors: stringArray(node.row_colors, MAX_GRID_DIMENSION),
@@ -116,7 +116,7 @@ function convertEdge(edge: AnyRecord, nodes: SceneNode[]): SceneEdge {
     fromPoint: pointValue(edge.from_point) ?? (from ? resolveEndpoint(from, nodes) : undefined),
     toPoint: pointValue(edge.to_point) ?? (to ? resolveEndpoint(to, nodes) : undefined),
     points: pointArray(edge.points),
-    label: stringOptional(edge.label),
+    label: stringOptional(edge.label, MAX_TEXT_LENGTH),
     style: mapStyle(asRecord(edge.style))
   };
 }
@@ -176,8 +176,11 @@ function stringValue(value: unknown, fallback: string) {
   return typeof value === "string" ? value : fallback;
 }
 
-function stringOptional(value: unknown) {
-  return typeof value === "string" ? value : undefined;
+function stringOptional(value: unknown, maxLength?: number) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  return maxLength === undefined ? value : value.slice(0, maxLength);
 }
 
 function numberValue(value: unknown, fallback: number) {
@@ -226,7 +229,7 @@ function cellArray(value: unknown, labels?: unknown) {
         row: cell[0],
         col: cell[1],
         fill: stringOptional(cell[2]),
-        text: stringOptional(cell[3]) ?? label?.text,
+        text: stringOptional(cell[3], MAX_TEXT_LENGTH) ?? label?.text,
         color: stringOptional(cell[4]) ?? label?.color
       }];
     }
@@ -236,7 +239,7 @@ function cellArray(value: unknown, labels?: unknown) {
         row: cell.row,
         col: cell.col,
         fill: stringOptional(cell.fill),
-        text: stringOptional(cell.text ?? cell.label) ?? label?.text,
+        text: stringOptional(cell.text ?? cell.label, MAX_TEXT_LENGTH) ?? label?.text,
         color: stringOptional(cell.color ?? cell.text_color) ?? label?.color
       }];
     }
@@ -264,12 +267,12 @@ function cellLabelMap(value: unknown) {
   for (const item of value.slice(0, MAX_GRID_CELLS)) {
     if (Array.isArray(item) && typeof item[0] === "number" && typeof item[1] === "number") {
       labels.set(`${item[0]}:${item[1]}`, {
-        text: stringOptional(item[2]),
+        text: stringOptional(item[2], MAX_TEXT_LENGTH),
         color: stringOptional(item[3])
       });
     } else if (isRecord(item) && typeof item.row === "number" && typeof item.col === "number") {
       labels.set(`${item.row}:${item.col}`, {
-        text: stringOptional(item.text ?? item.label),
+        text: stringOptional(item.text ?? item.label, MAX_TEXT_LENGTH),
         color: stringOptional(item.color ?? item.text_color)
       });
     }

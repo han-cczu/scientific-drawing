@@ -7,6 +7,7 @@ import {
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
+  MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS
 } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneStyle } from "./types";
@@ -99,9 +100,9 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
     w: positive(Math.abs(finite(node.w, 100)), 1),
     h: nonNegative(Math.abs(finite(node.h, 40)), type === "line" || type === "arrow" ? 0 : 1),
     style: repairStyle(node.style),
-    text: optionalString(node.text),
+    text: optionalText(node.text),
     source: optionalString(node.source),
-    symbol: optionalString(node.symbol),
+    symbol: optionalText(node.symbol),
     orientation: repairOrientation(node.orientation),
     locked: typeof node.locked === "boolean" ? node.locked : undefined,
     hidden: typeof node.hidden === "boolean" ? node.hidden : undefined
@@ -125,7 +126,7 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
       return [{
         ...cell,
         fill: cell.fill === undefined ? undefined : safeColor(cell.fill, "#FFFFFF"),
-        text: optionalString(cell.text),
+        text: optionalText(cell.text),
         color: cell.color === undefined ? undefined : safeColor(cell.color, "#111111")
       }];
     }).slice(0, MAX_GRID_CELLS)
@@ -195,6 +196,7 @@ function repairEdge(edge: SceneEdge, index: number, idMap: Map<string, string>, 
         .filter((point): point is { x: number; y: number } => Boolean(point))
         .slice(0, MAX_POLYLINE_POINTS)
       : undefined,
+    label: optionalText(edge.label),
     style: repairStyle(edge.style)
   };
 }
@@ -294,6 +296,10 @@ function nonEmpty(value: unknown, fallback: string) {
 
 function optionalString(value: unknown) {
   return typeof value === "string" ? value : undefined;
+}
+
+function optionalText(value: unknown) {
+  return typeof value === "string" ? value.slice(0, MAX_TEXT_LENGTH) : undefined;
 }
 
 function repairMetadataNotes(value: unknown) {

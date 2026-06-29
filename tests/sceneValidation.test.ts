@@ -8,6 +8,7 @@ import {
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
+  MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS,
   validateScene
 } from "../src/shared/sceneValidation";
@@ -475,5 +476,46 @@ describe("scene validation", () => {
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.path === "$.metadata.notes" && issue.code === "too_many_metadata_notes"));
     assert.ok(result.issues.some((issue) => issue.path === "$.metadata.notes[0]" && issue.code === "metadata_note_too_long"));
+  });
+
+  it("rejects oversized text fields used by renderers and persistence", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证文本字段规模上界
+     * ========================================================================
+     * 目标：
+     *   1) node.text/symbol 会进入 Canvas/SVG/PPTX 渲染
+     *   2) grid cell text 和 edge label 会进入 scene 持久化/导出协议
+     */
+
+    // 1.1 构造超长文本字段
+    const longText = "x".repeat(MAX_TEXT_LENGTH + 1);
+    const scene = validScene();
+    scene.edges = [
+      { id: "e", type: "arrow", from: "a", to: "b", label: longText, style: {} }
+    ];
+    scene.nodes = [
+      { id: "a", type: "text", x: 0, y: 0, w: 100, h: 20, text: longText, symbol: longText, style: {} },
+      {
+        id: "b",
+        type: "grid",
+        x: 120,
+        y: 0,
+        w: 100,
+        h: 100,
+        rows: 1,
+        cols: 1,
+        cells: [{ row: 0, col: 0, text: longText }],
+        style: {}
+      }
+    ];
+
+    // 1.2 校验层应返回结构化规模错误
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].text" && issue.code === "text_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].symbol" && issue.code === "text_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[1].cells[0].text" && issue.code === "text_too_long"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].label" && issue.code === "text_too_long"));
   });
 });

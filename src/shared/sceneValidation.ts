@@ -24,6 +24,10 @@ export const MAX_TICK_POSITIONS = 512;
 export const MAX_METADATA_NOTES = 64;
 export const MAX_METADATA_NOTE_LENGTH = 512;
 
+// 可渲染/协议文本字段上界：node text/symbol、grid cell text 和 edge label
+// 会进入 React/SVG/PPTX 渲染或 scene 持久化，需限制单字段放大。
+export const MAX_TEXT_LENGTH = 4096;
+
 export type ValidationIssue = {
   path: string;
   code: string;
@@ -255,9 +259,9 @@ function validateNode(node: SceneNode, index: number, seen: Set<string>, issues:
   validateStyle(node.style, `${path}.style`, issues);
   validateOptionalBoolean(node.locked, `${path}.locked`, "invalid_node_locked", issues);
   validateOptionalBoolean(node.hidden, `${path}.hidden`, "invalid_node_hidden", issues);
-  validateOptionalString(node.text, `${path}.text`, "invalid_node_text", issues);
+  validateOptionalText(node.text, `${path}.text`, "invalid_node_text", issues);
   validateOptionalString(node.source, `${path}.source`, "invalid_node_source", issues);
-  validateOptionalString(node.symbol, `${path}.symbol`, "invalid_node_symbol", issues);
+  validateOptionalText(node.symbol, `${path}.symbol`, "invalid_node_symbol", issues);
   validateNodeCollections(node, path, issues);
 }
 
@@ -328,9 +332,7 @@ function validateNodeCollections(node: SceneNode, path: string, issues: Validati
       if (cell.color !== undefined) {
         validateColor(cell.color, `${path}.cells[${index}].color`, issues, "#111111");
       }
-      if (cell.text !== undefined && typeof cell.text !== "string") {
-        addIssue(issues, `${path}.cells[${index}].text`, "invalid_grid_cell_text", "Grid cell text must be a string.");
-      }
+      validateOptionalText(cell.text, `${path}.cells[${index}].text`, "invalid_grid_cell_text", issues);
     });
   }
 }
@@ -393,6 +395,7 @@ function validateEdge(edge: SceneEdge, index: number, seen: Set<string>, nodeIds
     addIssue(issues, `${path}.type`, "invalid_edge_type", "Edge type is not supported.");
   }
   validateStyle(edge.style, `${path}.style`, issues);
+  validateOptionalText(edge.label, `${path}.label`, "invalid_edge_label", issues);
 
   // 1.2 校验端点和折线点
   validateEndpoint(edge.from, nodeIds, `${path}.from`, "missing_edge_source", issues);
@@ -544,6 +547,16 @@ function validateOptionalBoolean(value: unknown, path: string, code: string, iss
 function validateOptionalString(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
   if (value !== undefined && typeof value !== "string") {
     addIssue(issues, path, code, "Value must be a string.");
+  }
+}
+
+function validateOptionalText(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
+  if (value !== undefined && typeof value !== "string") {
+    addIssue(issues, path, code, "Value must be a string.");
+    return;
+  }
+  if (typeof value === "string" && value.length > MAX_TEXT_LENGTH) {
+    addIssue(issues, path, "text_too_long", `Text must not exceed ${MAX_TEXT_LENGTH} characters.`);
   }
 }
 

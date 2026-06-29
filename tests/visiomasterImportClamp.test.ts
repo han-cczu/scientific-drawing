@@ -7,6 +7,7 @@ import {
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
+  MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS,
   validateScene
 } from "../src/shared/sceneValidation";
@@ -285,6 +286,52 @@ describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", (
     const scene = normalizeImportedScene(input);
     const bracket = scene.nodes.find((node) => node.id === "br");
     assert.equal(bracket?.tickPositions?.length, MAX_TICK_POSITIONS);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("钳制 Visiomaster 文本字段，避免前端导入放大渲染和持久化", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端 Visiomaster 文本字段规模上界
+     * ========================================================================
+     * 目标：
+     *   1) node.text/symbol 和 cell_labels 文本最多保留共享上界
+     *   2) edge.label 同样最多保留共享上界
+     */
+
+    // 1.1 构造超长文本字段
+    const longText = "x".repeat(MAX_TEXT_LENGTH + 10);
+    const input = {
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "grid",
+          type: "grid_matrix",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          rows: 1,
+          cols: 1,
+          text: longText,
+          symbol: longText,
+          colored_cells: [[0, 0, "#ABC"]],
+          cell_labels: [[0, 0, longText, "#111111"]],
+          style: {}
+        }
+      ],
+      edges: [
+        { id: "edge", type: "line_segment", from: "grid", to: "grid", label: longText, style: {} }
+      ]
+    };
+
+    // 1.2 导入后文本被裁剪并通过校验
+    const scene = normalizeImportedScene(input);
+    assert.equal(scene.nodes[0].text?.length, MAX_TEXT_LENGTH);
+    assert.equal(scene.nodes[0].symbol?.length, MAX_TEXT_LENGTH);
+    assert.equal(scene.nodes[0].cells?.[0]?.text?.length, MAX_TEXT_LENGTH);
+    assert.equal(scene.edges[0].label?.length, MAX_TEXT_LENGTH);
     assert.equal(validateScene(scene).ok, true);
   });
 });
