@@ -68,7 +68,8 @@ function isStoredPreset(value: unknown): value is StoredPreset {
     typeof v.id === "string" &&
     isSceneColor(v.fill) &&
     isSceneColor(v.stroke) &&
-    typeof v.createdAt === "number"
+    typeof v.createdAt === "number" &&
+    Number.isFinite(v.createdAt)
   );
 }
 
@@ -100,7 +101,9 @@ function readFromStorage(): StoredPreset[] {
     ) {
       throw new Error("schema invalid");
     }
-    const presets = (parsed as StoredSchema).presets.filter(isStoredPreset);
+    const presets = (parsed as StoredSchema).presets
+      .filter(isStoredPreset)
+      .slice(0, CUSTOM_PRESET_LIMIT);
     return presets;
   } catch (err) {
     // JSON 损坏或 schema 不匹配：备份后清空主 key

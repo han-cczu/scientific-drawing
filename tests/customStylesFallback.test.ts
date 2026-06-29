@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CUSTOM_PRESETS_KEY, loadCustomPresets, saveCustomPreset } from "../src/lib/customStyles";
+import { CUSTOM_PRESET_LIMIT, CUSTOM_PRESETS_KEY, loadCustomPresets, saveCustomPreset } from "../src/lib/customStyles";
 
 function withMockLocalStorage<T>(mockStorage: Storage, callback: () => T): T {
   const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -60,6 +60,38 @@ describe("自定义样式 localStorage 配额满回退一致性", () => {
     assert.deepEqual(loaded.map((preset) => preset.id), ["ok"]);
     assert.equal(loaded[0].fill, "#ABC");
     assert.equal(loaded[0].stroke, "none");
+  });
+
+  it("读取持久化预设时裁剪数量并过滤非有限时间戳", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 localStorage 预设规模边界
+     * ========================================================================
+     * 目标：
+     *   1) localStorage 中超过 CUSTOM_PRESET_LIMIT 的合法预设不能绕过 UI 上限
+     *   2) createdAt=Infinity/NaN 不能进入排序或展示路径
+     */
+
+    // 1.1 构造超长预设数组，首项带非有限时间戳
+    const backing = new Map<string, string>();
+    backing.set(CUSTOM_PRESETS_KEY, JSON.stringify({
+      version: 1,
+      presets: [
+        { id: "bad-time", fill: "#111111", stroke: "#222222", createdAt: Number.POSITIVE_INFINITY },
+        ...Array.from({ length: CUSTOM_PRESET_LIMIT + 4 }, (_, index) => ({
+          id: `ok-${index}`,
+          fill: "#ABC",
+          stroke: "#123456",
+          createdAt: index
+        }))
+      ]
+    }));
+
+    // 1.2 读取时只保留合法且不超过上限的预设
+    const loaded = withMockLocalStorage(mapStorage(backing), () => loadCustomPresets());
+    assert.equal(loaded.length, CUSTOM_PRESET_LIMIT);
+    assert.equal(loaded.some((preset) => preset.id === "bad-time"), false);
+    assert.deepEqual(loaded.map((preset) => preset.id), Array.from({ length: CUSTOM_PRESET_LIMIT }, (_, index) => `ok-${index}`));
   });
 
   it("配额满写入回退内存后，读取仍能取回（不静默丢数据）", () => {
