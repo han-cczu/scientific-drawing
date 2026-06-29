@@ -122,6 +122,9 @@ describe("OpenAI-compatible AI provider config", () => {
     assert.equal(validateWritableConfig({ apiKey: "", baseUrl: "https://x", reconstructModel: "m" }).ok, false);
     assert.equal(validateWritableConfig({ apiKey: "k", baseUrl: "ftp://x", reconstructModel: "m" }).ok, false);
     assert.equal(validateWritableConfig({ apiKey: "k", baseUrl: "javascript:alert(1)", reconstructModel: "m" }).ok, false);
+    assert.equal(validateWritableConfig({ apiKey: "k", baseUrl: "https://", reconstructModel: "m" }).ok, false);
+    assert.equal(validateWritableConfig({ apiKey: "k", baseUrl: "https://exa mple.com", reconstructModel: "m" }).ok, false);
+    assert.equal(validateWritableConfig({ apiKey: "k", baseUrl: "https://example.com\n.evil.test", reconstructModel: "m" }).ok, false);
     assert.equal(validateWritableConfig({ apiKey: "a".repeat(600), baseUrl: "https://x", reconstructModel: "m" }).ok, false);
 
     const ok = validateWritableConfig({ apiKey: " sk-1 ", baseUrl: " https://x.com ", reconstructModel: " gpt-4o " });
@@ -196,6 +199,13 @@ describe("OpenAI-compatible AI provider config", () => {
     assert.equal(
       validateWritableConfig(
         { apiKey: "", baseUrl: "javascript:alert(1)", reconstructModel: "m" },
+        { allowEmptyKey: true }
+      ).ok,
+      false
+    );
+    assert.equal(
+      validateWritableConfig(
+        { apiKey: "", baseUrl: "https://", reconstructModel: "m" },
         { allowEmptyKey: true }
       ).ok,
       false

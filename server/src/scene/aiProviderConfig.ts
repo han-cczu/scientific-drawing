@@ -500,7 +500,7 @@ export function validateWritableConfig(
     return { ok: false, error: `baseUrl exceeds ${AI_CONFIG_LIMITS.baseUrl} characters.` };
   }
   const baseUrl = input.baseUrl.trim();
-  if (!/^https?:\/\//i.test(baseUrl)) {
+  if (!isHttpUrl(baseUrl)) {
     return { ok: false, error: "baseUrl must start with http:// or https://." };
   }
 
@@ -552,6 +552,18 @@ function normalizePersistedConfig(value: unknown): PersistedAiConfig | null {
     reconstructModel: validation.value.reconstructModel,
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : ""
   };
+}
+
+function isHttpUrl(value: string) {
+  if (/[\s\u0000-\u001f\u007f]/.test(value)) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
