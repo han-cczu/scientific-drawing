@@ -23,7 +23,7 @@
     "multer": "^2.0.2",
     "pptxgenjs": "^4.0.1",
     "sharp": "^0.34.5",
-    "tsx": "^4.20.6",
+    "tsx": "^4.22.4",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
