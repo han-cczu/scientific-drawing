@@ -11,14 +11,14 @@ describe("reconstruct error envelope", () => {
      * ========================================================================
      * 目标：
      *   1) AUTH=401 / TIMEOUT=504 / 上游类=502 / INVALID_SCENE=500
-     *   2) message 与 hint 原样透传
+     *   2) message 使用公开文案，hint 仍保留给前端恢复建议
      */
 
     // 1.1 各错误码映射
     const auth = toReconstructEnvelope(new ReconstructError("AUTH", "no key", "配置 Key"));
     assert.deepEqual(
       { status: auth.status, code: auth.code, message: auth.message, hint: auth.hint },
-      { status: 401, code: "AUTH", message: "no key", hint: "配置 Key" }
+      { status: 401, code: "AUTH", message: "AI reconstruction authentication failed.", hint: "配置 Key" }
     );
     assert.equal(toReconstructEnvelope(new ReconstructError("TIMEOUT", "t")).status, 504);
     assert.equal(toReconstructEnvelope(new ReconstructError("BAD_MODEL_OUTPUT", "b")).status, 502);
@@ -40,6 +40,34 @@ describe("reconstruct error envelope", () => {
     assert.equal(plain.code, "UNKNOWN");
     assert.equal(plain.message, "boom");
     assert.equal(toReconstructEnvelope("oops").code, "UNKNOWN");
+  });
+
+  it("does not expose upstream reconstruct error payloads to the browser", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证重建错误信封不泄露上游详情
+     * ========================================================================
+     * 目标：
+     *   1) 上游网关错误体可能包含内部主机名、trace id 或 key 片段
+     *   2) 返回给浏览器的 message/hint 只应是受控文案
+     */
+    const upstream = toReconstructEnvelope(new ReconstructError(
+      "UPSTREAM",
+      "OpenAI reconstruct failed: {\"error\":\"internal host gpu-a.internal\",\"trace\":\"trace-123\"}"
+    ));
+    assert.equal(upstream.status, 502);
+    assert.equal(upstream.code, "UPSTREAM");
+    assert.doesNotMatch(upstream.message, /gpu-a\.internal|trace-123|OpenAI reconstruct failed/i);
+
+    const auth = toReconstructEnvelope(new ReconstructError(
+      "AUTH",
+      "OpenAI reconstruct failed: {\"error\":\"invalid key sk-live-secret-tail\"}",
+      "请检查 API Key 是否对所选 Base URL 有效"
+    ));
+    assert.equal(auth.status, 401);
+    assert.equal(auth.code, "AUTH");
+    assert.doesNotMatch(auth.message, /sk-live-secret-tail|OpenAI reconstruct failed/i);
+    assert.match(auth.hint ?? "", /API Key/);
   });
 
   it("pins the upstream timeout constant", () => {

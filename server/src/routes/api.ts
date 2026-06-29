@@ -268,9 +268,28 @@ export function toReconstructEnvelope(error: unknown): {
       NETWORK: 502,
       UPSTREAM: 502
     };
-    return { status: statusByCode[error.code], code: error.code, message: error.message, hint: error.hint };
+    return { status: statusByCode[error.code], code: error.code, message: publicReconstructMessage(error.code), hint: error.hint };
   }
   return { status: 500, code: "UNKNOWN", message: error instanceof Error ? error.message : String(error) };
+}
+
+function publicReconstructMessage(code: ReconstructErrorCode) {
+  switch (code) {
+    case "AUTH":
+      return "AI reconstruction authentication failed.";
+    case "INVALID_IMAGE":
+      return "Invalid image data.";
+    case "TIMEOUT":
+      return "AI reconstruction timed out.";
+    case "BAD_MODEL_OUTPUT":
+      return "Model output could not be parsed.";
+    case "INVALID_SCENE":
+      return "Generated scene is invalid.";
+    case "NETWORK":
+      return "Could not connect to model service.";
+    case "UPSTREAM":
+      return "Model service returned an error.";
+  }
 }
 
 function isClientAbort(error: unknown) {
