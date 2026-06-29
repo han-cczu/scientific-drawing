@@ -251,6 +251,24 @@ describe("upload helpers", () => {
     assert.equal(sanitizeUnicodeFileBase(""), "");
     assert.equal(sanitizeUnicodeFileBase(undefined), "");
   });
+
+  it("keeps truncated unicode download names URI-encodable", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 Unicode 文件名截断不会破坏 surrogate pair
+     * ========================================================================
+     * 目标：
+     *   1) 标题在长度边界处包含 emoji 等非 BMP 字符时，不能截出孤立 surrogate
+     *   2) 导出路由后续 encodeURIComponent(downloadName) 不应抛 URIError
+     */
+
+    // 1.1 构造 emoji 正好跨过 80 code unit 边界的标题
+    const title = `${"a".repeat(79)}😀`;
+
+    // 1.2 清洗结果必须仍可用于 RFC 5987 filename*
+    const result = sanitizeUnicodeFileBase(title);
+    assert.doesNotThrow(() => encodeURIComponent(`${result}.svg`));
+  });
 });
 
 describe("scene export", () => {

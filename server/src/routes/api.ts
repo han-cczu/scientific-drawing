@@ -831,13 +831,25 @@ export function sanitizeUnicodeFileBase(value: unknown) {
 
   // 1.1 归一化并剥除危险字符
   const raw = typeof value === "string" ? value.trim() : "";
-  const sanitized = raw
+  const cleaned = raw
     .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, SAFE_FILE_BASE_MAX_LENGTH);
+    .replace(/^-+|-+$/g, "");
+  const truncated = Array.from(cleaned)
+    .filter((char) => !isUnpairedSurrogate(char))
+    .slice(0, SAFE_FILE_BASE_MAX_LENGTH)
+    .join("")
+    .replace(/^-+|-+$/g, "");
 
   // 1.2 返回结果（可为空串，由调用方回退 ASCII 名）
-  return sanitized;
+  return truncated;
+}
+
+function isUnpairedSurrogate(char: string) {
+  if (char.length !== 1) {
+    return false;
+  }
+  const code = char.charCodeAt(0);
+  return code >= 0xd800 && code <= 0xdfff;
 }
 
 function extensionFromMime(mime: string) {
