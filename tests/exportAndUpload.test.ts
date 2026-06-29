@@ -438,6 +438,37 @@ describe("scene export", () => {
     // 1.2 粗略确认 ZIP 文件头
     assert.equal(output.subarray(0, 2).toString("utf8"), "PK");
   });
+
+  it("skips missing controlled images in PPTX export instead of failing", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 PPTX 导出对已清理图片的降级
+     * ========================================================================
+     * 目标：
+     *   1) 旧 scene 可能引用已经被保留策略清理的 /uploads 图片
+     *   2) PPTX 导出应与 SVG 一样跳过不可读取图片，而不是整次导出 500
+     */
+
+    // 1.1 构造一个路径在白名单内、但实际不存在的图片节点
+    const scene = sampleScene();
+    scene.nodes.unshift({
+      id: "missing-controlled-image",
+      type: "image",
+      x: 0,
+      y: 0,
+      w: 24,
+      h: 24,
+      source: "/uploads/pptx-missing-controlled-image.png",
+      style: { opacity: 1 }
+    });
+
+    // 1.2 导出不应因为图片缺失而失败
+    let output = Buffer.alloc(0);
+    await assert.doesNotReject(async () => {
+      output = await sceneToPptx(scene);
+    });
+    assert.equal(output.subarray(0, 2).toString("utf8"), "PK");
+  });
 });
 
 describe("visiomaster adapter", () => {

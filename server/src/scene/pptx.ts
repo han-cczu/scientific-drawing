@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import pptxgenjs from "pptxgenjs";
 import { logger } from "../logger";
 import { resolveLocalAssetPath } from "../paths";
@@ -452,11 +453,11 @@ function addImageNode(
     return;
   }
   const filePath = resolveLocalAssetPath(source);
-  if (filePath) {
+  if (filePath && fs.existsSync(filePath)) {
     slide.addImage({ path: filePath, ...box });
     return;
   }
-  logger.warn("跳过非受控图片来源，PPTX 不内嵌", { source });
+  logger.warn("跳过非受控或不可读取图片来源，PPTX 不内嵌", { source });
 }
 
 function resolvePptxConstructor() {
