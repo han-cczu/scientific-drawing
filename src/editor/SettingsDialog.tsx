@@ -40,6 +40,33 @@ type RefreshState =
 const PLACEHOLDER_KEY = "已配置（输入新值可覆盖，留空保持原值）";
 const MODEL_DATALIST_ID = "ai-model-options";
 
+export function buildSettingsPayload(input: {
+  apiKey: string;
+  baseUrl: string;
+  reconstructModel: string;
+  config: AppConfig | null;
+}): WritableAppConfig | { error: string } {
+  const effectiveApiKey = input.apiKey.trim();
+  const hasReusableSavedKey = Boolean(input.config?.source === "file" && input.config.hasApiKey);
+  if (!effectiveApiKey && !hasReusableSavedKey) {
+    return { error: "请填写 API Key。" };
+  }
+  if (!input.baseUrl.trim()) {
+    return { error: "请填写 Base URL。" };
+  }
+  if (!/^https?:\/\//i.test(input.baseUrl.trim())) {
+    return { error: "Base URL 必须以 http:// 或 https:// 开头。" };
+  }
+  if (!input.reconstructModel.trim()) {
+    return { error: "请填写模型名称。" };
+  }
+  return {
+    apiKey: effectiveApiKey,
+    baseUrl: input.baseUrl.trim(),
+    reconstructModel: input.reconstructModel.trim()
+  };
+}
+
 export function SettingsDialog({
   open,
   busy,
@@ -115,30 +142,13 @@ export function SettingsDialog({
     return null;
   }
 
-  const hasExistingKey = Boolean(config?.hasApiKey);
-  const effectiveApiKey = apiKey.trim();
+  const hasReusableSavedKey = Boolean(config?.source === "file" && config.hasApiKey);
 
   // 1.3 校验：拼出可发到后端的 writable payload
-  //     当 hasExistingKey=true 且表单 apiKey 留空时，apiKey 用空字符串提交，
-  //     后端会用 data/config.json 里的 saved key 复用。
+  //     仅 source=file 时允许 apiKey 留空，由后端复用 data/config.json 里的 saved key。
+  //     source=env 不可复用：保存/测试接口不会把环境变量 key 写入或重放到表单指定 URL。
   const buildPayload = (): WritableAppConfig | { error: string } => {
-    if (!effectiveApiKey && !hasExistingKey) {
-      return { error: "请填写 API Key。" };
-    }
-    if (!baseUrl.trim()) {
-      return { error: "请填写 Base URL。" };
-    }
-    if (!/^https?:\/\//i.test(baseUrl.trim())) {
-      return { error: "Base URL 必须以 http:// 或 https:// 开头。" };
-    }
-    if (!reconstructModel.trim()) {
-      return { error: "请填写模型名称。" };
-    }
-    return {
-      apiKey: effectiveApiKey,
-      baseUrl: baseUrl.trim(),
-      reconstructModel: reconstructModel.trim()
-    };
+    return buildSettingsPayload({ apiKey, baseUrl, reconstructModel, config });
   };
 
   // 1.4 测试连接
@@ -243,12 +253,12 @@ export function SettingsDialog({
               autoComplete="off"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder={hasExistingKey ? PLACEHOLDER_KEY : "sk-..."}
+              placeholder={hasReusableSavedKey ? PLACEHOLDER_KEY : "sk-..."}
               disabled={busy}
             />
             <span className="settings-hint">
               密钥仅在服务端保存为 data/config.json（权限 0o600），前端永不缓存。
-              {hasExistingKey ? "已配置时此处可留空，保存或测试时后端会复用已保存的 key。" : null}
+              {hasReusableSavedKey ? "已配置时此处可留空，保存或测试时后端会复用已保存的 key。" : null}
             </span>
           </label>
 
