@@ -113,14 +113,16 @@ export function mergeRegionReconstruction(
 
   // 1.2 平移并去重新节点
   const idMap = new Map<string, string>();
-  const usedIds = new Set(baseScene.nodes.map((node) => node.id));
+  const usedNodeIds = new Set(baseScene.nodes.map((node) => node.id));
   const translatedNodes = regionScene.nodes
     .filter((node) => !node.locked && node.type !== "image")
-    .map((node) => translateNode(node, normalized.x, normalized.y, scaleX, scaleY, usedIds, idMap));
+    .map((node) => translateNode(node, normalized.x, normalized.y, scaleX, scaleY, usedNodeIds, idMap));
 
-  // 1.3 平移局部边
+  // 1.3 平移局部边，并避免和保留的旧边 id 冲突
+  const keptBaseEdges = (baseScene.edges ?? []).filter((edge) => !edgeTouchesAny(edge, removedNodeIds));
+  const usedEdgeIds = new Set(keptBaseEdges.map((edge) => edge.id));
   const translatedEdges = (regionScene.edges ?? [])
-    .map((edge) => translateEdge(edge, normalized.x, normalized.y, scaleX, scaleY, usedIds, idMap))
+    .map((edge) => translateEdge(edge, normalized.x, normalized.y, scaleX, scaleY, usedEdgeIds, idMap))
     .filter((edge): edge is SceneEdge => Boolean(edge));
 
   // 1.4 组装合并后的 scene
@@ -129,7 +131,7 @@ export function mergeRegionReconstruction(
     ...translatedNodes
   ];
   const nextEdges = [
-    ...(baseScene.edges ?? []).filter((edge) => !edgeTouchesAny(edge, removedNodeIds)),
+    ...keptBaseEdges,
     ...translatedEdges
   ];
   const next = {

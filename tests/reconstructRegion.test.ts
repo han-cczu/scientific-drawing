@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mergeRegionReconstruction, sceneRegionToImageExtract, sourceImageUrlFromScene } from "../server/src/scene/regionReconstruction";
 import type { Scene } from "../src/shared/scene";
-import { MAX_METADATA_NOTES } from "../src/shared/sceneValidation";
+import { MAX_METADATA_NOTES, validateScene } from "../src/shared/sceneValidation";
 
 function baseScene(): Scene {
   /*
@@ -155,6 +155,38 @@ describe("region reconstruction helpers", () => {
     // 1.3 校验新内容追加
     assert.equal(scene.nodes.some((node) => node.id === "outside-2"), true);
     assert.equal(scene.edges.some((edge) => edge.id === "region-edge"), true);
+  });
+
+  it("deduplicates translated region edge ids against kept base edges", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证局部边 id 与保留旧边冲突时的去重
+     * ========================================================================
+     * 目标：
+     *   1) overlay 模式保留旧边
+     *   2) AI 输出 edge id 与旧边相同时，新边应分配唯一 id
+     *   3) 合并 helper 返回的 scene 本身应通过 schema 校验
+     */
+
+    // 1.1 构造一个与 AI 输出 edge id 冲突的旧边
+    const base = baseScene();
+    base.edges.push({
+      id: "region-edge",
+      type: "line",
+      from: "outside:right@0.5",
+      to: "inside:left@0.5",
+      style: { stroke: "#111111" }
+    });
+
+    // 1.2 叠加局部输出
+    const scene = mergeRegionReconstruction(base, regionScene(), { x: 100, y: 50, w: 100, h: 80 }, "overlay");
+    const edgeIds = scene.edges.map((edge) => edge.id);
+
+    // 1.3 校验旧边保留、新边去重，且 scene 不含重复 edge id
+    assert.equal(new Set(edgeIds).size, edgeIds.length);
+    assert.equal(scene.edges.some((edge) => edge.id === "region-edge"), true);
+    assert.equal(scene.edges.some((edge) => edge.id === "region-edge-2"), true);
+    assert.equal(validateScene(scene).ok, true);
   });
 
   it("keeps region reconstruction metadata notes within the cap", () => {
