@@ -159,6 +159,17 @@ describe("reconstruct-region route", () => {
 });
 
 describe("scene read route", () => {
+  it("rejects overlong scene ids before touching the filesystem", async () => {
+    const baseUrl = await startTestServer();
+    const id = "a".repeat(160);
+
+    const response = await fetch(`${baseUrl}/api/scenes/${id}`);
+    const body = await response.json() as { error: string };
+
+    assert.equal(response.status, 400);
+    assert.match(body.error, /invalid scene id/i);
+  });
+
   it("rejects persisted scene files that do not match the scene schema", async () => {
     const id = `invalid-${randomUUID()}`;
     const scenePath = path.join(sceneDir, `${id}.scene.json`);

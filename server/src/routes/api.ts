@@ -28,6 +28,7 @@ import { normalizeImportedScene } from "../scene/visiomasterAdapter";
 import { validateScene, type ValidationIssue } from "@shared/sceneValidation";
 
 const MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024;
+const SAFE_FILE_BASE_MAX_LENGTH = 80;
 const IMAGE_EXTENSIONS_BY_MIME = new Map([
   ["image/png", ".png"],
   ["image/jpeg", ".jpg"],
@@ -826,7 +827,7 @@ export function sanitizeUnicodeFileBase(value: unknown) {
   const sanitized = raw
     .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+    .slice(0, SAFE_FILE_BASE_MAX_LENGTH);
 
   // 1.2 返回结果（可为空串，由调用方回退 ASCII 名）
   return sanitized;
@@ -977,7 +978,7 @@ export function sanitizeFileBase(value: unknown) {
   const sanitized = raw
     .replace(/[^a-zA-Z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+    .slice(0, SAFE_FILE_BASE_MAX_LENGTH);
 
   // 1.2 返回安全文件名前缀
   const result = sanitized || randomUUID();
@@ -997,7 +998,12 @@ function safeSceneId(value: unknown) {
   logger.info("开始校验 scene id...", { value });
 
   // 1.1 判断 id 字符集
-  const result = typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value) ? value : "";
+  const result =
+    typeof value === "string" &&
+    value.length <= SAFE_FILE_BASE_MAX_LENGTH &&
+    /^[a-zA-Z0-9_-]+$/.test(value)
+      ? value
+      : "";
 
   // 1.2 返回安全 id
   logger.info("校验 scene id 完成", { valid: Boolean(result) });
