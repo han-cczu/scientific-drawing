@@ -2,6 +2,8 @@ import { clampNumber, isNormalizedHexColor, normalizeHexColor } from "@shared/ge
 import {
   MAX_GRID_CELLS,
   MAX_GRID_DIMENSION,
+  MAX_METADATA_NOTE_LENGTH,
+  MAX_METADATA_NOTES,
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
@@ -50,7 +52,7 @@ export function repairScene(scene: Scene): Scene {
       sourceImage: scene.metadata?.sourceImage,
       createdAt: nonEmpty(scene.metadata?.createdAt, new Date().toISOString()),
       engine: nonEmpty(scene.metadata?.engine, "scientific-drawing.repair"),
-      notes: Array.isArray(scene.metadata?.notes) ? scene.metadata.notes.filter((item): item is string => typeof item === "string") : []
+      notes: repairMetadataNotes(scene.metadata?.notes)
     },
     nodes: [],
     edges: []
@@ -292,6 +294,16 @@ function nonEmpty(value: unknown, fallback: string) {
 
 function optionalString(value: unknown) {
   return typeof value === "string" ? value : undefined;
+}
+
+function repairMetadataNotes(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.slice(0, MAX_METADATA_NOTE_LENGTH))
+    .slice(0, MAX_METADATA_NOTES);
 }
 
 function repairOrientation(value: unknown) {

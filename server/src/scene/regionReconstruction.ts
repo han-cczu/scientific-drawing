@@ -1,5 +1,6 @@
 import { logger } from "../logger";
 import { endpointReferencesNode } from "@shared/geometry";
+import { MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
 export type RegionMergeMode = "replace" | "overlay";
@@ -135,7 +136,7 @@ export function mergeRegionReconstruction(
     ...baseScene,
     metadata: {
       ...baseScene.metadata,
-      notes: [...baseScene.metadata.notes, `Region reconstruction: ${mode}.`]
+      notes: appendMetadataNotes(baseScene.metadata.notes, `Region reconstruction: ${mode}.`)
     },
     nodes: nextNodes,
     edges: nextEdges
@@ -294,4 +295,10 @@ function nodeBox(node: SceneNode): SceneBox {
 
 function boxesIntersect(a: SceneBox, b: SceneBox) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+export function appendMetadataNotes(notes: string[], ...nextNotes: string[]) {
+  return [...notes, ...nextNotes]
+    .map((note) => note.slice(0, MAX_METADATA_NOTE_LENGTH))
+    .slice(-MAX_METADATA_NOTES);
 }

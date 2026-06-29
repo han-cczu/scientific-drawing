@@ -19,7 +19,7 @@ import {
 } from "../scene/aiProviderConfig";
 import { sceneToPptx } from "../scene/pptx";
 import { repairScene } from "../scene/repairScene";
-import { mergeRegionReconstruction, sceneRegionToImageExtract, sourceImageUrlFromScene, type RegionMergeMode, type SceneBox } from "../scene/regionReconstruction";
+import { appendMetadataNotes, mergeRegionReconstruction, sceneRegionToImageExtract, sourceImageUrlFromScene, type RegionMergeMode, type SceneBox } from "../scene/regionReconstruction";
 import { ReconstructError, reconstructWithOpenAI, type ReconstructErrorCode } from "../scene/reconstructWithOpenAI";
 import type { ReconstructionMode } from "../scene/reconstructionPrompt";
 import { sceneToSvg } from "../scene/svg";
@@ -348,7 +348,7 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res) => {
       return;
     }
     const scene = validation.scene;
-    scene.metadata.notes = [...scene.metadata.notes, `Reconstruction mode: ${mode}.`, `Reconstruction model: ${model || "default"}.`];
+    scene.metadata.notes = appendMetadataNotes(scene.metadata.notes, `Reconstruction mode: ${mode}.`, `Reconstruction model: ${model || "default"}.`);
     const scenePath = path.join(sceneDir, `${id}.scene.json`);
     await fs.writeFile(scenePath, JSON.stringify(scene, null, 2), "utf-8");
 
@@ -472,11 +472,11 @@ apiRouter.post("/reconstruct-region", express.json({ limit: "20mb" }), async (re
 
     // 1.5 保存并返回新 scene
     const nextScene = validation.scene;
-    nextScene.metadata.notes = [
-      ...nextScene.metadata.notes,
+    nextScene.metadata.notes = appendMetadataNotes(
+      nextScene.metadata.notes,
       `Region reconstruction mode: ${mode}.`,
       `Region reconstruction model: ${model || "default"}.`
-    ];
+    );
     const scenePath = path.join(sceneDir, `${id}.scene.json`);
     await fs.writeFile(scenePath, JSON.stringify(nextScene, null, 2), "utf-8");
 

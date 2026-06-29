@@ -20,6 +20,10 @@ export const MAX_SCENE_EDGES = 2048;
 // bracket tickPositions 上界：Canvas/SVG/PPTX 会逐项绘制 tick 标记，需限制输入规模。
 export const MAX_TICK_POSITIONS = 512;
 
+// metadata notes 上界：notes 会持久化到 scene JSON，并会在 AI 操作后追加审计记录。
+export const MAX_METADATA_NOTES = 64;
+export const MAX_METADATA_NOTE_LENGTH = 512;
+
 export type ValidationIssue = {
   path: string;
   code: string;
@@ -168,6 +172,15 @@ function validateMetadata(value: unknown, issues: ValidationIssue[]) {
   }
   if (!Array.isArray(value.notes) || !value.notes.every((item) => typeof item === "string")) {
     addIssue(issues, "$.metadata.notes", "invalid_metadata_notes", "Metadata notes must be a string array.");
+  } else {
+    if (value.notes.length > MAX_METADATA_NOTES) {
+      addIssue(issues, "$.metadata.notes", "too_many_metadata_notes", `Metadata notes must not exceed ${MAX_METADATA_NOTES}.`);
+    }
+    value.notes.forEach((note, index) => {
+      if (note.length > MAX_METADATA_NOTE_LENGTH) {
+        addIssue(issues, `$.metadata.notes[${index}]`, "metadata_note_too_long", `Metadata note must not exceed ${MAX_METADATA_NOTE_LENGTH} characters.`);
+      }
+    });
   }
   validateOptionalString(value.sourceImage, "$.metadata.sourceImage", "invalid_metadata_source_image", issues);
 }

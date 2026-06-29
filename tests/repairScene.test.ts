@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
+import { MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -62,6 +62,29 @@ describe("scene repair", () => {
     assert.equal(repaired.edges.length, 1);
     assert.equal(repaired.edges[0].id, "keep");
     assert.equal(repaired.edges[0].from, `${repaired.nodes[0].id}:right@0.5`);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps oversized metadata notes so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 metadata.notes 修复规模上界
+     * ========================================================================
+     * 目标：
+     *   1) repairScene 需要限制 notes 数量
+     *   2) repairScene 需要限制单条 note 长度
+     */
+
+    // 1.1 构造超量 notes 和超长首项
+    const scene = damagedScene();
+    scene.metadata.notes = Array.from({ length: MAX_METADATA_NOTES + 10 }, (_, index) =>
+      index === 0 ? "x".repeat(MAX_METADATA_NOTE_LENGTH + 10) : `note-${index}`
+    );
+
+    // 1.2 修复后 notes 被钳制且 scene 合法
+    const repaired = repairScene(scene);
+    assert.equal(repaired.metadata.notes.length, MAX_METADATA_NOTES);
+    assert.equal(repaired.metadata.notes[0].length, MAX_METADATA_NOTE_LENGTH);
     assert.equal(validateScene(repaired).ok, true);
   });
 

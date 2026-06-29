@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mergeRegionReconstruction, sceneRegionToImageExtract, sourceImageUrlFromScene } from "../server/src/scene/regionReconstruction";
 import type { Scene } from "../src/shared/scene";
+import { MAX_METADATA_NOTES } from "../src/shared/sceneValidation";
 
 function baseScene(): Scene {
   /*
@@ -154,6 +155,26 @@ describe("region reconstruction helpers", () => {
     // 1.3 校验新内容追加
     assert.equal(scene.nodes.some((node) => node.id === "outside-2"), true);
     assert.equal(scene.edges.some((edge) => edge.id === "region-edge"), true);
+  });
+
+  it("keeps region reconstruction metadata notes within the cap", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证局部重建合并时 notes 追加上界
+     * ========================================================================
+     * 目标：
+     *   1) 追加局部重建审计 note 后仍不突破 metadata.notes 上限
+     *   2) 最新审计 note 应保留，避免被旧 notes 挤掉
+     */
+
+    // 1.1 构造已达到上限的基础 scene
+    const scene = baseScene();
+    scene.metadata.notes = Array.from({ length: MAX_METADATA_NOTES }, (_, index) => `note-${index}`);
+
+    // 1.2 合并后仍保持上限，并保留最新局部重建 note
+    const merged = mergeRegionReconstruction(scene, regionScene(), { x: 100, y: 50, w: 100, h: 80 }, "replace");
+    assert.equal(merged.metadata.notes.length, MAX_METADATA_NOTES);
+    assert.match(merged.metadata.notes.at(-1) ?? "", /Region reconstruction: replace\./);
   });
 
   it("does not replace nodes that only touch the region boundary", () => {

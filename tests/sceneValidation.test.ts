@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   assertScene,
   MAX_GRID_DIMENSION,
+  MAX_METADATA_NOTE_LENGTH,
+  MAX_METADATA_NOTES,
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
@@ -450,5 +452,28 @@ describe("scene validation", () => {
     assert.doesNotThrow(() => { result = validateScene(scene); });
     assert.equal(result?.ok, false);
     assert.ok(result?.issues.some((issue) => issue.code === "invalid_metadata_source_image"));
+  });
+
+  it("rejects oversized metadata notes arrays and entries", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 metadata.notes 规模上界
+     * ========================================================================
+     * 目标：
+     *   1) notes 会持久化进 scene JSON，不能无限增长
+     *   2) 单条 note 也不能无限放大导出和存储体积
+     */
+
+    // 1.1 构造超长 notes 数组和超长单项
+    const scene = validScene();
+    scene.metadata.notes = Array.from({ length: MAX_METADATA_NOTES + 1 }, (_, index) =>
+      index === 0 ? "x".repeat(MAX_METADATA_NOTE_LENGTH + 1) : `note-${index}`
+    );
+
+    // 1.2 校验层应返回结构化规模错误
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.metadata.notes" && issue.code === "too_many_metadata_notes"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.metadata.notes[0]" && issue.code === "metadata_note_too_long"));
   });
 });
