@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "no
 import path from "node:path";
 import os from "node:os";
 import {
+  AI_CONFIG_LIMITS,
   buildSafeAiProviderConfig,
   ConfigValidationError,
   deletePersistedConfig,
@@ -63,6 +64,31 @@ describe("OpenAI-compatible AI provider config", () => {
     });
 
     // 1.2 校验模型名称
+    assert.deepEqual(models, ["gpt-4o", "gpt-4o-mini"]);
+  });
+
+  it("normalizes upstream model ids before exposing them to the frontend", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证上游模型 id 的安全边界
+     * ========================================================================
+     * 目标：
+     *   1) trim 掉上游返回的模型 id 空白
+     *   2) 丢弃空白 id 和超过 reconstructModel 写入上限的 id
+     */
+
+    // 1.1 构造包含空白和超长 id 的上游响应
+    const oversizedModelId = "m".repeat(AI_CONFIG_LIMITS.reconstructModel + 1);
+    const models = normalizeModelListPayload({
+      data: [
+        { id: " gpt-4o " },
+        { id: "   " },
+        { id: oversizedModelId },
+        { id: "gpt-4o-mini" }
+      ]
+    });
+
+    // 1.2 校验只暴露符合前端/写入约束的模型名
     assert.deepEqual(models, ["gpt-4o", "gpt-4o-mini"]);
   });
 

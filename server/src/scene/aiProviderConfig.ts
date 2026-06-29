@@ -303,8 +303,8 @@ export function normalizeModelListPayload(payload: unknown) {
 
   // 1.2 提取模型 id
   const models = data
-    .map((item) => (isRecord(item) && typeof item.id === "string" ? item.id : ""))
-    .filter((id) => id.length > 0)
+    .map((item) => (isRecord(item) && typeof item.id === "string" ? item.id.trim() : ""))
+    .filter((id) => id.length > 0 && id.length <= AI_CONFIG_LIMITS.reconstructModel)
     .sort((left, right) => left.localeCompare(right));
 
   logger.info("归一化模型列表完成", { count: models.length });
