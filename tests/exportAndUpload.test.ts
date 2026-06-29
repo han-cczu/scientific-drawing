@@ -7,6 +7,7 @@ import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
 import { shadeColor } from "../src/shared/geometry";
 import type { Scene } from "../src/shared/scene";
 import {
+  MAX_GRID_CELLS,
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
@@ -476,6 +477,48 @@ describe("visiomaster adapter", () => {
     assert.equal(scene.nodes.length, MAX_SCENE_NODES);
     assert.equal(scene.edges.length, MAX_SCENE_EDGES);
     assert.equal(scene.edges[0].points?.length, MAX_POLYLINE_POINTS);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("clamps grid cells and cell labels before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster 网格辅助数组规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身裁剪超长 colored_cells，避免 repair 前放大
+     *   2) cell_labels/labels 同步按 MAX_GRID_CELLS 限幅，越界标签不应覆盖单元格
+     */
+
+    // 1.1 构造超长 cells 和 labels，末尾越界标签与首个单元格同坐标
+    const coloredCells = Array.from({ length: MAX_GRID_CELLS + 10 }, () => [0, 0, "#ABC"]);
+    const labels = Array.from({ length: MAX_GRID_CELLS }, (_, index) => [index + 1, 0, "ignored", "#111111"]);
+    labels.push([0, 0, "late", "#111111"]);
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "grid",
+          type: "grid_matrix",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          rows: 1,
+          cols: 1,
+          colored_cells: coloredCells,
+          cell_labels: labels,
+          style: {}
+        }
+      ],
+      edges: []
+    });
+
+    // 1.2 适配结果已符合共享校验上界，越界标签被忽略
+    const grid = scene.nodes[0];
+    assert.equal(grid.cells?.length, MAX_GRID_CELLS);
+    assert.equal(grid.cells?.[0]?.text, undefined);
     assert.equal(validateScene(scene).ok, true);
   });
 

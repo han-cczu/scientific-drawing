@@ -1,5 +1,5 @@
 import { resolveEndpoint } from "@shared/geometry";
-import { MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
+import { MAX_GRID_CELLS, MAX_POLYLINE_POINTS, MAX_SCENE_EDGES, MAX_SCENE_NODES, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
 type AnyRecord = Record<string, unknown>;
@@ -240,7 +240,7 @@ function cellArray(value: unknown, labels?: unknown) {
       }];
     }
     return [];
-  });
+  }).slice(0, MAX_GRID_CELLS);
 }
 
 function cellLabelMap(value: unknown) {
@@ -260,7 +260,7 @@ function cellLabelMap(value: unknown) {
   }
 
   // 1.2 解析标签数组
-  for (const item of value) {
+  for (const item of value.slice(0, MAX_GRID_CELLS)) {
     if (Array.isArray(item) && typeof item[0] === "number" && typeof item[1] === "number") {
       labels.set(`${item[0]}:${item[1]}`, {
         text: stringOptional(item[2]),

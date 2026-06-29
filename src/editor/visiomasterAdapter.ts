@@ -367,7 +367,7 @@ function cellLabelMap(value: unknown) {
   }
 
   // 1.2 解析标签数组
-  for (const item of value) {
+  for (const item of value.slice(0, MAX_GRID_CELLS)) {
     if (Array.isArray(item) && typeof item[0] === "number" && typeof item[1] === "number") {
       labels.set(`${item[0]}:${item[1]}`, {
         text: stringOptional(item[2]),

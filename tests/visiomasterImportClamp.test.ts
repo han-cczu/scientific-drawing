@@ -68,6 +68,47 @@ describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", (
     assert.equal(validateScene(scene).ok, true);
   });
 
+  it("钳制 Visiomaster cell_labels，避免前端导入完整展开无效标签", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端 Visiomaster 标签数组规模上界
+     * ========================================================================
+     * 目标：
+     *   1) cell_labels/labels 只用于补充 colored_cells，不应先完整构建超大 Map
+     *   2) 超过 MAX_GRID_CELLS 的后置标签不应覆盖已钳制范围内的单元格
+     */
+
+    // 1.1 构造超长标签数组，末尾标签与唯一 colored cell 同坐标
+    const labels = Array.from({ length: MAX_GRID_CELLS }, (_, index) => [index + 1, 0, "ignored", "#111111"]);
+    labels.push([0, 0, "late", "#111111"]);
+    const input = {
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "g1",
+          type: "grid_matrix",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          rows: 1,
+          cols: 1,
+          colored_cells: [[0, 0, "#ABC"]],
+          cell_labels: labels,
+          style: {}
+        }
+      ],
+      edges: []
+    };
+
+    // 1.2 越界标签被忽略，导入结果仍合法
+    const scene = normalizeImportedScene(input);
+    const grid = scene.nodes.find((node) => node.id === "g1");
+    assert.equal(grid?.cells?.[0]?.text, undefined);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
   it("清洗 Visiomaster 样式颜色，避免命名色导致前端导入失败", () => {
     /*
      * ========================================================================
