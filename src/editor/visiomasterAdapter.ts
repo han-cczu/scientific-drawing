@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { createId } from "../lib/id";
 import { resolveEndpoint } from "../shared/geometry";
-import { MAX_GRID_DIMENSION } from "../shared/sceneValidation";
+import { MAX_GRID_CELLS, MAX_GRID_DIMENSION } from "../shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "../shared/scene";
 
 type AnyRecord = Record<string, unknown>;
@@ -332,7 +332,7 @@ function cellArray(value: unknown, labels?: unknown) {
       }];
     }
     return [];
-  });
+  }).slice(0, MAX_GRID_CELLS);
 }
 
 function cellLabelMap(value: unknown) {
