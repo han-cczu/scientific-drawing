@@ -110,6 +110,62 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
+function isConfigSource(value: unknown): value is ConfigSource {
+  return value === "env" || value === "file" || value === "none";
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function parseAppConfig(value: unknown): AppConfig | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (
+    typeof value.aiReconstructionAvailable !== "boolean" ||
+    value.provider !== "openai-compatible" ||
+    typeof value.baseUrl !== "string" ||
+    typeof value.reconstructModel !== "string" ||
+    !isStringArray(value.reconstructModels) ||
+    typeof value.modelListAvailable !== "boolean" ||
+    !isNullableString(value.modelListError) ||
+    typeof value.hasApiKey !== "boolean" ||
+    !isConfigSource(value.source) ||
+    !isNullableString(value.maskedTail)
+  ) {
+    return null;
+  }
+  return {
+    aiReconstructionAvailable: value.aiReconstructionAvailable,
+    provider: value.provider,
+    baseUrl: value.baseUrl,
+    reconstructModel: value.reconstructModel,
+    reconstructModels: value.reconstructModels,
+    modelListAvailable: value.modelListAvailable,
+    modelListError: value.modelListError,
+    hasApiKey: value.hasApiKey,
+    source: value.source,
+    maskedTail: value.maskedTail
+  };
+}
+
+async function readAppConfigResponse(response: Response, action: string): Promise<AppConfig> {
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch (error) {
+    logger.warn(`${action}响应 JSON 解析失败`, { status: response.status, error: String(error) });
+    throw new Error(`${action}响应 JSON 解析失败（HTTP ${response.status}）。`);
+  }
+  const config = parseAppConfig(data);
+  if (!config) {
+    logger.warn(`${action}响应结构非法`, { status: response.status });
+    throw new Error(`${action}响应格式异常（HTTP ${response.status}）。`);
+  }
+  return config;
+}
+
 function isTestConfigErrorCode(value: unknown): value is TestConfigErrorCode {
   return (
     value === "AUTH" ||
@@ -176,7 +232,7 @@ export async function loadAppConfig(): Promise<AppConfig> {
   }
 
   // 1.2 解析配置
-  const payload = await response.json() as AppConfig;
+  const payload = await readAppConfigResponse(response, "读取应用配置");
   logger.info("读取应用配置完成", payload);
   return payload;
 }
@@ -204,7 +260,7 @@ export async function saveAppConfig(payload: WritableAppConfig): Promise<AppConf
     const text = await response.text();
     throw new Error(`Save config failed: ${response.status} ${text}`);
   }
-  const config = await response.json() as AppConfig;
+  const config = await readAppConfigResponse(response, "保存 AI 配置");
   logger.info("保存 AI 配置完成", { source: config.source });
   return config;
 }
@@ -228,7 +284,7 @@ export async function deleteAppConfig(): Promise<AppConfig> {
   }
 
   // 1.2 返回新配置
-  const config = await response.json() as AppConfig;
+  const config = await readAppConfigResponse(response, "清空 AI 配置");
   logger.info("清空 AI 配置完成", { source: config.source });
   return config;
 }

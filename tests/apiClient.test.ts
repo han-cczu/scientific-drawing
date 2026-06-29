@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { exportScene, testAppConfig } from "../src/lib/api";
+import { deleteAppConfig, exportScene, loadAppConfig, saveAppConfig, testAppConfig } from "../src/lib/api";
 import type { Scene } from "../src/shared/scene";
 
 const originalFetch = globalThis.fetch;
@@ -26,6 +26,136 @@ afterEach(() => {
 });
 
 describe("frontend API client", () => {
+  it("loads valid app config payloads", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证读取合法配置响应
+     * ========================================================================
+     * 目标：
+     *   1) AppConfig runtime validator 不误拒后端正常响应
+     *   2) 字符串数组与可空字段按协议保留
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      aiReconstructionAvailable: true,
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com",
+      reconstructModel: "gpt-test",
+      reconstructModels: ["gpt-test", "gpt-test-mini"],
+      modelListAvailable: true,
+      modelListError: null,
+      hasApiKey: true,
+      source: "file",
+      maskedTail: "test"
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    const config = await loadAppConfig();
+
+    assert.equal(config.aiReconstructionAvailable, true);
+    assert.equal(config.source, "file");
+    assert.deepEqual(config.reconstructModels, ["gpt-test", "gpt-test-mini"]);
+    assert.equal(config.maskedTail, "test");
+  });
+
+  it("rejects malformed app config payloads when loading config", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证读取配置响应结构
+     * ========================================================================
+     * 目标：
+     *   1) /api/config 返回合法 JSON 也必须符合 AppConfig 协议
+     *   2) 畸形 reconstructModels/source 等字段不能进入 App state
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      aiReconstructionAvailable: "yes",
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com",
+      reconstructModel: "gpt-test",
+      reconstructModels: "gpt-test",
+      modelListAvailable: true,
+      modelListError: null,
+      hasApiKey: true,
+      source: "file",
+      maskedTail: null
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => loadAppConfig(),
+      /响应格式异常|Invalid app config response/
+    );
+  });
+
+  it("rejects malformed app config payloads after saving config", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证保存配置响应结构
+     * ========================================================================
+     * 目标：
+     *   1) POST /api/config 的成功响应同样必须校验
+     *   2) 保存后不能把畸形配置热刷新进 App state
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      aiReconstructionAvailable: true,
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com",
+      reconstructModel: 123,
+      reconstructModels: ["gpt-test"],
+      modelListAvailable: true,
+      modelListError: null,
+      hasApiKey: true,
+      source: "file",
+      maskedTail: "test"
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => saveAppConfig({
+        apiKey: "sk-test",
+        baseUrl: "https://api.example.com",
+        reconstructModel: "gpt-test"
+      }),
+      /响应格式异常|Invalid app config response/
+    );
+  });
+
+  it("rejects malformed app config payloads after deleting config", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证清空配置响应结构
+     * ========================================================================
+     * 目标：
+     *   1) DELETE /api/config 的成功响应也必须校验
+     *   2) 非法 source 不能影响 SettingsDialog 的来源判断
+     */
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      aiReconstructionAvailable: false,
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com",
+      reconstructModel: "gpt-test",
+      reconstructModels: ["gpt-test"],
+      modelListAvailable: false,
+      modelListError: null,
+      hasApiKey: false,
+      source: "remote",
+      maskedTail: null
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => deleteAppConfig(),
+      /响应格式异常|Invalid app config response/
+    );
+  });
+
   it("returns INVALID_RESPONSE when config test returns malformed JSON", async () => {
     /*
      * ========================================================================
