@@ -15,14 +15,13 @@ import { resetEditorState, selectedIdFromIds } from "./editor/appState";
 import { canRedoHistory, canUndoHistory, commitHistoryPresent, createHistoryState, pushHistory, redoHistory, replaceHistoryPresent, undoHistory } from "./editor/history";
 import { getEditorShortcutAction, isEditableKeyboardTarget } from "./editor/keyboardShortcuts";
 import { createBlankScene, createEdgeBetweenNodes, createNode, duplicateNode, moveNodeLayer, moveNodes, removeNode, resizeNodeFromHandle, selectNodesInRect, setNodeHidden, setNodeLocked, updateNode, updateNodeStyle, type LayerMoveDirection, type ResizeHandle, type SceneBox } from "./editor/sceneOps";
+import { parseSceneImportFile, SceneImportError, SCENE_IMPORT_MAX_BYTES } from "./editor/sceneImport";
 import { clampViewportScale, clientPointToScene, type Viewport } from "./editor/viewport";
 import { buildReconstructionPrompt } from "./editor/reconstructionPrompt";
-import { normalizeImportedScene } from "./editor/visiomasterAdapter";
 import { analyzeImage, deleteAppConfig, exportScene, loadAppConfig, ReconstructApiError, reconstructImage, reconstructRegion, saveAppConfig, testAppConfig, type AppConfig, type ReconstructionMode, type RegionMergeMode } from "./lib/api";
 import { clearStoredScene, isSceneWorthPersisting, loadStoredScene, saveStoredScene } from "./lib/sceneStore";
 import { logger } from "./lib/logger";
 import type { Scene } from "./shared/scene";
-import { validateScene } from "./shared/sceneValidation";
 import "./styles.css";
 
 export default function App() {
@@ -497,19 +496,23 @@ export default function App() {
     setBusy(true);
     notify("正在导入 scene.json...");
     try {
-      const content = await file.text();
-      const imported = normalizeImportedScene(JSON.parse(content));
-      const validation = validateScene(imported);
-      if (!validation.ok) {
-        logger.warn("导入 scene 协议校验失败", { issues: validation.issues });
-        const first = validation.issues[0];
-        notify(`导入 scene.json 失败：协议不合法（${first ? `${first.path}: ${first.code}` : "未知问题"}）。`, "error");
-        return;
-      }
+      const imported = await parseSceneImportFile(file);
       replaceSceneHistory(imported);
       applyEditorReset();
       notify(`已导入 ${imported.nodes.length} 个节点和 ${imported.edges.length} 条连线。`, "success");
     } catch (error) {
+      if (error instanceof SceneImportError) {
+        if (error.code === "FILE_TOO_LARGE") {
+          notify(`导入 scene.json 失败：文件超过 ${Math.floor(SCENE_IMPORT_MAX_BYTES / 1024 / 1024)} MB。`, "error");
+          return;
+        }
+        if (error.code === "INVALID_SCENE") {
+          logger.warn("导入 scene 协议校验失败", { issues: error.issues });
+          const first = error.issues[0];
+          notify(`导入 scene.json 失败：协议不合法（${first ? `${first.path}: ${first.code}` : "未知问题"}）。`, "error");
+          return;
+        }
+      }
       logger.error("导入 scene 失败", { error: String(error) });
       notify("导入 scene.json 失败。", "error");
     } finally {
