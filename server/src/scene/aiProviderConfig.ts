@@ -44,6 +44,8 @@ export const AI_CONFIG_LIMITS = {
   reconstructModel: 120
 } as const;
 
+export const MAX_RECONSTRUCT_MODELS = 256;
+
 // 模型列表请求超时：GET /api/config（首屏、健康检查）等会 await 它，
 // 无超时会被慢/挂起的 baseUrl 拖死，故封顶并归一化错误（绝不抛出/挂起）。
 export const MODELS_FETCH_TIMEOUT_MS = 8000;
@@ -305,7 +307,8 @@ export function normalizeModelListPayload(payload: unknown) {
   const models = data
     .map((item) => (isRecord(item) && typeof item.id === "string" ? item.id.trim() : ""))
     .filter((id) => id.length > 0 && id.length <= AI_CONFIG_LIMITS.reconstructModel)
-    .sort((left, right) => left.localeCompare(right));
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, MAX_RECONSTRUCT_MODELS);
 
   logger.info("归一化模型列表完成", { count: models.length });
   return models;

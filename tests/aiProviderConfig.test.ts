@@ -92,6 +92,27 @@ describe("OpenAI-compatible AI provider config", () => {
     assert.deepEqual(models, ["gpt-4o", "gpt-4o-mini"]);
   });
 
+  it("caps normalized model list size before exposing it to the frontend", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证模型列表规模上界
+     * ========================================================================
+     * 目标：
+     *   1) 不可信 OpenAI-compatible 网关可能返回超大 data 数组
+     *   2) 后端不应把超大模型列表继续放大到 /api/config 响应和前端 datalist
+     */
+
+    // 1.1 构造远超 UI 所需规模的模型列表
+    const models = normalizeModelListPayload({
+      data: Array.from({ length: 2000 }, (_, index) => ({ id: `model-${index.toString().padStart(4, "0")}` }))
+    });
+
+    // 1.2 归一化结果应被裁剪到固定上界
+    assert.equal(models.length, 256);
+    assert.equal(models[0], "model-0000");
+    assert.equal(models.at(-1), "model-0255");
+  });
+
   it("returns safe config without exposing api key", () => {
     /*
      * ========================================================================
