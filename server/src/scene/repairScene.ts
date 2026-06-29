@@ -1,5 +1,5 @@
 import { clampNumber, isNormalizedHexColor, normalizeHexColor } from "@shared/geometry";
-import { MAX_GRID_CELLS, MAX_GRID_DIMENSION } from "@shared/sceneValidation";
+import { MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_POLYLINE_POINTS } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneStyle } from "./types";
 
 const NODE_TYPES = new Set<SceneNodeType>([
@@ -101,6 +101,7 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
     ? node.points
       .filter((point) => typeof point?.x === "number" && typeof point?.y === "number")
       .map((point) => ({ x: finite(point.x, repaired.x), y: finite(point.y, repaired.y) }))
+      .slice(0, MAX_POLYLINE_POINTS)
     : undefined;
   //   cells 长度同样钳到 MAX_GRID_CELLS：否则超长（仍合法的）cells 经 repair 后
   //   会被 validateScene 的 too_many_grid_cells 拒绝，把可恢复输入变成 500
@@ -174,7 +175,10 @@ function repairEdge(edge: SceneEdge, index: number, idMap: Map<string, string>, 
     fromPoint: repairPoint(edge.fromPoint),
     toPoint: repairPoint(edge.toPoint),
     points: Array.isArray(edge.points)
-      ? edge.points.map(repairPoint).filter((point): point is { x: number; y: number } => Boolean(point))
+      ? edge.points
+        .map(repairPoint)
+        .filter((point): point is { x: number; y: number } => Boolean(point))
+        .slice(0, MAX_POLYLINE_POINTS)
       : undefined,
     style: repairStyle(edge.style)
   };

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { assertScene, validateScene } from "../src/shared/sceneValidation";
+import { assertScene, MAX_POLYLINE_POINTS, validateScene } from "../src/shared/sceneValidation";
 import type { Scene } from "../src/shared/scene";
 
 function validScene(): Scene {
@@ -237,6 +237,36 @@ describe("scene validation", () => {
     const result = validateScene(scene);
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.code === "too_many_grid_cells"));
+  });
+
+  it("rejects oversized polyline point arrays", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证折线点数组上界
+     * ========================================================================
+     * 目标：
+     *   1) line/arrow node 的 points 不能无限增长
+     *   2) edge.points 同样不能放大导出渲染循环和输出体积
+     */
+    const hugePoints = Array.from({ length: MAX_POLYLINE_POINTS + 1 }, (_, index) => ({ x: index, y: index }));
+    const scene = validScene();
+    scene.nodes[0] = {
+      id: "line",
+      type: "line",
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 0,
+      points: hugePoints,
+      style: { stroke: "#111111" }
+    };
+    scene.edges[0].points = hugePoints;
+
+    const result = validateScene(scene);
+
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].points" && issue.code === "too_many_points"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].points" && issue.code === "too_many_points"));
   });
 
   it("rejects invalid optional node fields used by renderers and exporters", () => {

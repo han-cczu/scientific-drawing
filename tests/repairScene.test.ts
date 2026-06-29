@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { validateScene } from "../src/shared/sceneValidation";
+import { MAX_POLYLINE_POINTS, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -293,6 +293,38 @@ describe("scene repair", () => {
     assert.equal(repaired?.edges[0].fromPoint, undefined);
     assert.equal(repaired?.edges[0].toPoint, undefined);
     assert.equal(repaired?.edges[0].points, undefined);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps oversized polyline point arrays so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证超长折线点数组钳制
+     * ========================================================================
+     * 目标：
+     *   1) AI 输出超长 node.points/edge.points 时 repairScene 钳到校验上界
+     *   2) 钳制后修复结果仍可通过 validateScene
+     */
+
+    // 1.1 构造超长点数组
+    const points = Array.from({ length: MAX_POLYLINE_POINTS + 10 }, (_, index) => ({ x: index, y: index }));
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        { id: "a", type: "line", x: 0, y: 0, w: 10, h: 0, points, style: {} },
+        { id: "b", type: "rect", x: 20, y: 0, w: 10, h: 10, style: {} }
+      ],
+      edges: [
+        { id: "e", type: "arrow", from: "a", to: "b", points, style: {} }
+      ]
+    } as unknown as Scene;
+
+    // 1.2 修复后点数组钳到上界且 scene 合法
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes[0].points?.length, MAX_POLYLINE_POINTS);
+    assert.equal(repaired.edges[0].points?.length, MAX_POLYLINE_POINTS);
     assert.equal(validateScene(repaired).ok, true);
   });
 

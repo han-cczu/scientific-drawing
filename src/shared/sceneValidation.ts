@@ -9,6 +9,10 @@ export const MAX_GRID_DIMENSION = 256;
 // 防止超长 cells 数组放大解析/内存开销（渲染侧已用 indexGridCells 改 O(1) 查表）。
 export const MAX_GRID_CELLS = MAX_GRID_DIMENSION * MAX_GRID_DIMENSION;
 
+// 单条 polyline/segmented edge 的折线点上界：导出 SVG/PPTX 会按 points 线性生成元素/字符串，
+// 未限制会让 20MB JSON 请求在导出阶段进一步放大 CPU 和输出体积。
+export const MAX_POLYLINE_POINTS = 4096;
+
 export type ValidationIssue = {
   path: string;
   code: string;
@@ -453,6 +457,10 @@ function validatePoints(value: unknown, path: string, issues: ValidationIssue[])
   // 1.1 校验数组
   if (!Array.isArray(value)) {
     addIssue(issues, path, "points_not_array", "Points must be an array.");
+    return;
+  }
+  if (value.length > MAX_POLYLINE_POINTS) {
+    addIssue(issues, path, "too_many_points", `Points must not exceed ${MAX_POLYLINE_POINTS}.`);
     return;
   }
 
