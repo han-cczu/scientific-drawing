@@ -41,6 +41,7 @@ export type TestConfigErrorCode =
 
 export type ReconstructErrorCode =
   | "AUTH"
+  | "INVALID_IMAGE"
   | "TIMEOUT"
   | "BAD_MODEL_OUTPUT"
   | "INVALID_SCENE"

@@ -259,6 +259,7 @@ export function toReconstructEnvelope(error: unknown): {
   if (error instanceof ReconstructError) {
     const statusByCode: Record<ReconstructErrorCode, number> = {
       AUTH: 401,
+      INVALID_IMAGE: 400,
       TIMEOUT: 504,
       BAD_MODEL_OUTPUT: 502,
       INVALID_SCENE: 500,
@@ -320,6 +321,7 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res) => {
     const fileName = `${id}${extension}`;
     imagePath = path.join(uploadDir, fileName);
     await fs.rename(req.file.path, imagePath);
+    await sharp(imagePath).metadata();
 
     // 1.3 读取重建模式和模型
     const mode = reconstructionModeValue(req.body?.mode);
@@ -368,7 +370,7 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res) => {
     if (isInvalidImageDataError(error)) {
       logger.warn("AI 重建图片失败，图片内容非法", { error: String(error) });
       res.status(400).json({
-        error: { code: "BAD_MODEL_OUTPUT", message: "Invalid image data.", hint: "请上传有效的 PNG、JPEG 或 WebP 图片" }
+        error: { code: "INVALID_IMAGE", message: "Invalid image data.", hint: "请上传有效的 PNG、JPEG 或 WebP 图片" }
       });
       return;
     }

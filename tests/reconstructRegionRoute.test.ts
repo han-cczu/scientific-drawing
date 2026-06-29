@@ -110,3 +110,24 @@ describe("analyze route", () => {
     assert.doesNotMatch(body.error, /internal server error/i);
   });
 });
+
+describe("reconstruct route", () => {
+  it("returns a client error envelope when image bytes do not match an allowed MIME type", async () => {
+    const baseUrl = await startTestServer();
+    const form = new FormData();
+    form.append("image", new Blob([Buffer.from("not a real png")], { type: "image/png" }), "fake.png");
+    form.append("mode", "color");
+    form.append("model", "gpt-test");
+
+    const response = await fetch(`${baseUrl}/api/reconstruct`, {
+      method: "POST",
+      body: form
+    });
+
+    const body = await response.json() as { error: { code: string; message: string; hint?: string } };
+    assert.equal(response.status, 400);
+    assert.equal(body.error.code, "INVALID_IMAGE");
+    assert.match(body.error.message, /invalid image/i);
+    assert.match(body.error.hint ?? "", /PNG|JPEG|WebP/i);
+  });
+});

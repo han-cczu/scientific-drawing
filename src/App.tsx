@@ -123,6 +123,8 @@ export default function App() {
       switch (error.code) {
         case "AUTH":
           return withHint("AI 重建认证失败：请检查 API Key 是否有效。");
+        case "INVALID_IMAGE":
+          return withHint("上传的图片内容无法解析。");
         case "TIMEOUT":
           return withHint("AI 重建超时。");
         case "NETWORK":
