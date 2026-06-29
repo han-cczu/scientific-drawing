@@ -28,6 +28,7 @@ import { normalizeImportedScene } from "../scene/visiomasterAdapter";
 import { validateScene, type ValidationIssue } from "@shared/sceneValidation";
 
 const MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_SCENE_FILE_BYTES = 20 * 1024 * 1024;
 const SAFE_FILE_BASE_MAX_LENGTH = 80;
 const IMAGE_EXTENSIONS_BY_MIME = new Map([
   ["image/png", ".png"],
@@ -733,6 +734,12 @@ apiRouter.get("/scenes/:id", async (req, res, next) => {
       return;
     }
     const scenePath = path.join(sceneDir, `${id}.scene.json`);
+    const sceneFile = await fs.stat(scenePath);
+    if (sceneFile.size > MAX_SCENE_FILE_BYTES) {
+      logger.warn("读取 scene 文件失败，文件过大", { scenePath, size: sceneFile.size, limit: MAX_SCENE_FILE_BYTES });
+      res.status(413).json({ error: "Stored scene is too large." });
+      return;
+    }
     const content = await fs.readFile(scenePath, "utf-8");
 
     // 1.2 解析并校验持久化文件

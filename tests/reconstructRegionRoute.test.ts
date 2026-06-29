@@ -205,6 +205,23 @@ describe("scene read route", () => {
       await unlink(scenePath).catch(() => undefined);
     }
   });
+
+  it("rejects oversized persisted scene files before parsing", async () => {
+    const id = `oversized-${randomUUID()}`;
+    const scenePath = path.join(sceneDir, `${id}.scene.json`);
+    try {
+      const baseUrl = await startTestServer();
+      await writeFile(scenePath, "x".repeat(21 * 1024 * 1024), "utf-8");
+
+      const response = await fetch(`${baseUrl}/api/scenes/${id}`);
+      const body = await response.json() as { error: string };
+
+      assert.equal(response.status, 413);
+      assert.match(body.error, /too large/i);
+    } finally {
+      await unlink(scenePath).catch(() => undefined);
+    }
+  });
 });
 
 describe("analyze route", () => {
