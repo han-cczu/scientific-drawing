@@ -1,8 +1,10 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
+import path from "node:path";
 import express from "express";
 import { apiRouter } from "../server/src/routes/api";
 import { httpErrorHandler } from "../server/src/httpErrorHandler";
@@ -90,6 +92,44 @@ describe("reconstruct-region route", () => {
     assert.equal(response.status, 400);
     assert.match(body.error, /source image.*not found/i);
     assert.doesNotMatch(body.error, /internal server error/i);
+  });
+});
+
+describe("scene read route", () => {
+  it("rejects persisted scene files that do not match the scene schema", async () => {
+    const id = `invalid-${randomUUID()}`;
+    const scenePath = path.join(sceneDir, `${id}.scene.json`);
+    try {
+      const baseUrl = await startTestServer();
+      await writeFile(scenePath, JSON.stringify({ version: "0.1", metadata: { id }, nodes: [] }), "utf-8");
+
+      const response = await fetch(`${baseUrl}/api/scenes/${id}`);
+      const body = await response.json() as { error: string; issues?: unknown[] };
+
+      assert.equal(response.status, 409);
+      assert.match(body.error, /invalid/i);
+      assert.ok(Array.isArray(body.issues));
+      assert.ok(body.issues.length > 0);
+    } finally {
+      await unlink(scenePath).catch(() => undefined);
+    }
+  });
+
+  it("rejects persisted scene files that are not parseable JSON", async () => {
+    const id = `corrupt-${randomUUID()}`;
+    const scenePath = path.join(sceneDir, `${id}.scene.json`);
+    try {
+      const baseUrl = await startTestServer();
+      await writeFile(scenePath, "{ not json", "utf-8");
+
+      const response = await fetch(`${baseUrl}/api/scenes/${id}`);
+      const body = await response.json() as { error: string };
+
+      assert.equal(response.status, 409);
+      assert.match(body.error, /invalid/i);
+    } finally {
+      await unlink(scenePath).catch(() => undefined);
+    }
   });
 });
 

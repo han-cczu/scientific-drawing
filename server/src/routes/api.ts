@@ -719,7 +719,8 @@ apiRouter.get("/scenes/:id", async (req, res, next) => {
    * ========================================================================
    * 目标：
    *   1) 根据 id 定位 scene.json
-   *   2) 返回可编辑场景
+   *   2) 读取后重新执行运行时校验，避免损坏持久化文件以 200 下发
+   *   3) 返回可编辑场景
    */
   logger.info("开始读取 scene 文件...", { id: req.params.id });
 
@@ -733,9 +734,25 @@ apiRouter.get("/scenes/:id", async (req, res, next) => {
     const scenePath = path.join(sceneDir, `${id}.scene.json`);
     const content = await fs.readFile(scenePath, "utf-8");
 
-    // 1.2 返回 JSON
+    // 1.2 解析并校验持久化文件
+    let parsedScene: unknown;
+    try {
+      parsedScene = JSON.parse(content);
+    } catch (error) {
+      logger.warn("读取 scene 文件失败，JSON 损坏", { scenePath, error: String(error) });
+      res.status(409).json({ error: "Stored scene is invalid." });
+      return;
+    }
+    const validation = validateScene(parsedScene);
+    if (!validation.ok) {
+      logger.warn("读取 scene 文件失败，schema 非法", { scenePath, issues: validation.issues });
+      res.status(409).json({ error: "Stored scene is invalid.", issues: validation.issues });
+      return;
+    }
+
+    // 1.3 返回 JSON
     logger.info("读取 scene 文件完成", { scenePath });
-    res.type("json").send(content);
+    res.json(parsedScene);
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
       res.status(404).json({ error: "Scene not found." });
