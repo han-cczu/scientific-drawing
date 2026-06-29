@@ -62,6 +62,10 @@ async function nodeToSvg(node: SceneNode): Promise<string> {
   let result: string;
   if (node.type === "image") {
     const href = await imageHref(node.source ?? "");
+    if (!href) {
+      logger.warn("转换单个节点跳过，图片来源非受控或不可读取", { id: node.id });
+      return "";
+    }
     result = `<image id="${escapeAttr(node.id)}" href="${escapeAttr(href)}" x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" opacity="${node.style.opacity ?? 1}" />`;
   } else if (node.type === "text") {
     result = `<text id="${escapeAttr(node.id)}" x="${node.x}" y="${node.y + node.h * 0.78}" ${style}>${escapeText(node.text ?? "")}</text>`;
@@ -91,22 +95,26 @@ async function imageHref(source: string) {
    * ========================================================================
    * 目标：
    *   1) 优先把本地上传图片内嵌为 data URL
-   *   2) 外部路径无法读取时保留原始引用
+   *   2) 外部路径或不可读取本地资源跳过引用
    */
   logger.info("开始生成 SVG 图片引用...", { source });
 
-  // 1.1 跳过已经是 data URL 的图片
-  if (!source || source.startsWith("data:")) {
+  // 1.1 跳过空图片；已经是 data URL 的图片直接保留
+  if (!source) {
+    logger.info("生成 SVG 图片引用完成，空来源跳过");
+    return null;
+  }
+  if (source.startsWith("data:")) {
     logger.info("生成 SVG 图片引用完成", { mode: "inline-or-empty" });
     return source;
   }
 
   // 1.2 仅内嵌受控目录（/uploads、/eval-suite）内的本地资源；
-  //     非受控来源（外部 URL、穿越路径、绝对路径）保留原始引用，绝不读盘（防任意文件读取）
+  //     非受控来源（外部 URL、穿越路径、绝对路径）跳过，绝不读盘也不写外部 href
   const filePath = resolveLocalAssetPath(source);
   if (!filePath) {
-    logger.info("生成 SVG 图片引用完成，保留外部引用", { mode: "external-ref" });
-    return source;
+    logger.info("生成 SVG 图片引用完成，跳过非受控来源", { mode: "skip-external-ref" });
+    return null;
   }
 
   // 1.3 读取本地资源并内嵌为 data URL
@@ -117,8 +125,8 @@ async function imageHref(source: string) {
     logger.info("生成 SVG 图片引用完成", { mode: "embedded", bytes: bytes.length });
     return href;
   } catch (error) {
-    logger.warn("生成 SVG 图片引用失败，保留原始路径", { source, error: String(error) });
-    return source;
+    logger.warn("生成 SVG 图片引用失败，跳过图片节点", { source, error: String(error) });
+    return null;
   }
 }
 

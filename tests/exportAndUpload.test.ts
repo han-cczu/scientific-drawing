@@ -304,6 +304,35 @@ describe("scene export", () => {
     assert.match(svg, /^<svg/);
   });
 
+  it("omits non-controlled image sources from SVG exports", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 SVG 导出图片来源边界
+     * ========================================================================
+     * 目标：
+     *   1) 外部 URL / 非受控 source 不应写入可打开的 SVG href
+     *   2) 与 PPTX 一致：无法安全内嵌的图片节点直接跳过
+     */
+
+    // 1.1 构造外部图片来源
+    const scene = sampleScene();
+    scene.nodes.push({
+      id: "external-image",
+      type: "image",
+      x: 0,
+      y: 0,
+      w: 20,
+      h: 20,
+      source: "https://evil.test/pixel.png",
+      style: { opacity: 1 }
+    });
+
+    // 1.2 导出的 SVG 不应保留外部 href
+    const svg = await sceneToSvg(scene);
+    assert.doesNotMatch(svg, /https:\/\/evil\.test\/pixel\.png/);
+    assert.doesNotMatch(svg, /id="external-image"/);
+  });
+
   it("maps dash presets to PPTX dashType", () => {
     /*
      * ========================================================================
