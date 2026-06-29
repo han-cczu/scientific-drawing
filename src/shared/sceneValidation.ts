@@ -17,6 +17,9 @@ export const MAX_POLYLINE_POINTS = 4096;
 export const MAX_SCENE_NODES = 2048;
 export const MAX_SCENE_EDGES = 2048;
 
+// bracket tickPositions 上界：Canvas/SVG/PPTX 会逐项绘制 tick 标记，需限制输入规模。
+export const MAX_TICK_POSITIONS = 512;
+
 export type ValidationIssue = {
   path: string;
   code: string;
@@ -272,7 +275,7 @@ function validateNodeCollections(node: SceneNode, path: string, issues: Validati
     addIssue(issues, `${path}.orientation`, "invalid_node_orientation", "Orientation must be left, right, up, or down.");
   }
   if (node.tickPositions !== undefined) {
-    validateNumberArray(node.tickPositions, `${path}.tickPositions`, "invalid_tick_positions", issues);
+    validateTickPositions(node.tickPositions, `${path}.tickPositions`, issues);
   }
   if (node.rows !== undefined && (!Number.isInteger(node.rows) || node.rows < 1 || node.rows > MAX_GRID_DIMENSION)) {
     addIssue(issues, `${path}.rows`, "invalid_grid_rows", `Grid rows must be an integer between 1 and ${MAX_GRID_DIMENSION}.`);
@@ -534,6 +537,16 @@ function validateStringArray(value: unknown, path: string, code: string, issues:
 function validateNumberArray(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
   if (!Array.isArray(value) || !value.every((item) => typeof item === "number" && Number.isFinite(item))) {
     addIssue(issues, path, code, "Value must be a finite number array.");
+  }
+}
+
+function validateTickPositions(value: unknown, path: string, issues: ValidationIssue[]) {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "number" && Number.isFinite(item))) {
+    addIssue(issues, path, "invalid_tick_positions", "Value must be a finite number array.");
+    return;
+  }
+  if (value.length > MAX_TICK_POSITIONS) {
+    addIssue(issues, path, "too_many_tick_positions", `Tick positions must not exceed ${MAX_TICK_POSITIONS}.`);
   }
 }
 

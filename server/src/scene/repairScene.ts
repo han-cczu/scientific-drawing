@@ -4,7 +4,8 @@ import {
   MAX_GRID_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
-  MAX_SCENE_NODES
+  MAX_SCENE_NODES,
+  MAX_TICK_POSITIONS
 } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneEdgeType, SceneNode, SceneNodeType, SceneStyle } from "./types";
 
@@ -135,6 +136,7 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
     : undefined;
   repaired.tickPositions = Array.isArray(node.tickPositions)
     ? node.tickPositions.filter((tick): tick is number => typeof tick === "number" && Number.isFinite(tick))
+      .slice(0, MAX_TICK_POSITIONS)
     : undefined;
 
   // 1.3 钳制网格维度，避免畸形 AI 输出（如 rows=100000）生成海量单元格

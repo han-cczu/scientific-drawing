@@ -7,6 +7,7 @@ import {
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
+  MAX_TICK_POSITIONS,
   validateScene
 } from "../src/shared/sceneValidation";
 
@@ -166,6 +167,43 @@ describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", (
     assert.equal(scene.nodes.length, MAX_SCENE_NODES);
     assert.equal(scene.edges.length, MAX_SCENE_EDGES);
     assert.equal(scene.edges[0].points?.length, MAX_POLYLINE_POINTS);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("钳制 Visiomaster tick_positions，避免前端导入放大 bracket 渲染", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端 Visiomaster tick_positions 规模上界
+     * ========================================================================
+     * 目标：
+     *   1) 前端导入不经 repairScene，适配器需要自行钳制 tick_positions
+     *   2) bracket tickPositions 不能放大 Canvas/SVG/PPTX 绘制链路
+     */
+
+    // 1.1 构造超长 Visiomaster tick_positions
+    const input = {
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "br",
+          type: "bracket",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 40,
+          orientation: "right",
+          tick_positions: Array.from({ length: MAX_TICK_POSITIONS + 10 }, () => 0.5),
+          style: {}
+        }
+      ],
+      edges: []
+    };
+
+    // 1.2 导入后钳制并通过校验
+    const scene = normalizeImportedScene(input);
+    const bracket = scene.nodes.find((node) => node.id === "br");
+    assert.equal(bracket?.tickPositions?.length, MAX_TICK_POSITIONS);
     assert.equal(validateScene(scene).ok, true);
   });
 });

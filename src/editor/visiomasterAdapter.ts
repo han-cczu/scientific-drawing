@@ -6,7 +6,8 @@ import {
   MAX_GRID_DIMENSION,
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
-  MAX_SCENE_NODES
+  MAX_SCENE_NODES,
+  MAX_TICK_POSITIONS
 } from "../shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "../shared/scene";
 
@@ -138,7 +139,7 @@ function convertVisiomasterNode(node: AnyRecord): SceneNode {
     columnShades: numberArray(node.column_shades),
     cells: cellArray(node.colored_cells ?? node.cells, node.cell_labels ?? node.labels),
     orientation: orientationValue(node.orientation),
-    tickPositions: numberArray(node.tick_positions),
+    tickPositions: numberArray(node.tick_positions, MAX_TICK_POSITIONS),
     style
   };
 
@@ -294,8 +295,9 @@ function stringArray(value: unknown) {
   return colors.length > 0 ? colors : undefined;
 }
 
-function numberArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is number => typeof item === "number") : undefined;
+function numberArray(value: unknown, maxItems?: number) {
+  const numbers = Array.isArray(value) ? value.filter((item): item is number => typeof item === "number") : undefined;
+  return maxItems === undefined ? numbers : numbers?.slice(0, maxItems);
 }
 
 function pointValue(value: unknown) {

@@ -10,6 +10,7 @@ import {
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
+  MAX_TICK_POSITIONS,
   validateScene
 } from "../src/shared/sceneValidation";
 
@@ -475,6 +476,41 @@ describe("visiomaster adapter", () => {
     assert.equal(scene.nodes.length, MAX_SCENE_NODES);
     assert.equal(scene.edges.length, MAX_SCENE_EDGES);
     assert.equal(scene.edges[0].points?.length, MAX_POLYLINE_POINTS);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("clamps bracket tick positions before repair", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证服务端 Visiomaster tick_positions 规模边界
+     * ========================================================================
+     * 目标：
+     *   1) normalizeImportedScene 自身不完整保留超长 tick_positions
+     *   2) bracket tickPositions 在进入导出/repair 链路前已钳到共享上界
+     */
+
+    // 1.1 构造超长 Visiomaster tick_positions
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "br",
+          type: "bracket",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 40,
+          orientation: "right",
+          tick_positions: Array.from({ length: MAX_TICK_POSITIONS + 10 }, () => 0.5),
+          style: {}
+        }
+      ],
+      edges: []
+    });
+
+    // 1.2 适配结果已符合共享校验上界
+    assert.equal(scene.nodes[0].tickPositions?.length, MAX_TICK_POSITIONS);
     assert.equal(validateScene(scene).ok, true);
   });
 });

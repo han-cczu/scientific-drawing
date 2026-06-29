@@ -5,6 +5,7 @@ import {
   MAX_POLYLINE_POINTS,
   MAX_SCENE_EDGES,
   MAX_SCENE_NODES,
+  MAX_TICK_POSITIONS,
   validateScene
 } from "../src/shared/sceneValidation";
 import type { Scene } from "../src/shared/scene";
@@ -307,6 +308,39 @@ describe("scene validation", () => {
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.path === "$.nodes" && issue.code === "too_many_nodes"));
     assert.ok(result.issues.some((issue) => issue.path === "$.edges" && issue.code === "too_many_edges"));
+  });
+
+  it("rejects oversized bracket tick position arrays", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证 bracket tickPositions 规模上界
+     * ========================================================================
+     * 目标：
+     *   1) tickPositions 会被 Canvas/SVG/PPTX 逐项绘制，不能无限增长
+     *   2) validateScene 必须在导出/渲染前拒绝超长数组
+     */
+
+    // 1.1 构造超过预期上限的 tickPositions
+    const scene = validScene();
+    scene.edges = [];
+    scene.nodes = [
+      {
+        id: "br",
+        type: "bracket",
+        x: 0,
+        y: 0,
+        w: 100,
+        h: 20,
+        orientation: "right",
+        tickPositions: Array.from({ length: MAX_TICK_POSITIONS + 1 }, () => 0.5),
+        style: { stroke: "#111111" }
+      }
+    ];
+
+    // 1.2 校验层应返回结构化规模错误
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].tickPositions" && issue.code === "too_many_tick_positions"));
   });
 
   it("rejects invalid optional node fields used by renderers and exporters", () => {
