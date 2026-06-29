@@ -94,6 +94,25 @@ describe("自定义样式 localStorage 配额满回退一致性", () => {
     assert.deepEqual(loaded.map((preset) => preset.id), Array.from({ length: CUSTOM_PRESET_LIMIT }, (_, index) => `ok-${index}`));
   });
 
+  it("保存自定义预设时拒绝非法颜色，避免乐观 UI 接收坏样式", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证自定义预设保存入口的颜色协议
+     * ========================================================================
+     * 目标：
+     *   1) saveCustomPreset 不能只依赖读取路径过滤坏颜色
+     *   2) 非法 fill/stroke 不能通过乐观返回值进入 StyleTab 内存 state
+     */
+
+    // 1.1 构造正常可写 localStorage
+    const backing = new Map<string, string>();
+
+    // 1.2 保存非法颜色应被拒绝，且不写入存储
+    const result = withMockLocalStorage(mapStorage(backing), () => saveCustomPreset("url(javascript:alert(1))", "#00FF00"));
+    assert.equal(result, null);
+    assert.equal(backing.has(CUSTOM_PRESETS_KEY), false);
+  });
+
   it("配额满写入回退内存后，读取仍能取回（不静默丢数据）", () => {
     /*
      * ========================================================================

@@ -161,6 +161,9 @@ export function loadCustomPresets(): QuickStylePreset[] {
 }
 
 export function saveCustomPreset(fill: string, stroke: string): QuickStylePreset | null {
+  if (!isSceneColor(fill) || !isSceneColor(stroke)) {
+    return null;
+  }
   const current = readFromStorage();
   if (current.length >= CUSTOM_PRESET_LIMIT) {
     return null;
