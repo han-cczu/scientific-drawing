@@ -300,4 +300,14 @@ describe("scene validation", () => {
     assert.ok(result.issues.some((issue) => issue.code === "invalid_node_orientation"));
     assert.ok(result.issues.some((issue) => issue.code === "invalid_tick_positions"));
   });
+
+  it("rejects non-string metadata sourceImage without throwing", () => {
+    const scene = validScene();
+    scene.metadata.sourceImage = 123 as unknown as string;
+
+    let result: ReturnType<typeof validateScene> | undefined;
+    assert.doesNotThrow(() => { result = validateScene(scene); });
+    assert.equal(result?.ok, false);
+    assert.ok(result?.issues.some((issue) => issue.code === "invalid_metadata_source_image"));
+  });
 });

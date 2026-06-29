@@ -158,6 +158,7 @@ function validateMetadata(value: unknown, issues: ValidationIssue[]) {
   if (!Array.isArray(value.notes) || !value.notes.every((item) => typeof item === "string")) {
     addIssue(issues, "$.metadata.notes", "invalid_metadata_notes", "Metadata notes must be a string array.");
   }
+  validateOptionalString(value.sourceImage, "$.metadata.sourceImage", "invalid_metadata_source_image", issues);
 }
 
 function validateNodeList(value: unknown, issues: ValidationIssue[]) {
