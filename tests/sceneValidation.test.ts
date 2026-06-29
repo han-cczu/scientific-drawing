@@ -238,4 +238,66 @@ describe("scene validation", () => {
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.code === "too_many_grid_cells"));
   });
+
+  it("rejects invalid optional node fields used by renderers and exporters", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证可选渲染字段的运行时协议
+     * ========================================================================
+     * 目标：
+     *   1) source/tickPositions 等字段虽是可选项，但一旦存在必须符合协议
+     *   2) 防止 validateSceneForExport 放行后在 SVG/PPTX 导出器内抛 TypeError
+     */
+
+    // 1.1 构造包含畸形可选字段的 scene
+    const scene = validScene();
+    scene.edges = [];
+    scene.nodes = [
+      {
+        id: "img",
+        type: "image",
+        x: 0,
+        y: 0,
+        w: 20,
+        h: 20,
+        source: 123 as unknown as string,
+        style: {}
+      },
+      {
+        id: "g",
+        type: "grid",
+        x: 30,
+        y: 0,
+        w: 20,
+        h: 20,
+        rows: 1,
+        cols: 1,
+        rowColors: [123] as unknown as string[],
+        columnShades: ["bad"] as unknown as number[],
+        cells: [{ row: 0, col: 0, text: 123 as unknown as string }],
+        style: {}
+      },
+      {
+        id: "br",
+        type: "bracket",
+        x: 60,
+        y: 0,
+        w: 20,
+        h: 20,
+        orientation: "sideways" as Scene["nodes"][number]["orientation"],
+        tickPositions: "bad" as unknown as number[],
+        style: {}
+      }
+    ];
+
+    // 1.2 校验必须返回结构化错误，而不是放行到导出器
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_node_source"));
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_row_colors"));
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_column_shades"));
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_grid_cell_text"));
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_node_orientation"));
+    assert.ok(result.issues.some((issue) => issue.code === "invalid_tick_positions"));
+  });
 });

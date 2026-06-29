@@ -251,4 +251,65 @@ describe("scene repair", () => {
     assert.equal(new Set(ids).size, ids.length);
     assert.equal(validateScene(repaired).ok, true);
   });
+
+  it("cleans optional renderer fields that would otherwise leak invalid data", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证可选渲染字段清洗
+     * ========================================================================
+     * 目标：
+     *   1) AI 输出畸形 source/rowColors/columnShades/tickPositions 不应透传
+     *   2) cell.text 等可选字段也必须清洗到 validateScene 可接受的协议
+     */
+
+    // 1.1 构造畸形可选字段
+    const scene = {
+      version: "0.1",
+      page: { width: 100, height: 100, background: "#FFFFFF", units: "px" },
+      metadata: { id: "s", title: "", createdAt: "", engine: "", notes: [] },
+      nodes: [
+        { id: "img", type: "image", x: 0, y: 0, w: 10, h: 10, source: 123, style: {} },
+        {
+          id: "g",
+          type: "grid",
+          x: 20,
+          y: 0,
+          w: 10,
+          h: 10,
+          rows: 1,
+          cols: 1,
+          rowColors: [123, "#abc"],
+          columnShades: ["bad", 0.5],
+          cells: [{ row: 0, col: 0, text: 123, color: "#abc" }],
+          style: {}
+        },
+        {
+          id: "br",
+          type: "bracket",
+          x: 40,
+          y: 0,
+          w: 10,
+          h: 10,
+          orientation: "sideways",
+          tickPositions: ["bad", 0.5],
+          style: {}
+        }
+      ],
+      edges: []
+    } as unknown as Scene;
+
+    // 1.2 清洗后合法字段保留、非法字段移除
+    const repaired = repairScene(scene);
+    const image = repaired.nodes.find((node) => node.id === "img");
+    const grid = repaired.nodes.find((node) => node.id === "g");
+    const bracket = repaired.nodes.find((node) => node.id === "br");
+    assert.equal(image?.source, undefined);
+    assert.deepEqual(grid?.rowColors, ["#AABBCC"]);
+    assert.deepEqual(grid?.columnShades, [0.5]);
+    assert.equal(grid?.cells?.[0].text, undefined);
+    assert.equal(grid?.cells?.[0].color, "#AABBCC");
+    assert.equal(bracket?.orientation, undefined);
+    assert.deepEqual(bracket?.tickPositions, [0.5]);
+    assert.equal(validateScene(repaired).ok, true);
+  });
 });

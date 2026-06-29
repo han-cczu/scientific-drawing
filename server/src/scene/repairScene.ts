@@ -87,6 +87,10 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
     w: positive(Math.abs(finite(node.w, 100)), 1),
     h: nonNegative(Math.abs(finite(node.h, 40)), type === "line" || type === "arrow" ? 0 : 1),
     style: repairStyle(node.style),
+    text: optionalString(node.text),
+    source: optionalString(node.source),
+    symbol: optionalString(node.symbol),
+    orientation: repairOrientation(node.orientation),
     locked: typeof node.locked === "boolean" ? node.locked : undefined,
     hidden: typeof node.hidden === "boolean" ? node.hidden : undefined
   };
@@ -108,9 +112,19 @@ function repairNode(node: SceneNode, index: number, idMap: Map<string, string>, 
       return [{
         ...cell,
         fill: cell.fill === undefined ? undefined : safeColor(cell.fill, "#FFFFFF"),
+        text: optionalString(cell.text),
         color: cell.color === undefined ? undefined : safeColor(cell.color, "#111111")
       }];
     }).slice(0, MAX_GRID_CELLS)
+    : undefined;
+  repaired.rowColors = Array.isArray(node.rowColors)
+    ? node.rowColors.flatMap((color) => typeof color === "string" ? [safeColor(color, "#FFFFFF")] : [])
+    : undefined;
+  repaired.columnShades = Array.isArray(node.columnShades)
+    ? node.columnShades.filter((shade): shade is number => typeof shade === "number" && Number.isFinite(shade))
+    : undefined;
+  repaired.tickPositions = Array.isArray(node.tickPositions)
+    ? node.tickPositions.filter((tick): tick is number => typeof tick === "number" && Number.isFinite(tick))
     : undefined;
 
   // 1.3 钳制网格维度，避免畸形 AI 输出（如 rows=100000）生成海量单元格
@@ -182,12 +196,12 @@ function repairStyle(style: SceneStyle | undefined): SceneStyle {
     fill: source.fill === undefined ? undefined : safeColor(source.fill, "#FFFFFF"),
     stroke: source.stroke === undefined ? undefined : safeColor(source.stroke, "#111111"),
     strokeWidth: nonNegative(source.strokeWidth, 1),
-    fontFamily: source.fontFamily,
+    fontFamily: optionalString(source.fontFamily),
     fontSize: positive(source.fontSize, 16),
-    fontWeight: source.fontWeight,
+    fontWeight: optionalString(source.fontWeight),
     color: source.color === undefined ? undefined : safeColor(source.color, "#111111"),
     opacity: clamp01(source.opacity),
-    dash: source.dash
+    dash: optionalString(source.dash)
   };
 }
 
@@ -251,6 +265,14 @@ function safeColor(value: unknown, fallback: string) {
 
 function nonEmpty(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function optionalString(value: unknown) {
+  return typeof value === "string" ? value : undefined;
+}
+
+function repairOrientation(value: unknown) {
+  return value === "left" || value === "right" || value === "up" || value === "down" ? value : undefined;
 }
 
 function finite(value: unknown, fallback: number) {

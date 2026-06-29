@@ -226,6 +226,9 @@ function validateNode(node: SceneNode, index: number, seen: Set<string>, issues:
   validateStyle(node.style, `${path}.style`, issues);
   validateOptionalBoolean(node.locked, `${path}.locked`, "invalid_node_locked", issues);
   validateOptionalBoolean(node.hidden, `${path}.hidden`, "invalid_node_hidden", issues);
+  validateOptionalString(node.text, `${path}.text`, "invalid_node_text", issues);
+  validateOptionalString(node.source, `${path}.source`, "invalid_node_source", issues);
+  validateOptionalString(node.symbol, `${path}.symbol`, "invalid_node_symbol", issues);
   validateNodeCollections(node, path, issues);
 }
 
@@ -242,6 +245,21 @@ function validateNodeCollections(node: SceneNode, path: string, issues: Validati
   // 1.1 校验线段点和网格行列
   if (node.points !== undefined) {
     validatePoints(node.points, `${path}.points`, issues);
+  }
+  if (node.rowColors !== undefined) {
+    validateStringArray(node.rowColors, `${path}.rowColors`, "invalid_row_colors", issues);
+    if (Array.isArray(node.rowColors)) {
+      node.rowColors.forEach((color, index) => validateColor(color, `${path}.rowColors[${index}]`, issues, "#FFFFFF"));
+    }
+  }
+  if (node.columnShades !== undefined) {
+    validateNumberArray(node.columnShades, `${path}.columnShades`, "invalid_column_shades", issues);
+  }
+  if (node.orientation !== undefined && !["left", "right", "up", "down"].includes(node.orientation)) {
+    addIssue(issues, `${path}.orientation`, "invalid_node_orientation", "Orientation must be left, right, up, or down.");
+  }
+  if (node.tickPositions !== undefined) {
+    validateNumberArray(node.tickPositions, `${path}.tickPositions`, "invalid_tick_positions", issues);
   }
   if (node.rows !== undefined && (!Number.isInteger(node.rows) || node.rows < 1 || node.rows > MAX_GRID_DIMENSION)) {
     addIssue(issues, `${path}.rows`, "invalid_grid_rows", `Grid rows must be an integer between 1 and ${MAX_GRID_DIMENSION}.`);
@@ -274,6 +292,9 @@ function validateNodeCollections(node: SceneNode, path: string, issues: Validati
       }
       if (cell.color !== undefined) {
         validateColor(cell.color, `${path}.cells[${index}].color`, issues, "#111111");
+      }
+      if (cell.text !== undefined && typeof cell.text !== "string") {
+        addIssue(issues, `${path}.cells[${index}].text`, "invalid_grid_cell_text", "Grid cell text must be a string.");
       }
     });
   }
@@ -369,6 +390,9 @@ function validateStyle(value: unknown, path: string, issues: ValidationIssue[]) 
   validateColor(style.fill, `${path}.fill`, issues, "none");
   validateColor(style.stroke, `${path}.stroke`, issues, "none");
   validateColor(style.color, `${path}.color`, issues, "#111111");
+  validateOptionalString(style.fontFamily, `${path}.fontFamily`, "invalid_font_family", issues);
+  validateOptionalString(style.fontWeight, `${path}.fontWeight`, "invalid_font_weight", issues);
+  validateOptionalString(style.dash, `${path}.dash`, "invalid_dash", issues);
   if (style.strokeWidth !== undefined && !isNonNegativeNumber(style.strokeWidth)) {
     addIssue(issues, `${path}.strokeWidth`, "invalid_stroke_width", "Stroke width must be non-negative.");
   }
@@ -471,6 +495,24 @@ function validateFiniteNumber(value: unknown, path: string, code: string, issues
 function validateOptionalBoolean(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
   if (value !== undefined && typeof value !== "boolean") {
     addIssue(issues, path, code, "Value must be a boolean.");
+  }
+}
+
+function validateOptionalString(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
+  if (value !== undefined && typeof value !== "string") {
+    addIssue(issues, path, code, "Value must be a string.");
+  }
+}
+
+function validateStringArray(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    addIssue(issues, path, code, "Value must be a string array.");
+  }
+}
+
+function validateNumberArray(value: unknown, path: string, code: string, issues: ValidationIssue[]) {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "number" && Number.isFinite(item))) {
+    addIssue(issues, path, code, "Value must be a finite number array.");
   }
 }
 
