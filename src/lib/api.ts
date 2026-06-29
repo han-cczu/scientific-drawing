@@ -165,6 +165,7 @@ function parseAppConfig(value: unknown): AppConfig | null {
 }
 
 async function readAppConfigResponse(response: Response, action: string): Promise<AppConfig> {
+  ensureJsonResponse(response, action);
   let data: unknown;
   try {
     data = await response.json();
@@ -196,6 +197,7 @@ function parseAnalyzeResponse(value: unknown): AnalyzeResponse | null {
 }
 
 async function readAnalyzeResponse(response: Response, action: string): Promise<AnalyzeResponse> {
+  ensureJsonResponse(response, action);
   let data: unknown;
   try {
     data = await response.json();
@@ -209,6 +211,14 @@ async function readAnalyzeResponse(response: Response, action: string): Promise<
     throw new Error(`${action}响应格式异常（HTTP ${response.status}）。`);
   }
   return payload;
+}
+
+function ensureJsonResponse(response: Response, action: string): void {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    logger.warn(`${action}响应非 JSON`, { status: response.status, contentType });
+    throw new Error(`${action}响应格式异常（HTTP ${response.status}）。`);
+  }
 }
 
 function isTestConfigErrorCode(value: unknown): value is TestConfigErrorCode {

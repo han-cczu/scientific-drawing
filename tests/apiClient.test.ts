@@ -229,6 +229,26 @@ describe("frontend API client", () => {
     );
   });
 
+  it("rejects non-JSON app config responses with a controlled format error", async () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证读取配置响应 Content-Type
+     * ========================================================================
+     * 目标：
+     *   1) 网关/历史服务可能返回 200 + text/html
+     *   2) API client 不应把底层 JSON parse 错误直接暴露给 UI
+     */
+    globalThis.fetch = (async () => new Response("<html>not json</html>", {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" }
+    })) as typeof fetch;
+
+    await assert.rejects(
+      () => loadAppConfig(),
+      /响应格式异常/
+    );
+  });
+
   it("rejects malformed app config payloads after saving config", async () => {
     /*
      * ========================================================================
