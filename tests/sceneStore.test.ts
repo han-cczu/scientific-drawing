@@ -17,9 +17,13 @@ import type { Scene } from "../src/shared/scene";
 
 // 1.1 安装基于 Map 的 localStorage stub
 const backing = new Map<string, string>();
+let failSceneStoreWrites = false;
 const localStorageStub = {
   getItem: (key: string) => (backing.has(key) ? backing.get(key)! : null),
   setItem: (key: string, value: string) => {
+    if (failSceneStoreWrites && key === "sciDraw.scene") {
+      throw new Error("QuotaExceededError");
+    }
     backing.set(key, String(value));
   },
   removeItem: (key: string) => {
@@ -69,6 +73,23 @@ describe("scene store", () => {
     // 1.2 清空后恢复为 null
     store.clearStoredScene();
     assert.equal(store.loadStoredScene(), null);
+  });
+
+  it("reads from memory fallback after localStorage write failure in the same session", () => {
+    backing.clear();
+    store.clearStoredScene();
+    failSceneStoreWrites = true;
+
+    try {
+      const scene = validScene();
+      scene.metadata.id = "memory-fallback-scene";
+      assert.equal(store.saveStoredScene(scene), "failed");
+      assert.deepEqual(store.loadStoredScene(), scene);
+    } finally {
+      failSceneStoreWrites = false;
+      store.clearStoredScene();
+      backing.clear();
+    }
   });
 
   it("backs up and clears corrupted or invalid payloads", () => {

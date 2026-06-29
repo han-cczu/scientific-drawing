@@ -27,6 +27,7 @@ export type SceneSaveResult = "ok" | "memory" | "failed";
 
 // in-memory fallback when localStorage 不可用
 let memoryScene: Scene | null = null;
+let memoryFallbackActive = false;
 let storageWarned = false;
 let storageAvailableCache: boolean | null = null;
 
@@ -80,6 +81,7 @@ export function saveStoredScene(scene: Scene): SceneSaveResult {
   const payload: StoredSchema = { version: SCHEMA_VERSION, scene, savedAt: Date.now() };
   if (!isStorageAvailable()) {
     memoryScene = scene;
+    memoryFallbackActive = true;
     warnOnce("[sceneStore] localStorage 不可用，场景仅保存在内存（刷新会丢）");
     return "memory";
   }
@@ -88,6 +90,7 @@ export function saveStoredScene(scene: Scene): SceneSaveResult {
     return "ok";
   } catch (err) {
     memoryScene = scene;
+    memoryFallbackActive = true;
     warnOnce("[sceneStore] 写入 localStorage 失败（配额满？），场景仅保存在内存", err);
     return "failed";
   }
@@ -102,7 +105,7 @@ export function loadStoredScene(): Scene | null {
    *   1) 版本不符 / JSON 损坏 / 协议非法一律返回 null，由调用方回退空白画布
    *   2) 损坏数据先备份到 backup key 再清空主 key，避免反复报错
    */
-  if (!isStorageAvailable()) {
+  if (memoryFallbackActive || !isStorageAvailable()) {
     return memoryScene;
   }
   let raw: string | null = null;
@@ -144,6 +147,7 @@ export function loadStoredScene(): Scene | null {
 
 export function clearStoredScene(): void {
   memoryScene = null;
+  memoryFallbackActive = false;
   if (!isStorageAvailable()) {
     return;
   }
