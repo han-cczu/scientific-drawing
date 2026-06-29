@@ -409,6 +409,34 @@ describe("AI runtime config persistence", () => {
     assert.equal(config.apiKey, "");
   });
 
+  it("sanitizes invalid env baseUrl and reconstruct model instead of trusting them", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证环境变量配置同样受运行时边界约束
+     * ========================================================================
+     * 目标：
+     *   1) OPENAI_BASE_URL 可能由部署环境误配为非 http(s) 或带控制字符
+     *   2) OPENAI_RECONSTRUCT_MODEL 可能为空或超长
+     *   3) readAiRuntimeConfig 不应把这些值继续传给 fetch/前端配置
+     */
+
+    // 1.1 构造非法 env 字段
+    const config = readAiRuntimeConfig(
+      {
+        OPENAI_API_KEY: "sk-env",
+        OPENAI_BASE_URL: "javascript:alert(1)",
+        OPENAI_RECONSTRUCT_MODEL: "m".repeat(AI_CONFIG_LIMITS.reconstructModel + 1)
+      },
+      configFile
+    );
+
+    // 1.2 保留合法 key，但 URL/model 回退到安全默认值
+    assert.equal(config.source, "env");
+    assert.equal(config.apiKey, "sk-env");
+    assert.equal(config.baseUrl, "https://api.openai.com/v1");
+    assert.equal(config.defaultModel, "gpt-4o");
+  });
+
   it("uses persisted file when present and overrides env", () => {
     /*
      * ========================================================================

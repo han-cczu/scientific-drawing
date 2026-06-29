@@ -45,6 +45,8 @@ export const AI_CONFIG_LIMITS = {
 } as const;
 
 export const MAX_RECONSTRUCT_MODELS = 256;
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_RECONSTRUCT_MODEL = "gpt-4o";
 
 // 模型列表请求超时：GET /api/config（首屏、健康检查）等会 await 它，
 // 无超时会被慢/挂起的 baseUrl 拖死，故封顶并归一化错误（绝不抛出/挂起）。
@@ -274,10 +276,11 @@ export function readAiRuntimeConfig(
 
   // 1.2 fallback 到环境变量
   const apiKey = env.OPENAI_API_KEY ?? "";
+  const envDefaults = normalizeEnvRuntimeDefaults(env);
   const envConfig: AiRuntimeConfig = {
     apiKey,
-    baseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
-    defaultModel: env.OPENAI_RECONSTRUCT_MODEL ?? "gpt-4o",
+    baseUrl: envDefaults.baseUrl,
+    defaultModel: envDefaults.defaultModel,
     source: apiKey ? "env" : "none"
   };
   logger.info("读取 AI 运行配置完成", {
@@ -287,6 +290,37 @@ export function readAiRuntimeConfig(
     defaultModel: envConfig.defaultModel
   });
   return envConfig;
+}
+
+function normalizeEnvRuntimeDefaults(env: NodeJS.ProcessEnv) {
+  /*
+   * ========================================================================
+   * 步骤1：归一化环境变量中的非密钥运行配置
+   * ========================================================================
+   * 目标：
+   *   1) 复用 UI 写入配置的 baseUrl/model 值域约束
+   *   2) 环境变量误配时回退安全默认值，而不是把坏 URL/超长 model 传给 fetch 和前端
+   */
+
+  // 1.1 校验 baseUrl/model；apiKey 用占位值，只为复用 validateWritableConfig 的字段规则
+  const validation = validateWritableConfig({
+    apiKey: "env-placeholder-key",
+    baseUrl: env.OPENAI_BASE_URL ?? DEFAULT_OPENAI_BASE_URL,
+    reconstructModel: env.OPENAI_RECONSTRUCT_MODEL ?? DEFAULT_RECONSTRUCT_MODEL
+  });
+  if (validation.ok) {
+    return {
+      baseUrl: validation.value.baseUrl,
+      defaultModel: validation.value.reconstructModel
+    };
+  }
+
+  // 1.2 env 是部署输入，非法时不能阻断服务启动；记录后回退默认值
+  logger.warn("环境变量 AI 配置字段非法，回退默认 baseUrl/model", { error: validation.error });
+  return {
+    baseUrl: DEFAULT_OPENAI_BASE_URL,
+    defaultModel: DEFAULT_RECONSTRUCT_MODEL
+  };
 }
 
 export function normalizeModelListPayload(payload: unknown) {
