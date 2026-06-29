@@ -1,5 +1,5 @@
 import { clampNumber, resolveEndpoint } from "@shared/geometry";
-import { MAX_GEOMETRY_COORDINATE, MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_NODE_SIZE, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
+import { MAX_GEOMETRY_COORDINATE, MAX_GRID_CELLS, MAX_GRID_DIMENSION, MAX_NODE_SIZE, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_STYLE_FONT_SIZE, MAX_STYLE_STROKE_WIDTH, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode, SceneStyle } from "./types";
 
 type AnyRecord = Record<string, unknown>;
@@ -151,9 +151,9 @@ function mapStyle(style: AnyRecord): SceneStyle {
   return {
     fill: stringOptional(style.fill),
     stroke: stringOptional(style.line ?? style.stroke),
-    strokeWidth: numberOptional(style.line_weight_pt ?? style.strokeWidth),
+    strokeWidth: strokeWidthOptional(style.line_weight_pt ?? style.strokeWidth),
     fontFamily: stringOptional(style.font_family ?? style.fontFamily, MAX_PROTOCOL_STRING_LENGTH),
-    fontSize: numberOptional(style.font_size_pt ?? style.fontSize),
+    fontSize: fontSizeOptional(style.font_size_pt ?? style.fontSize),
     fontWeight: stringOptional(style.font_weight ?? style.fontWeight, MAX_PROTOCOL_STRING_LENGTH),
     color: stringOptional(style.text_color ?? style.color),
     opacity: numberOptional(style.opacity),
@@ -247,6 +247,17 @@ function pageDimension(value: unknown, fallback: number) {
 
 function numberOptional(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function strokeWidthOptional(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? clampNumber(value, 0, MAX_STYLE_STROKE_WIDTH) : undefined;
+}
+
+function fontSizeOptional(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return clampNumber(value, 1, MAX_STYLE_FONT_SIZE);
 }
 
 function intOptional(value: unknown) {

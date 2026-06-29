@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ensureReplicaBaseLayer } from "../server/src/routes/api";
 import { repairScene } from "../server/src/scene/repairScene";
 import type { Scene } from "../src/shared/scene";
-import { MAX_GEOMETRY_COORDINATE, MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_NODE_SIZE, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
+import { MAX_GEOMETRY_COORDINATE, MAX_GRID_DIMENSION, MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES, MAX_NODE_SIZE, MAX_PAGE_DIMENSION, MAX_POLYLINE_POINTS, MAX_PROTOCOL_STRING_LENGTH, MAX_SCENE_EDGES, MAX_SCENE_ID_LENGTH, MAX_SCENE_NODES, MAX_STYLE_FONT_SIZE, MAX_STYLE_STROKE_WIDTH, MAX_TEXT_LENGTH, MAX_TICK_POSITIONS, validateScene } from "../src/shared/sceneValidation";
 
 function damagedScene(): Scene {
   /*
@@ -162,6 +162,32 @@ describe("scene repair", () => {
     assert.deepEqual(repaired.edges[0].fromPoint, { x: MAX_GEOMETRY_COORDINATE, y: 0 });
     assert.deepEqual(repaired.edges[0].toPoint, { x: 0, y: -MAX_GEOMETRY_COORDINATE });
     assert.deepEqual(repaired.edges[0].points, [{ x: MAX_GEOMETRY_COORDINATE, y: 0 }]);
+    assert.equal(validateScene(repaired).ok, true);
+  });
+
+  it("clamps oversized style numbers so repaired scenes still validate", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证样式数值修复规模上界
+     * ========================================================================
+     * 目标：
+     *   1) repairScene 需要限制 node style 的线宽和字号
+     *   2) repairScene 需要限制 edge style 的线宽和字号
+     */
+
+    // 1.1 构造超界样式数值
+    const scene = damagedScene();
+    scene.nodes[0].style.strokeWidth = MAX_STYLE_STROKE_WIDTH + 100;
+    scene.nodes[0].style.fontSize = MAX_STYLE_FONT_SIZE + 100;
+    scene.edges[0].style.strokeWidth = MAX_STYLE_STROKE_WIDTH + 100;
+    scene.edges[0].style.fontSize = MAX_STYLE_FONT_SIZE + 100;
+
+    // 1.2 修复后样式数值在共享合法范围内
+    const repaired = repairScene(scene);
+    assert.equal(repaired.nodes[0].style.strokeWidth, MAX_STYLE_STROKE_WIDTH);
+    assert.equal(repaired.nodes[0].style.fontSize, MAX_STYLE_FONT_SIZE);
+    assert.equal(repaired.edges[0].style.strokeWidth, MAX_STYLE_STROKE_WIDTH);
+    assert.equal(repaired.edges[0].style.fontSize, MAX_STYLE_FONT_SIZE);
     assert.equal(validateScene(repaired).ok, true);
   });
 

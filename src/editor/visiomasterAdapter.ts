@@ -12,6 +12,8 @@ import {
   MAX_SCENE_EDGES,
   MAX_SCENE_ID_LENGTH,
   MAX_SCENE_NODES,
+  MAX_STYLE_FONT_SIZE,
+  MAX_STYLE_STROKE_WIDTH,
   MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS
 } from "../shared/sceneValidation";
@@ -247,9 +249,9 @@ function mapStyle(style: AnyRecord): SceneStyle {
   return {
     fill: optionalColor(style.fill, "#FFFFFF"),
     stroke: optionalColor(style.line ?? style.stroke, "#111111"),
-    strokeWidth: numberOptional(style.line_weight_pt ?? style.strokeWidth),
+    strokeWidth: strokeWidthOptional(style.line_weight_pt ?? style.strokeWidth),
     fontFamily: stringOptional(style.font_family ?? style.fontFamily, MAX_PROTOCOL_STRING_LENGTH),
-    fontSize: numberOptional(style.font_size_pt ?? style.fontSize),
+    fontSize: fontSizeOptional(style.font_size_pt ?? style.fontSize),
     fontWeight: stringOptional(style.font_weight ?? style.fontWeight, MAX_PROTOCOL_STRING_LENGTH),
     color: optionalColor(style.text_color ?? style.color, "#111111"),
     opacity: numberOptional(style.opacity),
@@ -341,6 +343,17 @@ function pageDimension(value: unknown, fallback: number) {
 
 function numberOptional(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function strokeWidthOptional(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? clampNumber(value, 0, MAX_STYLE_STROKE_WIDTH) : undefined;
+}
+
+function fontSizeOptional(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return clampNumber(value, 1, MAX_STYLE_FONT_SIZE);
 }
 
 function intOptional(value: unknown) {

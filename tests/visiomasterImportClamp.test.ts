@@ -12,6 +12,8 @@ import {
   MAX_SCENE_EDGES,
   MAX_SCENE_ID_LENGTH,
   MAX_SCENE_NODES,
+  MAX_STYLE_FONT_SIZE,
+  MAX_STYLE_STROKE_WIDTH,
   MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS,
   validateScene
@@ -343,6 +345,57 @@ describe("Visiomaster 前端导入：网格维度钳制（前后端一致）", (
     assert.deepEqual(scene.edges[0].fromPoint, { x: MAX_GEOMETRY_COORDINATE, y: 0 });
     assert.deepEqual(scene.edges[0].toPoint, { x: 0, y: -MAX_GEOMETRY_COORDINATE });
     assert.deepEqual(scene.edges[0].points, [{ x: MAX_GEOMETRY_COORDINATE, y: -MAX_GEOMETRY_COORDINATE }]);
+    assert.equal(validateScene(scene).ok, true);
+  });
+
+  it("钳制 Visiomaster 样式数值，避免前端导入放大渲染和导出样式", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证前端样式数值规模上界
+     * ========================================================================
+     * 目标：
+     *   1) node style 的 line_weight_pt/font_size_pt 被钳到共享上界
+     *   2) edge style 的 line_weight_pt/font_size_pt 被钳到共享上界
+     */
+
+    // 1.1 构造超界样式数值
+    const scene = normalizeImportedScene({
+      page: { width: 320, height: 180, background: "#FFFFFF" },
+      metadata: { title: "v" },
+      nodes: [
+        {
+          id: "box",
+          type: "process_box",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 80,
+          style: {
+            line_weight_pt: MAX_STYLE_STROKE_WIDTH + 100,
+            font_size_pt: MAX_STYLE_FONT_SIZE + 100
+          }
+        },
+        { id: "target", type: "process_box", x: 120, y: 0, w: 10, h: 10, style: {} }
+      ],
+      edges: [
+        {
+          id: "edge",
+          type: "line_segment",
+          from: "box",
+          to: "target",
+          style: {
+            line_weight_pt: MAX_STYLE_STROKE_WIDTH + 100,
+            font_size_pt: MAX_STYLE_FONT_SIZE + 100
+          }
+        }
+      ]
+    });
+
+    // 1.2 导入结果样式数值在共享合法范围内
+    assert.equal(scene.nodes[0].style.strokeWidth, MAX_STYLE_STROKE_WIDTH);
+    assert.equal(scene.nodes[0].style.fontSize, MAX_STYLE_FONT_SIZE);
+    assert.equal(scene.edges[0].style.strokeWidth, MAX_STYLE_STROKE_WIDTH);
+    assert.equal(scene.edges[0].style.fontSize, MAX_STYLE_FONT_SIZE);
     assert.equal(validateScene(scene).ok, true);
   });
 

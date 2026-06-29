@@ -13,6 +13,10 @@ export const MAX_PAGE_DIMENSION = 16384;
 export const MAX_GEOMETRY_COORDINATE = 65536;
 export const MAX_NODE_SIZE = 65536;
 
+// 样式数值上界：style 会直接进入 Canvas/SVG/PPTX。保留足够大的设计空间，同时阻断畸形输入放大渲染。
+export const MAX_STYLE_STROKE_WIDTH = 256;
+export const MAX_STYLE_FONT_SIZE = 512;
+
 // 单个网格 cells 数组长度上界：等于最大网格的单元格总数，超出即视为畸形输入，
 // 防止超长 cells 数组放大解析/内存开销（渲染侧已用 indexGridCells 改 O(1) 查表）。
 export const MAX_GRID_CELLS = MAX_GRID_DIMENSION * MAX_GRID_DIMENSION;
@@ -462,11 +466,11 @@ function validateStyle(value: unknown, path: string, issues: ValidationIssue[]) 
   validateOptionalString(style.fontFamily, `${path}.fontFamily`, "invalid_font_family", issues);
   validateOptionalString(style.fontWeight, `${path}.fontWeight`, "invalid_font_weight", issues);
   validateOptionalString(style.dash, `${path}.dash`, "invalid_dash", issues);
-  if (style.strokeWidth !== undefined && !isNonNegativeNumber(style.strokeWidth)) {
-    addIssue(issues, `${path}.strokeWidth`, "invalid_stroke_width", "Stroke width must be non-negative.");
+  if (style.strokeWidth !== undefined && !isValidStrokeWidth(style.strokeWidth)) {
+    addIssue(issues, `${path}.strokeWidth`, "invalid_stroke_width", `Stroke width must be between 0 and ${MAX_STYLE_STROKE_WIDTH}.`);
   }
-  if (style.fontSize !== undefined && !isPositiveNumber(style.fontSize)) {
-    addIssue(issues, `${path}.fontSize`, "invalid_font_size", "Font size must be positive.");
+  if (style.fontSize !== undefined && !isValidFontSize(style.fontSize)) {
+    addIssue(issues, `${path}.fontSize`, "invalid_font_size", `Font size must be between 1 and ${MAX_STYLE_FONT_SIZE}.`);
   }
   if (style.opacity !== undefined && (!isNonNegativeNumber(style.opacity) || style.opacity > 1)) {
     addIssue(issues, `${path}.opacity`, "invalid_opacity", "Opacity must be between 0 and 1.");
@@ -630,8 +634,12 @@ function validateTickPositions(value: unknown, path: string, issues: ValidationI
   }
 }
 
-function isPositiveNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
+function isValidStrokeWidth(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= MAX_STYLE_STROKE_WIDTH;
+}
+
+function isValidFontSize(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= MAX_STYLE_FONT_SIZE;
 }
 
 function isPositiveGeometrySize(value: unknown) {

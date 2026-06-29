@@ -12,6 +12,8 @@ import {
   MAX_SCENE_EDGES,
   MAX_SCENE_ID_LENGTH,
   MAX_SCENE_NODES,
+  MAX_STYLE_FONT_SIZE,
+  MAX_STYLE_STROKE_WIDTH,
   MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS
 } from "@shared/sceneValidation";
@@ -223,9 +225,9 @@ function repairStyle(style: SceneStyle | undefined): SceneStyle {
   return {
     fill: source.fill === undefined ? undefined : safeColor(source.fill, "#FFFFFF"),
     stroke: source.stroke === undefined ? undefined : safeColor(source.stroke, "#111111"),
-    strokeWidth: nonNegative(source.strokeWidth, 1),
+    strokeWidth: strokeWidth(source.strokeWidth, 1),
     fontFamily: optionalString(source.fontFamily),
-    fontSize: positive(source.fontSize, 16),
+    fontSize: fontSize(source.fontSize, 16),
     fontWeight: optionalString(source.fontWeight),
     color: source.color === undefined ? undefined : safeColor(source.color, "#111111"),
     opacity: clamp01(source.opacity),
@@ -350,6 +352,14 @@ function finite(value: unknown, fallback: number) {
 function positive(value: unknown, fallback: number) {
   const numberValue = finite(value, fallback);
   return numberValue > 0 ? numberValue : fallback;
+}
+
+function strokeWidth(value: unknown, fallback: number) {
+  return clampNumber(nonNegative(value, fallback), 0, MAX_STYLE_STROKE_WIDTH);
+}
+
+function fontSize(value: unknown, fallback: number) {
+  return clampNumber(positive(value, fallback), 1, MAX_STYLE_FONT_SIZE);
 }
 
 function coordinate(value: unknown, fallback: number) {

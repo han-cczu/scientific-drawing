@@ -13,6 +13,8 @@ import {
   MAX_SCENE_EDGES,
   MAX_SCENE_ID_LENGTH,
   MAX_SCENE_NODES,
+  MAX_STYLE_FONT_SIZE,
+  MAX_STYLE_STROKE_WIDTH,
   MAX_TEXT_LENGTH,
   MAX_TICK_POSITIONS,
   validateScene
@@ -216,6 +218,32 @@ describe("scene validation", () => {
     assert.equal(result.ok, false);
     assert.ok(result.issues.some((issue) => issue.path === "$.page.width" && issue.code === "invalid_page_width"));
     assert.ok(result.issues.some((issue) => issue.path === "$.page.height" && issue.code === "invalid_page_height"));
+  });
+
+  it("rejects style numbers outside supported render bounds", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证样式数值规模边界
+     * ========================================================================
+     * 目标：
+     *   1) style.strokeWidth 不能以超大值进入 SVG/PPTX 线条输出
+     *   2) style.fontSize 不能以超大值进入 Canvas/SVG/PPTX 文本渲染
+     */
+
+    // 1.1 构造超界节点和边样式
+    const scene = validScene();
+    scene.nodes[0].style.strokeWidth = MAX_STYLE_STROKE_WIDTH + 1;
+    scene.nodes[0].style.fontSize = MAX_STYLE_FONT_SIZE + 1;
+    scene.edges[0].style.strokeWidth = MAX_STYLE_STROKE_WIDTH + 1;
+    scene.edges[0].style.fontSize = MAX_STYLE_FONT_SIZE + 1;
+
+    // 1.2 校验层应拒绝超界样式数值
+    const result = validateScene(scene);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].style.strokeWidth" && issue.code === "invalid_stroke_width"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.nodes[0].style.fontSize" && issue.code === "invalid_font_size"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].style.strokeWidth" && issue.code === "invalid_stroke_width"));
+    assert.ok(result.issues.some((issue) => issue.path === "$.edges[0].style.fontSize" && issue.code === "invalid_font_size"));
   });
 
   it("rejects node and point geometry outside supported render bounds", () => {
