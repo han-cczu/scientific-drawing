@@ -405,6 +405,34 @@ describe("AI runtime config persistence", () => {
     assert.equal(readPersistedConfig(configFile), null);
   });
 
+  it("safely falls back to env when persisted file has invalid field values", () => {
+    /*
+     * ========================================================================
+     * 步骤1：持久化配置值域非法 → fallback env
+     * ========================================================================
+     * 目标：
+     *   1) 读盘路径必须复用写盘的 baseUrl/model/apiKey 值域约束
+     *   2) 手动损坏的 config.json 不得成为运行时有效配置
+     */
+    writeFileSync(
+      configFile,
+      JSON.stringify({
+        provider: "openai-compatible",
+        apiKey: "sk-file",
+        baseUrl: "ftp://attacker.example.com",
+        reconstructModel: "gpt-file",
+        updatedAt: "2026-05-22T00:00:00.000Z"
+      }),
+      "utf-8"
+    );
+
+    const config = readAiRuntimeConfig({ OPENAI_API_KEY: "sk-env", OPENAI_BASE_URL: "https://env.example.com/v1" }, configFile);
+    assert.equal(readPersistedConfig(configFile), null);
+    assert.equal(config.source, "env");
+    assert.equal(config.apiKey, "sk-env");
+    assert.equal(config.baseUrl, "https://env.example.com/v1");
+  });
+
   it("writes and re-reads persisted config", () => {
     /*
      * ========================================================================

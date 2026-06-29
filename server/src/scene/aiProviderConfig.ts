@@ -541,11 +541,15 @@ function normalizePersistedConfig(value: unknown): PersistedAiConfig | null {
   if (!apiKey || !baseUrl || !reconstructModel) {
     return null;
   }
+  const validation = validateWritableConfig({ apiKey, baseUrl, reconstructModel });
+  if (!validation.ok) {
+    return null;
+  }
   return {
     provider: "openai-compatible",
-    apiKey,
-    baseUrl,
-    reconstructModel,
+    apiKey: validation.value.apiKey,
+    baseUrl: validation.value.baseUrl,
+    reconstructModel: validation.value.reconstructModel,
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : ""
   };
 }
