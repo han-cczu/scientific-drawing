@@ -1,10 +1,12 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import express from "express";
 import { apiRouter } from "../server/src/routes/api";
 import { httpErrorHandler } from "../server/src/httpErrorHandler";
+import { sceneDir, uploadDir } from "../server/src/paths";
 import type { Scene } from "../src/shared/scene";
 
 let server: Server | undefined;
@@ -21,6 +23,8 @@ afterEach(async () => {
 });
 
 async function startTestServer() {
+  await mkdir(uploadDir, { recursive: true });
+  await mkdir(sceneDir, { recursive: true });
   const app = express();
   app.use("/api", apiRouter);
   app.use(httpErrorHandler);
@@ -85,6 +89,24 @@ describe("reconstruct-region route", () => {
     const body = await response.json() as { error: string };
     assert.equal(response.status, 400);
     assert.match(body.error, /source image.*not found/i);
+    assert.doesNotMatch(body.error, /internal server error/i);
+  });
+});
+
+describe("analyze route", () => {
+  it("returns a client error when image bytes do not match an allowed MIME type", async () => {
+    const baseUrl = await startTestServer();
+    const form = new FormData();
+    form.append("image", new Blob([Buffer.from("not a real png")], { type: "image/png" }), "fake.png");
+
+    const response = await fetch(`${baseUrl}/api/analyze`, {
+      method: "POST",
+      body: form
+    });
+
+    const body = await response.json() as { error: string };
+    assert.equal(response.status, 400);
+    assert.match(body.error, /invalid image/i);
     assert.doesNotMatch(body.error, /internal server error/i);
   });
 });

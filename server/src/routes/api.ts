@@ -237,8 +237,13 @@ apiRouter.post("/analyze", uploadImage, async (req, res, next) => {
       sceneUrl: `/api/scenes/${id}`
     });
   } catch (error) {
-    logger.error("接收图片并生成 scene 失败", { error: String(error) });
     await cleanupUpload(req.file?.path, imagePath);
+    if (isInvalidImageDataError(error)) {
+      logger.warn("接收图片并生成 scene 失败，图片内容非法", { error: String(error) });
+      res.status(400).json({ error: "Invalid image data." });
+      return;
+    }
+    logger.error("接收图片并生成 scene 失败", { error: String(error) });
     next(error);
   }
 });
@@ -267,6 +272,13 @@ export function toReconstructEnvelope(error: unknown): {
 
 function isClientAbort(error: unknown) {
   return error instanceof Error && error.name === "AbortError";
+}
+
+function isInvalidImageDataError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /Input file contains unsupported image format|Input buffer contains unsupported image format|unsupported image format/i.test(error.message);
 }
 
 apiRouter.post("/reconstruct", uploadImage, async (req, res) => {
@@ -351,6 +363,13 @@ apiRouter.post("/reconstruct", uploadImage, async (req, res) => {
       return;
     }
     if (res.writableEnded) {
+      return;
+    }
+    if (isInvalidImageDataError(error)) {
+      logger.warn("AI 重建图片失败，图片内容非法", { error: String(error) });
+      res.status(400).json({
+        error: { code: "BAD_MODEL_OUTPUT", message: "Invalid image data.", hint: "请上传有效的 PNG、JPEG 或 WebP 图片" }
+      });
       return;
     }
     const envelope = toReconstructEnvelope(error);
