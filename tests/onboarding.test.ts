@@ -15,9 +15,13 @@ import assert from "node:assert/strict";
 
 // 1.1 安装基于 Map 的 localStorage stub
 const backing = new Map<string, string>();
+let failOnboardingWrites = false;
 const localStorageStub = {
   getItem: (key: string) => (backing.has(key) ? backing.get(key)! : null),
   setItem: (key: string, value: string) => {
+    if (failOnboardingWrites && key === "sciDraw.onboarding") {
+      throw new Error("QuotaExceededError");
+    }
     backing.set(key, String(value));
   },
   removeItem: (key: string) => {
@@ -73,5 +77,26 @@ describe("onboarding store", () => {
     // 1.2 持久化的版本号是当前版本
     const stored = JSON.parse(backing.get(store.ONBOARDING_KEY)!) as { version: number };
     assert.equal(stored.version, store.ONBOARDING_VERSION);
+  });
+
+  it("uses memory marker after onboarding localStorage write failure", () => {
+    /*
+     * ========================================================================
+     * 步骤1：验证写入失败后的同会话记忆
+     * ========================================================================
+     * 目标：
+     *   1) 探针成功但真实 key 写入失败时，不应反复弹引导
+     *   2) markOnboardingSeen 的 memorySeen 标记必须被 hasSeenOnboarding 读取
+     */
+    backing.clear();
+    failOnboardingWrites = true;
+    try {
+      store.markOnboardingSeen();
+      assert.equal(store.hasSeenOnboarding(), true);
+      assert.equal(backing.has(store.ONBOARDING_KEY), false);
+    } finally {
+      failOnboardingWrites = false;
+      backing.clear();
+    }
   });
 });

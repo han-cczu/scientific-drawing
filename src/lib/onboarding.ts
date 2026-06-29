@@ -44,6 +44,9 @@ export function hasSeenOnboarding(): boolean {
    * 目标：
    *   1) 标记缺失 / JSON 损坏 / 版本过旧一律视为未看过
    */
+  if (memorySeen) {
+    return true;
+  }
   if (!isStorageAvailable()) {
     return memorySeen;
   }
