@@ -3,14 +3,8 @@ import { endpointReferencesNode } from "@shared/geometry";
 import { MAX_METADATA_NOTE_LENGTH, MAX_METADATA_NOTES } from "@shared/sceneValidation";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
-export type RegionMergeMode = "replace" | "overlay";
-
-export type SceneBox = {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-};
+import type { SceneBox, RegionMergeMode } from "@shared/apiContracts";
+export type { SceneBox, RegionMergeMode } from "@shared/apiContracts";
 
 export type ImageSize = {
   width: number;

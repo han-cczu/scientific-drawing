@@ -1,0 +1,264 @@
+/* ====================================================================
+ * CanvasArea
+ * ==================================================================== */
+
+.canvas-area {
+  grid-area: canvas;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.canvas-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.canvas-status .status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 状态行 tone：成败可分辨（同时保留 title 全文供悬停） */
+.canvas-status .status-text.status-success {
+  color: #047857;
+}
+
+.canvas-status .status-text.status-error {
+  color: var(--color-danger);
+}
+
+/* AI 重建执行期：已等待秒数 + 取消按钮 */
+.canvas-status .status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.canvas-status .status-elapsed {
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-status .status-cancel {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-danger);
+  border-radius: 4px;
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.canvas-status .status-cancel:hover {
+  background: var(--color-danger-soft);
+}
+
+/* AI 矢量化抽屉 busy 旋转（复用 settings 的 spin keyframe） */
+.drawer-card-drop.is-busy .drop-zone > svg {
+  animation: settings-refresh-spin 1s linear infinite;
+}
+
+/* ===== 新手操作引导（spotlight tour） ===== */
+.tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+/* 遮罩拦截交互；高亮开窗由 spotlight 的环形 box-shadow 制造 */
+.tour-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.tour-spotlight {
+  position: fixed;
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55);
+  pointer-events: none;
+  transition: top 200ms ease, left 200ms ease, width 200ms ease, height 200ms ease;
+}
+
+/* 无目标（欢迎步）时整屏压暗 */
+.tour-overlay.tour-overlay-dim {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.tour-card {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.24);
+  outline: none;
+  /* 长文案步骤的兜底：内容超过定位估算高度时卡片内滚动而非溢出视口 */
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+
+.tour-card-step {
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.tour-card-title {
+  font-size: var(--font-size-md, 15px);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.tour-card-body {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 6px;
+  padding: var(--space-1) 0;
+}
+
+.tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-border);
+}
+
+.tour-dot.active {
+  background: var(--color-accent);
+}
+
+.tour-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.tour-card-actions-right {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.tour-skip {
+  border: none;
+  background: none;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tour-skip:hover {
+  color: var(--color-text-muted);
+  text-decoration: underline;
+}
+
+.canvas-status .scene-meta {
+  flex: 0 0 auto;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.canvas-hit-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-5);
+  overflow: auto;
+}
+
+.canvas-hit-area.drawing {
+  cursor: crosshair;
+}
+
+/* 空画布 CTA：pointer-events 全透传，不阻挡画布点击/框选 */
+.canvas-empty-cta {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  pointer-events: none;
+  color: var(--color-text-subtle);
+  text-align: center;
+}
+
+.canvas-empty-cta .canvas-empty-title {
+  font-size: var(--font-size-lg, 18px);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.canvas-empty-cta .canvas-empty-hint {
+  font-size: var(--font-size-sm);
+  max-width: 360px;
+}
+
+.canvas-shell {
+  display: flex;
+  min-width: min(100%, 900px);
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.scene-canvas {
+  user-select: none;
+  display: block;
+  width: min(100%, 1180px);
+  max-height: calc(100vh - var(--topbar-h) - 80px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+.node {
+  cursor: move;
+}
+
+.node.locked {
+  cursor: default;
+}
+
+.selection-rect {
+  fill: rgb(37 99 235 / 10%);
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+.resize-handle {
+  fill: var(--color-surface);
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+  cursor: pointer;
+  vector-effect: non-scaling-stroke;
+}

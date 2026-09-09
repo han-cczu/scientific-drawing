@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import sharp from "sharp";
-import { toReconstructEnvelope } from "../server/src/routes/api";
+import { toReconstructEnvelope } from "../server/src/routes/reconstructErrors";
 import { ReconstructError, reconstructWithOpenAI, RECONSTRUCT_TIMEOUT_MS } from "../server/src/scene/reconstructWithOpenAI";
 
 describe("reconstruct error envelope", () => {
@@ -98,11 +98,7 @@ describe("reconstruct upstream payload parsing", () => {
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), "reconstruct-payload-"));
     const imagePath = path.join(tmpDir, "tiny.png");
     const originalFetch = globalThis.fetch;
-    const originalEnv = {
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
-      OPENAI_RECONSTRUCT_MODEL: process.env.OPENAI_RECONSTRUCT_MODEL
-    };
+
 
     try {
       await sharp({
@@ -114,16 +110,13 @@ describe("reconstruct upstream payload parsing", () => {
         }
       }).png().toFile(imagePath);
 
-      process.env.OPENAI_API_KEY = "sk-test";
-      process.env.OPENAI_BASE_URL = "https://gateway.example.com/v1";
-      process.env.OPENAI_RECONSTRUCT_MODEL = "gpt-test";
       globalThis.fetch = (async () => new Response("null", {
         status: 200,
         headers: { "content-type": "application/json" }
       })) as typeof fetch;
 
       await assert.rejects(
-        () => reconstructWithOpenAI({ imagePath, mimeType: "image/png", mode: "color" }),
+        () => reconstructWithOpenAI({ imagePath, mimeType: "image/png", mode: "color" }, { apiKey: "fixture-key", baseUrl: "https://gateway.example.com/v1", defaultModel: "gpt-test", source: "env" }),
         (error) => {
           assert.ok(error instanceof ReconstructError);
           assert.equal(error.code, "BAD_MODEL_OUTPUT");
@@ -132,18 +125,9 @@ describe("reconstruct upstream payload parsing", () => {
       );
     } finally {
       globalThis.fetch = originalFetch;
-      restoreEnvVar("OPENAI_API_KEY", originalEnv.OPENAI_API_KEY);
-      restoreEnvVar("OPENAI_BASE_URL", originalEnv.OPENAI_BASE_URL);
-      restoreEnvVar("OPENAI_RECONSTRUCT_MODEL", originalEnv.OPENAI_RECONSTRUCT_MODEL);
+      assert.equal(path.dirname(tmpDir), path.resolve(os.tmpdir()));
+      assert.match(path.basename(tmpDir), /^reconstruct-payload-/);
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 });
-
-function restoreEnvVar(name: "OPENAI_API_KEY" | "OPENAI_BASE_URL" | "OPENAI_RECONSTRUCT_MODEL", value: string | undefined) {
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-  process.env[name] = value;
-}

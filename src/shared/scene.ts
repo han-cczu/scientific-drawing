@@ -80,8 +80,5 @@ export type Scene = {
   edges: SceneEdge[];
 };
 
-export type AnalyzeResponse = {
-  scene: Scene;
-  sceneUrl: string;
-  sourceUrl: string;
-};
+// Compatibility export for callers that historically obtained response DTOs here.
+export type { AnalyzeResponse } from "./apiContracts";

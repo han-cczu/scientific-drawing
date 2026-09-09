@@ -1,0 +1,15 @@
+/* ====================================================================
+ * 五区 grid shell
+ * ==================================================================== */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidenav-w) minmax(0, 1fr) var(--rightpanel-w);
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto;
+  grid-template-areas:
+    "topbar  topbar  topbar"
+    "sidenav canvas  rightpanel"
+    "sidenav bottom  rightpanel";
+  min-height: 100vh;
+  background: var(--color-bg);
+}

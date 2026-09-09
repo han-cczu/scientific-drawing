@@ -3,6 +3,7 @@ import { logger } from "../lib/logger";
 import type { SceneNode } from "../shared/scene";
 
 type LayersPanelProps = {
+  disabled?: boolean;
   nodes: SceneNode[];
   selectedIds: string[];
   onSelect: (ids: string[]) => void;
@@ -11,15 +12,7 @@ type LayersPanelProps = {
   onMoveLayer: (nodeId: string, direction: "forward" | "backward") => void;
 };
 
-export function LayersPanel({ nodes, selectedIds, onSelect, onToggleHidden, onToggleLocked, onMoveLayer }: LayersPanelProps) {
-  /*
-   * ========================================================================
-   * 步骤1：渲染图层面板
-   * ========================================================================
-   * 目标：
-   *   1) 按渲染顺序展示 scene 节点
-   *   2) 提供显隐、锁定和层级调整控制
-   */
+export function LayersPanel({ disabled = false, nodes, selectedIds, onSelect, onToggleHidden, onToggleLocked, onMoveLayer }: LayersPanelProps) {
   logger.info("开始渲染图层面板...", { nodes: nodes.length, selected: selectedIds.length });
 
   // 1.1 反转为视觉上的顶部图层在上
@@ -32,7 +25,7 @@ export function LayersPanel({ nodes, selectedIds, onSelect, onToggleHidden, onTo
       <div className="panel-title">图层</div>
       <div className="layers-list">
         {orderedNodes.map((node) => (
-          <LayerRow
+          <LayerRow disabled={disabled}
             key={node.id}
             node={node}
             selected={selectedIds.includes(node.id)}
@@ -48,8 +41,9 @@ export function LayersPanel({ nodes, selectedIds, onSelect, onToggleHidden, onTo
   );
 }
 
-function LayerRow({ node, selected, onSelect, onToggleHidden, onToggleLocked, onMoveUp, onMoveDown }: {
+function LayerRow({ disabled, node, selected, onSelect, onToggleHidden, onToggleLocked, onMoveUp, onMoveDown }: {
   node: SceneNode;
+  disabled: boolean;
   selected: boolean;
   onSelect: () => void;
   onToggleHidden: () => void;
@@ -57,14 +51,6 @@ function LayerRow({ node, selected, onSelect, onToggleHidden, onToggleLocked, on
   onMoveUp: () => void;
   onMoveDown: () => void;
 }) {
-  /*
-   * ========================================================================
-   * 步骤1：渲染单个图层行
-   * ========================================================================
-   * 目标：
-   *   1) 展示节点类型和 id
-   *   2) 提供单行图层操作按钮
-   */
   logger.info("开始渲染单个图层行...", { nodeId: node.id });
 
   // 1.1 生成图层标题
@@ -78,7 +64,7 @@ function LayerRow({ node, selected, onSelect, onToggleHidden, onToggleLocked, on
         <span className="layer-type">{node.type}</span>
         <span className="layer-name">{label}</span>
       </button>
-      <div className="layer-actions">
+      <fieldset disabled={disabled} className="layer-actions editor-controls">
         <button type="button" title={node.hidden ? "显示" : "隐藏"} onClick={onToggleHidden}>
           {node.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
         </button>
@@ -91,7 +77,7 @@ function LayerRow({ node, selected, onSelect, onToggleHidden, onToggleLocked, on
         <button type="button" title="下移" onClick={onMoveDown}>
           <ArrowDown size={15} />
         </button>
-      </div>
+      </fieldset>
     </div>
   );
 }

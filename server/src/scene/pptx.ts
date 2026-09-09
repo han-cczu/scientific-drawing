@@ -15,7 +15,7 @@ const ShapeType = {
   line: "line" as pptxgenjs.ShapeType
 };
 
-export async function sceneToPptx(scene: Scene): Promise<Buffer> {
+export async function sceneToPptx(scene: Scene, resolveAssetPath: (source: unknown) => string | null = resolveLocalAssetPath): Promise<Buffer> {
   /*
    * ========================================================================
    * 步骤1：初始化 PPTX 文档
@@ -60,7 +60,7 @@ export async function sceneToPptx(scene: Scene): Promise<Buffer> {
 
   // 2.1 按顺序写入节点
   for (const node of visibleNodes) {
-    addNode(slide, node, scale);
+    addNode(slide, node, scale, resolveAssetPath);
   }
   for (const edge of visibleEdges) {
     addEdge(slide, edge, visibleNodes, scale);
@@ -73,7 +73,7 @@ export async function sceneToPptx(scene: Scene): Promise<Buffer> {
   return buffer;
 }
 
-function addNode(slide: SlideLike, node: SceneNode, scale: number) {
+function addNode(slide: SlideLike, node: SceneNode, scale: number, resolveAssetPath: (source: unknown) => string | null) {
   /*
    * ========================================================================
    * 步骤1：添加单个 PPT 节点
@@ -92,7 +92,7 @@ function addNode(slide: SlideLike, node: SceneNode, scale: number) {
 
   // 1.2 添加元素
   if (node.type === "image" && node.source) {
-    addImageNode(slide, node.source, { x, y, w, h, transparency: opacityToTransparency(node.style.opacity ?? 1) });
+    addImageNode(slide, node.source, { x, y, w, h, transparency: opacityToTransparency(node.style.opacity ?? 1) }, resolveAssetPath);
   } else if (node.type === "text") {
     slide.addText(node.text ?? "", {
       x,
@@ -437,7 +437,8 @@ function opacityToTransparency(opacity: number) {
 function addImageNode(
   slide: SlideLike,
   source: string,
-  box: { x: number; y: number; w: number; h: number; transparency: number }
+  box: { x: number; y: number; w: number; h: number; transparency: number },
+  resolveAssetPath: (source: unknown) => string | null
 ) {
   /*
    * ========================================================================
@@ -452,7 +453,7 @@ function addImageNode(
     slide.addImage({ data: source, ...box });
     return;
   }
-  const filePath = resolveLocalAssetPath(source);
+  const filePath = resolveAssetPath(source);
   if (filePath && fs.existsSync(filePath)) {
     slide.addImage({ path: filePath, ...box });
     return;

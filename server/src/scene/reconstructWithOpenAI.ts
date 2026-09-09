@@ -1,29 +1,22 @@
 import { promises as fs } from "node:fs";
 import sharp from "sharp";
 import { logger } from "../logger";
-import { MAX_AI_RESPONSE_BYTES, readAiRuntimeConfig, readJsonWithLimit, resolveOpenAiCompatibleUrls } from "./aiProviderConfig";
+import { MAX_AI_RESPONSE_BYTES, readAiRuntimeConfig, readJsonWithLimit, resolveOpenAiCompatibleUrls, type AiRuntimeConfig } from "./aiProviderConfig";
 import { buildServerReconstructionPrompt, type ReconstructionMode } from "./reconstructionPrompt";
 
-type ReconstructInput = {
+export type ReconstructInput = {
   imagePath: string;
   mimeType: string;
   mode: ReconstructionMode;
   model?: string;
-  /** 客户端取消信号（经路由 req close 事件传入），与内部超时合流 */
+  /** 客户端取消信号（经路由 res close 事件传入），与内部超时合流 */
   signal?: AbortSignal;
 };
 
 //   vision 重建大图实测可达 60-120s；120s 封顶在网关挂起时止损。
 export const RECONSTRUCT_TIMEOUT_MS = 120_000;
 
-export type ReconstructErrorCode =
-  | "AUTH"
-  | "INVALID_IMAGE"
-  | "TIMEOUT"
-  | "BAD_MODEL_OUTPUT"
-  | "INVALID_SCENE"
-  | "NETWORK"
-  | "UPSTREAM";
+export type ReconstructErrorCode = Exclude<import("@shared/apiContracts").ReconstructErrorCode, "UNKNOWN">;
 
 export class ReconstructError extends Error {
   /*
@@ -44,7 +37,7 @@ export class ReconstructError extends Error {
   }
 }
 
-export async function reconstructWithOpenAI(input: ReconstructInput): Promise<Record<string, unknown>> {
+export async function reconstructWithOpenAI(input: ReconstructInput, runtimeConfig: AiRuntimeConfig = readAiRuntimeConfig()): Promise<Record<string, unknown>> {
   /*
    * ========================================================================
    * 步骤1：准备多模态请求
@@ -57,7 +50,6 @@ export async function reconstructWithOpenAI(input: ReconstructInput): Promise<Re
   logger.info("开始准备多模态重建请求...", { imagePath: input.imagePath });
 
   // 1.1 检查 API Key
-  const runtimeConfig = readAiRuntimeConfig();
   if (!runtimeConfig.apiKey) {
     throw new ReconstructError("AUTH", "OPENAI_API_KEY is not set.", "请在右上角 AI 设置中配置 API Key");
   }

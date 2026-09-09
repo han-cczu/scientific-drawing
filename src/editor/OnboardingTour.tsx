@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /*
  * ============================================================================
@@ -150,25 +150,25 @@ export function OnboardingTour({ open, onClose }: OnboardingTourProps) {
     }
   }, [open, stepIndex]);
 
-  const finish = (completed: boolean) => {
+  const finish = useCallback((completed: boolean) => {
     onClose(completed);
     const restoreTarget = restoreFocusRef.current;
     if (restoreTarget instanceof HTMLElement) {
       restoreTarget.focus?.();
     }
-  };
+  }, [onClose]);
 
-  const goNext = () => {
+  const goNext = useCallback(() => {
     if (isLast) {
       finish(true);
     } else {
       setStepIndex((current) => current + 1);
     }
-  };
+  }, [isLast, finish]);
 
-  const goPrev = () => {
+  const goPrev = useCallback(() => {
     setStepIndex((current) => Math.max(0, current - 1));
-  };
+  }, []);
 
   // 1.5 键盘导航：Esc 跳过，←/→ 翻页，Tab 在卡片内循环（焦点陷阱——
   //   遮罩只拦截指针不拦截焦点，不困住 Tab 的话用户可聚焦背景按钮并用
@@ -220,8 +220,7 @@ export function OnboardingTour({ open, onClose }: OnboardingTourProps) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-    // eslint 风格说明：goNext/goPrev/finish 每渲染重建，依赖 stepIndex 即可保证新值
-  }, [open, stepIndex]);
+  }, [open, finish, goNext, goPrev]);
 
   if (!open) {
     return null;

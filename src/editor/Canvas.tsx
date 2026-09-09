@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { logger } from "../lib/logger";
+import { isEditableKeyboardTarget } from "./keyboardShortcuts";
 import type { Scene, SceneNode } from "../shared/scene";
 import type { BoxSelectState, DragState, PanState, ResizeState } from "./canvasPointer";
 import { EdgeView, NodeView } from "./canvasRender";
@@ -8,6 +9,9 @@ import { clientPointToScene, panViewport, zoomViewportAt, type Viewport } from "
 import { visibleSceneEdges, visibleSceneNodes } from "../shared/sceneVisibility";
 
 type CanvasProps = {
+  readOnly?: boolean;
+  interactionEpoch: number;
+  onSceneInteractionCancel: () => void;
   scene: Scene;
   selectedId: string | null;
   selectedIds: string[];
@@ -17,8 +21,8 @@ type CanvasProps = {
   /** 仅选择工具下允许拖拽节点；连线/区域/绘制工具下点击节点只做选择/激活，不启动拖拽 */
   dragEnabled: boolean;
   onSelect: (ids: string[]) => void;
-  onMove: (nodeIds: string[], dx: number, dy: number) => void;
-  onResize: (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number) => void;
+  onMove: (nodeIds: string[], dx: number, dy: number, interactionEpoch: number) => void;
+  onResize: (nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number, interactionEpoch: number) => void;
   onSceneInteractionCommit: () => void;
   onBoxSelect: (box: SceneBox) => void;
   onNodeActivate: (nodeId: string) => void;
@@ -28,23 +32,24 @@ type CanvasProps = {
   onViewportChange: (viewport: Viewport | ((previous: Viewport) => Viewport)) => void;
 };
 
-export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, dragEnabled, onSelect, onMove, onResize, onSceneInteractionCommit, onBoxSelect, onNodeActivate, onNodeDoubleClick, onViewportChange }: CanvasProps) {
-  /*
-   * ========================================================================
-   * 步骤1：初始化画布交互
-   * ========================================================================
-   * 目标：
-   *   1) 维护拖拽状态
-   *   2) 把浏览器坐标转换成 scene 坐标
-   */
+type PointerGesture<T> = T & { epoch: number };
+
+export function Canvas({ readOnly = false, interactionEpoch, onSceneInteractionCancel, scene, selectedId, selectedIds, viewport, panMode, dragEnabled, onSelect, onMove, onResize, onSceneInteractionCommit, onBoxSelect, onNodeActivate, onNodeDoubleClick, onViewportChange }: CanvasProps) {
   logger.info("开始初始化画布交互...", { selectedId });
 
   // 1.1 准备 SVG 引用和拖拽状态
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const [drag, setDrag] = useState<DragState | null>(null);
-  const [resize, setResize] = useState<ResizeState | null>(null);
-  const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
-  const [pan, setPan] = useState<PanState | null>(null);
+  const [storedDrag, setDrag] = useState<PointerGesture<DragState> | null>(null);
+  const [storedResize, setResize] = useState<PointerGesture<ResizeState> | null>(null);
+  const [storedBoxSelect, setBoxSelect] = useState<PointerGesture<BoxSelectState> | null>(null);
+  const [storedPan, setPan] = useState<PointerGesture<PanState> | null>(null);
+  // Undo/redo invalidates the geometry captured at pointer-down without waiting
+  // for a pointer-up event or remounting the canvas. The reducer also rejects
+  // stale preview callbacks carrying the previous epoch.
+  const drag = storedDrag?.epoch === interactionEpoch ? storedDrag : null;
+  const resize = storedResize?.epoch === interactionEpoch ? storedResize : null;
+  const boxSelect = storedBoxSelect?.epoch === interactionEpoch ? storedBoxSelect : null;
+  const pan = storedPan?.epoch === interactionEpoch ? storedPan : null;
   const [spacePressed, setSpacePressed] = useState(false);
 
   // 1.2 计算画布样式
@@ -56,7 +61,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
   // 1.3 监听空格平移模式
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code === "Space") {
+      if (event.code === "Space" && !isEditableKeyboardTarget(event.target)) {
         setSpacePressed(true);
       }
     };
@@ -65,27 +70,25 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
         setSpacePressed(false);
       }
     };
+    const cancelGesture = () => { setDrag(null); setResize(null); setBoxSelect(null); setPan(null); setSpacePressed(false); onSceneInteractionCancel(); };
+    const escapeGesture = (event: KeyboardEvent) => { if (event.key === "Escape" && !isEditableKeyboardTarget(event.target)) cancelGesture(); };
+    window.addEventListener("blur", cancelGesture);
+    window.addEventListener("keydown", escapeGesture);
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     return () => {
+      window.removeEventListener("blur", cancelGesture);
+      window.removeEventListener("keydown", escapeGesture);
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, []);
+  }, [onSceneInteractionCancel]);
 
-  /*
-   * ========================================================================
-   * 步骤2：处理指针事件
-   * ========================================================================
-   * 目标：
-   *   1) 支持选中节点
-   *   2) 支持拖拽移动节点
-   */
 
   // 2.1 转换指针坐标
   //   结构化参数同时兼容 React 合成事件与原生 WheelEvent；
   //   activeViewport 供函数式更新场景传入最新值，默认用当前渲染的 viewport
-  const pointFromEvent = (event: { clientX: number; clientY: number }, activeViewport: Viewport = viewport) => {
+  const pointFromEvent = useCallback((event: { clientX: number; clientY: number }, activeViewport: Viewport) => {
     const svg = svgRef.current;
     if (!svg) {
       return { x: 0, y: 0 };
@@ -98,13 +101,13 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
       page: scene.page,
       viewport: activeViewport
     });
-  };
+  }, [scene.page]);
 
   // 2.2 启动拖拽
   const handlePointerDown = (event: React.PointerEvent, node: SceneNode) => {
     event.stopPropagation();
     if (event.button === 1 || spacePressed || panMode) {
-      setPan({ clientX: event.clientX, clientY: event.clientY });
+      setPan({ clientX: event.clientX, clientY: event.clientY, epoch: interactionEpoch });
       event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
@@ -128,25 +131,25 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
     if (node.locked || !dragEnabled) {
       return;
     }
-    const point = pointFromEvent(event);
-    setDrag({ nodeIds: activeIds, startX: point.x, startY: point.y });
+    const point = pointFromEvent(event, viewport);
+    setDrag({ nodeIds: activeIds, startX: point.x, startY: point.y, epoch: interactionEpoch });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   // 2.3 移动节点
   const handlePointerMove = (event: React.PointerEvent) => {
     if (resize) {
-      const point = pointFromEvent(event);
-      onResize(resize.nodeId, resize.handle, resize.startBox, point.x - resize.startX, point.y - resize.startY);
+      const point = pointFromEvent(event, viewport);
+      onResize(resize.nodeId, resize.handle, resize.startBox, point.x - resize.startX, point.y - resize.startY, resize.epoch);
       return;
     }
     if (!drag) {
       return;
     }
-    const point = pointFromEvent(event);
+    const point = pointFromEvent(event, viewport);
     const dx = point.x - drag.startX;
     const dy = point.y - drag.startY;
-    onMove(drag.nodeIds, dx, dy);
+    onMove(drag.nodeIds, dx, dy, drag.epoch);
     setDrag({ ...drag, startX: point.x, startY: point.y });
   };
 
@@ -166,13 +169,13 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
       return;
     }
     if (event.button === 1 || spacePressed || panMode) {
-      setPan({ clientX: event.clientX, clientY: event.clientY });
+      setPan({ clientX: event.clientX, clientY: event.clientY, epoch: interactionEpoch });
       event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
-    const point = pointFromEvent(event);
+    const point = pointFromEvent(event, viewport);
     onSelect([]);
-    setBoxSelect({ startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
+    setBoxSelect({ startX: point.x, startY: point.y, currentX: point.x, currentY: point.y, epoch: interactionEpoch });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -186,11 +189,11 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
         y: ((event.clientY - pan.clientY) / rect.height) * scene.page.height
       } : { x: 0, y: 0 };
       onViewportChange(panViewport(viewport, delta));
-      setPan({ clientX: event.clientX, clientY: event.clientY });
+      setPan({ clientX: event.clientX, clientY: event.clientY, epoch: interactionEpoch });
       return;
     }
     if (boxSelect) {
-      const point = pointFromEvent(event);
+      const point = pointFromEvent(event, viewport);
       setBoxSelect({ ...boxSelect, currentX: point.x, currentY: point.y });
       return;
     }
@@ -219,13 +222,15 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
   // 2.8 启动尺寸手柄拖拽
   const handleResizePointerDown = (event: React.PointerEvent<SVGElement>, node: SceneNode, handle: ResizeHandle) => {
     event.stopPropagation();
-    const point = pointFromEvent(event);
+    if (readOnly || !dragEnabled) return;
+    const point = pointFromEvent(event, viewport);
     setResize({
       nodeId: node.id,
       handle,
       startBox: { x: node.x, y: node.y, w: node.w, h: node.h },
       startX: point.x,
-      startY: point.y
+      startY: point.y,
+      epoch: interactionEpoch
     });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -264,7 +269,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
     return () => svg.removeEventListener("wheel", handleWheelNative);
     // pointFromEvent 每次渲染新建，刻意不列入依赖：其闭包仅依赖 scene.page
     // （已在依赖中）与 svgRef；viewport 经 previous 显式传入，不走闭包。
-  }, [scene.page, onViewportChange]);
+  }, [pointFromEvent, onViewportChange]);
 
   return (
     <div className="canvas-shell">
@@ -275,7 +280,7 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
         style={{ aspectRatio, cursor: pan ? "grabbing" : panMode ? "grab" : undefined }}
         onPointerMove={handleCanvasPointerMove}
         onPointerUp={handleCanvasPointerUp}
-        onPointerLeave={handleCanvasPointerUp}
+        onPointerCancel={() => { setDrag(null); setResize(null); setPan(null); setBoxSelect(null); onSceneInteractionCancel(); }}
         onPointerDown={handleCanvasPointerDown}
       >
         <defs>
@@ -292,14 +297,14 @@ export function Canvas({ scene, selectedId, selectedIds, viewport, panMode, drag
             <NodeView
               key={node.id}
               node={node}
-              selected={node.id === selectedId || selectedIds.includes(node.id)}
+              selected={!readOnly && (node.id === selectedId || selectedIds.includes(node.id))}
               scale={viewport.scale}
               onPointerDown={(event) => handlePointerDown(event, node)}
               onResizePointerDown={(event, handle) => handleResizePointerDown(event, node, handle)}
               onDoubleClick={(event) => {
                 event.stopPropagation();
                 // 平移模式下双击属于手势误触，不进入属性编辑
-                if (!node.locked && !panMode) {
+                if (!readOnly && !node.locked && !panMode) {
                   onNodeDoubleClick(node.id);
                 }
               }}

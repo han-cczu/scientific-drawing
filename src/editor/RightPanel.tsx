@@ -1,22 +1,26 @@
 import { useState } from "react";
-import type { Scene, SceneNode, SceneStyle } from "../shared/scene";
+import type { SceneNode, SceneStyle } from "../shared/scene";
 import { StyleTab } from "./StyleTab";
 import { PropertiesTab } from "./PropertiesTab";
 import { ArrangeTab } from "./ArrangeTab";
 import { UsageTipsCard } from "./UsageTipsCard";
 
+import type { AlignKind } from "./model/types";
+import type { LayerMoveDirection } from "./sceneOps";
+
 type TabKey = "style" | "properties" | "arrange";
 
 type RightPanelProps = {
   selectedNode: SceneNode | null;
-  scene: Scene;
+  disabled?: boolean;
   selectedIds: string[];
   /** 受控 tab：双击节点可由外部切到属性 tab */
   activeTab: TabKey;
   onTabChange: (tab: TabKey) => void;
   /** 重新打开分步操作引导（透传给使用提示卡） */
   onShowTour: () => void;
-  applySceneChange: (updater: (current: Scene) => Scene) => void;
+  onAlign: (kind: AlignKind) => void;
+  onMoveLayer: (direction: LayerMoveDirection) => void;
   onNodeChange: (patch: Partial<SceneNode>) => void;
   onStyleChange: (patch: SceneStyle) => void;
 };
@@ -29,12 +33,13 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 
 export function RightPanel({
   selectedNode,
-  scene,
+  disabled = false,
   selectedIds,
   activeTab,
   onTabChange,
   onShowTour,
-  applySceneChange,
+  onAlign,
+  onMoveLayer,
   onNodeChange,
   onStyleChange
 }: RightPanelProps) {
@@ -56,7 +61,7 @@ export function RightPanel({
           </button>
         ))}
       </div>
-      <div className="tab-panel" role="tabpanel">
+      <fieldset disabled={disabled} className="tab-panel editor-controls" role="tabpanel">
         {activeTab === "style" ? (
           <StyleTab node={selectedNode} onStyleChange={onStyleChange} />
         ) : null}
@@ -64,9 +69,9 @@ export function RightPanel({
           <PropertiesTab node={selectedNode} onChange={onNodeChange} onStyleChange={onStyleChange} />
         ) : null}
         {activeTab === "arrange" ? (
-          <ArrangeTab scene={scene} selectedIds={selectedIds} applySceneChange={applySceneChange} />
+          <ArrangeTab selectedIds={selectedIds} onAlign={onAlign} onMoveLayer={onMoveLayer} />
         ) : null}
-      </div>
+      </fieldset>
       <UsageTipsCard visible={tipsVisible} onClose={() => setTipsVisible(false)} onShowTour={onShowTour} />
     </aside>
   );

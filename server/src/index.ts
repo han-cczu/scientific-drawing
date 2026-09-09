@@ -1,86 +1,24 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
-import express from "express";
+import { createApp } from "./app";
 import { logger } from "./logger";
-import { httpErrorHandler } from "./httpErrorHandler";
-import { apiRouter } from "./routes/api";
 import { cleanupDataFiles, DEFAULT_RETENTION_DAYS } from "./files/retention";
-import { ensureDataDirs, exportDir, sceneDir, uploadDir } from "./paths";
+import { defaultDataPaths, ensureDataDirs } from "./paths";
 
-/*
- * ========================================================================
- * 步骤1：启动 HTTP 服务
- * ========================================================================
- * 目标：
- *   1) 初始化运行目录
- *   2) 注册静态资源和 API 路由
- *   3) 监听本地端口
- */
-logger.info("开始启动 HTTP 服务...");
-
-// 1.1 初始化数据目录
-ensureDataDirs(logger);
-
-// 1.2 清理过期运行产物
+ensureDataDirs(logger, defaultDataPaths);
 cleanupDataFiles({
-  directories: [uploadDir, exportDir, sceneDir],
+  directories: [defaultDataPaths.uploadDir, defaultDataPaths.exportDir, defaultDataPaths.sceneDir],
   maxAgeDays: Number(process.env.DATA_RETENTION_DAYS || DEFAULT_RETENTION_DAYS),
   logger
-}).catch((error) => {
-  logger.warn("清理过期运行产物失败", { error: String(error) });
-});
+}).catch((error) => logger.warn("清理过期运行产物失败", { error: String(error) }));
 
-// 1.3 注册中间件和路由
-//   前后端同源（dev 经 vite proxy，prod 由本服务同时托管前端与 API），无需开放 CORS；
-//   不再使用 cors()（默认 Access-Control-Allow-Origin: * 会让任意站点跨域读取本服务响应）。
-const app = express();
-app.use("/uploads", express.static(uploadDir));
-//   导出已改为内存渲染 + 附件直接下发，不再写 /exports；
-//   静态挂载仅服务历史残留文件，并强制以附件下载（避免 SVG/JSON 内联渲染）。
-app.use("/exports", express.static(exportDir, {
-  setHeaders: (res) => res.setHeader("Content-Disposition", "attachment")
-}));
-app.use("/api", apiRouter);
-
-// 1.4 注册前端静态资源（生产形态）
-//   runtime 时 server/src/index.ts 位于 /app/server/src/，dist/ 位于 /app/dist/
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const distDir = path.resolve(__dirname, "../../dist");
-const distIndex = path.join(distDir, "index.html");
-const distAvailable = existsSync(distIndex);
-logger.info("前端静态资源目录检测完成", { distDir, distAvailable });
-
-if (distAvailable) {
-  // 必须放在 /api /uploads /exports 中间件之后，避免拦截 API
-  app.use(express.static(distDir));
-  // SPA fallback：非 API 路径全部回退到 index.html
-  app.get(/^\/(?!api\/|uploads\/|exports\/).*/, (_req, res) => {
-    // sendFile 的错误经回调上报（异步），同步 try/catch 捕获不到，故用回调形式处理
-    res.sendFile(distIndex, (error) => {
-      if (error) {
-        logger.warn("发送前端 index.html 失败", { error: String(error) });
-        if (!res.headersSent) {
-          res.status(404).send("Not Found");
-        }
-      }
-    });
-  });
-}
-
-// 1.5 注册错误处理
-app.use(httpErrorHandler);
-
-// 1.6 启动监听
 const port = Number(process.env.PORT || 8787);
-const server = app.listen(port, () => {
+const server = createApp({ paths: defaultDataPaths }).listen(port, () => {
   logger.info("HTTP 服务启动完成", { port });
 });
 
-// 1.7 优雅关闭：收到 SIGTERM/SIGINT 时先停止接收新连接并收尾，再退出；
-//   兜底超时避免长连接挂住进程，使 docker stop / 滚动重启快速完成。
+let shuttingDown = false;
 const shutdown = (signal: string) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logger.info("收到退出信号，开始优雅关闭", { signal });
   server.close(() => {
     logger.info("HTTP 服务已关闭");

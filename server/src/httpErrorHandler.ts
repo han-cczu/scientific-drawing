@@ -1,5 +1,6 @@
 import type express from "express";
 import { logger } from "./logger";
+import { ServiceError } from "./services/serviceError";
 
 type HttpErrorLike = Error & {
   status?: number;
@@ -10,6 +11,11 @@ type HttpErrorLike = Error & {
 export const httpErrorHandler: express.ErrorRequestHandler = (error, _req, res, next) => {
   if (res.headersSent) {
     next(error);
+    return;
+  }
+
+  if (error instanceof ServiceError) {
+    res.status(error.status).json(error.body);
     return;
   }
 

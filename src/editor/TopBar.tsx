@@ -76,15 +76,6 @@ export function TopBar({
   onOpenSettings,
   settingsAttention = false
 }: TopBarProps) {
-  /*
-   * ========================================================================
-   * 步骤1：渲染顶栏
-   * ========================================================================
-   * 目标：
-   *   1) 复用现有撤销/重做、缩放、导入、导出业务回调
-   *   2) 提供标题、保存指示、平移工具、全屏入口
-   *   3) "更多"菜单保留重置视图 / 导入 scene.json / 下载提示词
-   */
 
   // 1.1 维护本地 UI 状态：导出菜单 / 更多菜单展开
   const [exportOpen, setExportOpen] = useState(false);
@@ -203,7 +194,6 @@ export function TopBar({
           className="icon-btn"
           title="缩小"
           onClick={() => handleZoomStep(-0.1)}
-          disabled={busy}
         >
           <Minus size={14} />
         </button>
@@ -213,7 +203,6 @@ export function TopBar({
           className="icon-btn"
           title="放大"
           onClick={() => handleZoomStep(0.1)}
-          disabled={busy}
         >
           <Plus size={14} />
         </button>
@@ -224,7 +213,6 @@ export function TopBar({
         className={isPanMode ? "chip-btn active" : "chip-btn"}
         title="平移画布（拖拽空白处或按空格可平移）"
         onClick={onActivatePan}
-        disabled={busy}
       >
         <Hand size={14} />
       </button>

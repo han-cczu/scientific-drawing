@@ -36,6 +36,69 @@ afterEach(() => {
 });
 
 describe("frontend API client", () => {
+  it("forwards cancellation and preserves request payloads for every scene operation", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      return new Response(JSON.stringify({ scene: sampleScene(), sceneUrl: "/api/scenes/test", sourceUrl: "/uploads/test.png" }), {
+        headers: { "content-type": "application/json" }
+      });
+    }) as typeof fetch;
+    const controller = new AbortController();
+    const file = new File(["png"], "sample.png", { type: "image/png" });
+    const region = { x: 1, y: 2, w: 3, h: 4 };
+    await analyzeImage(file, controller.signal);
+    await reconstructImage(file, "mono", "test-model", controller.signal);
+    await reconstructRegion(sampleScene(), region, "color", "test-model", "overlay", controller.signal);
+    await exportScene(sampleScene(), "json", controller.signal);
+    assert.deepEqual(calls.map((call) => call.url), ["/api/analyze", "/api/reconstruct", "/api/reconstruct-region", "/api/export/json"]);
+    assert.ok(calls.every((call) => call.init.signal === controller.signal && call.init.method === "POST"));
+    const analyzeForm = calls[0].init.body;
+    const reconstructForm = calls[1].init.body;
+    assert.ok(analyzeForm instanceof FormData);
+    assert.ok(reconstructForm instanceof FormData);
+    assert.equal(analyzeForm.get("title"), "sample.png");
+    assert.ok(analyzeForm.get("image") instanceof File);
+    assert.equal(calls[0].init.headers, undefined);
+    assert.equal(reconstructForm.get("mode"), "mono");
+    assert.equal(reconstructForm.get("model"), "test-model");
+    assert.deepEqual(JSON.parse(String(calls[2].init.body)), { scene: sampleScene(), region, mode: "color", model: "test-model", mergeMode: "overlay" });
+    assert.deepEqual(JSON.parse(String(calls[3].init.body)), { scene: sampleScene() });
+  });
+
+  it("propagates in-flight cancellation without converting it to an API failure", async () => {
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const signal = init?.signal;
+      assert.ok(signal);
+      return new Promise<Response>((_resolve, reject) => {
+        if (signal.aborted) reject(signal.reason);
+        else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    }) as typeof fetch;
+    const controller = new AbortController();
+    const request = analyzeImage(new File(["png"], "sample.png"), controller.signal);
+    const rejection = assert.rejects(request, (error: unknown) => error === controller.signal.reason);
+    controller.abort();
+    await rejection;
+  });
+
+  it("retains legacy reconstruction strings and gateway HTML error behavior", async () => {
+    const file = new File(["png"], "sample.png");
+    for (const [response, expectedCode, expectedMessage] of [
+      [new Response(JSON.stringify({ error: "legacy failure" }), { status: 400, headers: { "content-type": "application/json" } }), "UNKNOWN", "legacy failure"],
+      [new Response("<html>Bad Gateway</html>", { status: 502, headers: { "content-type": "text/html" } }), "NETWORK", "服务返回异常（HTTP 502）。"],
+      [new Response("null", { status: 500, headers: { "content-type": "application/json" } }), "UNKNOWN", "HTTP 500"]
+    ] as const) {
+      globalThis.fetch = (async () => response) as typeof fetch;
+      await assert.rejects(() => reconstructImage(file, "color", "test-model"), (error: unknown) => {
+        assert.ok(error instanceof ReconstructApiError);
+        assert.equal(error.code, expectedCode);
+        assert.equal(error.message, expectedMessage);
+        return true;
+      });
+    }
+  });
+
   it("loads valid analyze responses", async () => {
     /*
      * ========================================================================

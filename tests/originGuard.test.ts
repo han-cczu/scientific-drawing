@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isAllowedMutationOrigin } from "../server/src/routes/api";
+import { isAllowedMutationOrigin } from "../server/src/routes/originGuard";
 
 describe("isAllowedMutationOrigin (CSRF 状态变更来源校验)", () => {
   it("放行无 Origin/Referer 的非浏览器请求（curl/CLI）", () => {

@@ -1,0 +1,59 @@
+/* ====================================================================
+ * ThumbnailRail (画布左上缩略图浮层)
+ * ==================================================================== */
+
+.thumbnail-rail {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: 8;
+  display: grid;
+  gap: var(--space-2);
+  width: 140px;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.thumbnail-rail-title {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.thumbnail-rail-image {
+  display: flex;
+  width: 100%;
+  height: 80px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.thumbnail-rail-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.thumbnail-rail-btn {
+  height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.thumbnail-rail-btn:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-surface);
+}

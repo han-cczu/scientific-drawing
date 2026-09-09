@@ -11,10 +11,11 @@ Each sample should include:
 - `sourceMd5` (optional): short md5 prefix of the source image for traceability.
 - `notes` (optional): human-readable provenance / context.
 
-Runtime uploads under `data/uploads` are not a stable benchmark; if `manifest.json`
-is empty, `evaluate.ts` falls back to uploads with a `logger.warn` and the resulting
-sample set may contain duplicates (the original `uploads/` had the same image stored
-under multiple UUID file names).
+Runtime uploads under `data/uploads` are not a stable benchmark. Local runs may
+fall back to uploads when the manifest is unavailable or empty, but record the
+manifest failure in `summary.json`. CI requires a valid nonempty manifest and
+never falls back. Sample names must refer directly to image files in this folder;
+duplicate names, invalid entries, and missing image files fail the checks.
 
 ## baseline.json
 
@@ -30,9 +31,10 @@ heuristic pipeline at the time the baseline was captured. Use it to detect
 regressions ("did this PR make samples worse than before?"), not to judge
 absolute correctness.
 
-When you intentionally change heuristics or AI prompts and improve a sample, you
-should re-capture the baseline by running `npm run evaluate` and copying the
-relevant `normalizedMeanDiff` / `ssim` from `data/evaluation/summary.json` here.
+When intentionally changing heuristics, compare the visual output and explain the
+metric differences before updating the affected entries. Keep baseline changes
+separate from structural refactoring. AI evaluation records execution state and
+does not currently replace the heuristic visual baseline.
 
 ## expected* fields
 
@@ -49,27 +51,41 @@ should be added before drawing any confident "robustness" conclusions.
 
 ## CI 集成
 
-`.github/workflows/ci.yml` 在 `npm test` 之后、`npm run build` 之前执行
-`npm run evaluate`。GitHub Actions 默认会注入 `CI=true`，`evaluate.ts` 在该环境下
-会调用 `assertEvaluationBaseline`：对每个样本如果
+`npm run evaluate` 通过 `server/src/evaluate.ts` 进入评估 CLI。GitHub Actions
+默认注入 `CI=true`，此时以下任何问题均返回非零退出码：
+
+- manifest 缺失、格式错误、为空、包含重复或非法样本；
+- 预期样本缺失、执行失败、结果重复或结果文件名错配；
+- 基线文件缺失、样本无基线、基线重复或缺少必需指标；
+- 必需视觉和结构指标、基线 delta 不是有限数值；
+- 必需评估链路缺失或失败（显式启用的 AI 链路也必须成功）；
+- 下述视觉回归阈值任一超出：
 
 - `normalizedMeanDiffDelta > MAX_NORMALIZED_MEAN_DIFF_DELTA`（视觉差异比基线变大），或
 - `ssimDelta < MIN_SSIM_DELTA`（结构相似度比基线下降）
 
-任一成立，则收集所有违规项后 `console.error` 并 `process.exit(1)`，使 PR 状态变红。
-delta 为 `null`（基线无对应项）只 `logger.warn`，不视为违规。
-
-阈值常量定义在 `server/src/evaluate.ts` 顶部
+阈值常量定义在 `server/src/evaluation/baseline.ts`
 （`MAX_NORMALIZED_MEAN_DIFF_DELTA = 0.005`，`MIN_SSIM_DELTA = -0.005`），
 非 0 是因为 sharp/libvips 在 Windows 开发机与 Ubuntu CI 上栅格化 SVG 时
-存在第 4 位小数级别的浮点漂移，零容差会让 CI 永远红。未来要调整阈值
-集中改这一处即可。
+可能存在抗锯齿与字体差异。重构保留这些既有阈值，不通过放宽阈值掩盖回归。
 
-本地（非 CI）跑 `npm run evaluate` 不会触发断言，仅打印 summary 摘要，便于开发者
-快速迭代。
+单样本失败不会中止其余样本。`summary.json` 保留 `expectedFiles`、成功的
+`results`、执行失败的 `failures` 和完整的 `validation.issues`。
+先写报告，再由 CLI 设置退出码；纯判定 `validateEvaluationBaseline` 返回结果，
+兼容入口 `assertEvaluationBaseline` 抛出普通异常，两者均不终止调用进程。
 
-首次接入或 `sharp` / 字体替代行为变化导致 CI Linux 与本地 Windows 出现稳定差异时，
-需要在 CI 上跑一次拿到 Linux 实际指标后，回填到 `baseline.json` 再合并。
+本地（非 CI）会打印同样的失败清单并保存 `validation.ok: false`，以便探索样本；
+指标检查失败不设置非零退出码，报告本身无法写出等运行错误仍返回非零退出码。
+
+报告记录系统、架构、Node、sharp/libvips 及字体相关库版本、Fontconfig 环境路径。
+实际被系统选中的字体文件尚未捕获，不能把版本记录视为跨平台视觉一致性的保证。
+若平台或字体替代产生稳定差异，应先在对应平台复现并审阅 SVG 与实际指标，再决定
+是否建立有说明的平台基线，不能直接用当前输出覆盖基线。
+
+实现职责：`samples.ts` 加载输入与解析路径，`metrics.ts` 计算指标，`sample.ts`
+运行单样本，`baseline.ts` 纯判定，`report.ts` 格式化与写报告，`run.ts` 编排，
+`cli.ts` 决定退出码。`runEvaluation({ paths, ci, aiEnabled, sampleRunner })`
+支持临时目录及模拟样本执行器；默认执行器也能直接渲染临时目录中的真实图片。
 
 ## 确定性输出
 
@@ -87,7 +103,13 @@ delta 为 `null`（基线无对应项）只 `logger.warn`，不视为违规。
 
 ## AI evaluation
 
-The AI reconstruction lane is skipped unless `EVALUATE_AI=1` is set in the
-environment. When enabled, an `OPENAI_API_KEY` must also be configured; otherwise
-the AI run is recorded as a failure entry without raising. The `estimatedCostUsd`
-field is reserved in the schema but not yet populated by any provider.
+The AI reconstruction lane is skipped unless `EVALUATE_AI=1` is explicitly set
+(or `aiEnabled: true` is passed to the runner). It uses the configured AI provider.
+Missing credentials and request/validation failures are retained in mode results
+and the report's failure list; enabled AI failures also fail CI checks. The
+`estimatedCostUsd` field is reserved and is not populated by any provider.
+
+Offline validation on 2026-09-09: all seven manifest samples passed in CI mode on
+Windows x64, Node 24.15.0, sharp 0.34.5 and libvips 8.17.3. Both regression deltas
+were zero for every sample. The existing baseline and thresholds were unchanged;
+this run did not make AI requests and does not establish Linux or model quality.

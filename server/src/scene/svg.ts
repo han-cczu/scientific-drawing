@@ -5,7 +5,7 @@ import { indexGridCells, resolveEndpoint, shadeColor } from "@shared/geometry";
 import { visibleSceneEdges, visibleSceneNodes } from "@shared/sceneVisibility";
 import type { Scene, SceneEdge, SceneNode } from "./types";
 
-export async function sceneToSvg(scene: Scene): Promise<string> {
+export async function sceneToSvg(scene: Scene, resolveAssetPath: (source: unknown) => string | null = resolveLocalAssetPath): Promise<string> {
   /*
    * ========================================================================
    * 步骤1：生成 SVG 文档
@@ -24,7 +24,7 @@ export async function sceneToSvg(scene: Scene): Promise<string> {
   const visibleNodes = visibleSceneNodes(scene.nodes);
   const visibleEdges = visibleSceneEdges(scene.edges ?? [], scene.nodes);
   const edgeElements = visibleEdges.map((edge) => edgeToSvg(edge, visibleNodes)).join("\n");
-  const elements = (await Promise.all(visibleNodes.map((node) => nodeToSvg(node)))).join("\n");
+  const elements = (await Promise.all(visibleNodes.map((node) => nodeToSvg(node, resolveAssetPath)))).join("\n");
 
   // 1.2 组装完整 SVG
   const svg = [
@@ -44,7 +44,7 @@ export async function sceneToSvg(scene: Scene): Promise<string> {
   return svg;
 }
 
-async function nodeToSvg(node: SceneNode): Promise<string> {
+async function nodeToSvg(node: SceneNode, resolveAssetPath: (source: unknown) => string | null): Promise<string> {
   /*
    * ========================================================================
    * 步骤1：转换单个节点
@@ -61,7 +61,7 @@ async function nodeToSvg(node: SceneNode): Promise<string> {
   // 1.2 按类型输出标签
   let result: string;
   if (node.type === "image") {
-    const href = await imageHref(node.source ?? "");
+    const href = await imageHref(node.source ?? "", resolveAssetPath);
     if (!href) {
       logger.warn("转换单个节点跳过，图片来源非受控或不可读取", { id: node.id });
       return "";
@@ -88,7 +88,7 @@ async function nodeToSvg(node: SceneNode): Promise<string> {
   return result;
 }
 
-async function imageHref(source: string) {
+async function imageHref(source: string, resolveAssetPath: (source: unknown) => string | null) {
   /*
    * ========================================================================
    * 步骤1：生成 SVG 图片引用
@@ -111,7 +111,7 @@ async function imageHref(source: string) {
 
   // 1.2 仅内嵌受控目录（/uploads、/eval-suite）内的本地资源；
   //     非受控来源（外部 URL、穿越路径、绝对路径）跳过，绝不读盘也不写外部 href
-  const filePath = resolveLocalAssetPath(source);
+  const filePath = resolveAssetPath(source);
   if (!filePath) {
     logger.info("生成 SVG 图片引用完成，跳过非受控来源", { mode: "skip-external-ref" });
     return null;
@@ -203,7 +203,11 @@ function styleToSvg(node: SceneNode, options: { includeFill?: boolean } = {}): s
 
   // 1.1 读取样式默认值
   const includeFill = options.includeFill ?? true;
-  const fill = node.style.fill ?? "none";
+  // Text color is the paint used by Canvas/PPTX; editor text defaults its shape
+  // fill to "none". Preserve imported legacy text that only specified a fill.
+  const fill = node.type === "text"
+    ? node.style.color ?? (node.style.fill && node.style.fill !== "none" ? node.style.fill : "#111111")
+    : node.style.fill ?? "none";
   const stroke = node.style.stroke ?? "none";
   const strokeWidth = node.style.strokeWidth ?? 1;
   const opacity = node.style.opacity ?? 1;

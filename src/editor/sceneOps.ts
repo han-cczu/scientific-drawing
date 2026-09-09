@@ -34,14 +34,6 @@ const MIN_NODE_SIZE = 8;
 export type LayerMoveDirection = "front" | "back" | "forward" | "backward";
 
 export function createBlankScene(): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：创建空白场景
-   * ========================================================================
-   * 目标：
-   *   1) 提供无图片时的默认画布
-   *   2) 保持 scene 协议和后端一致
-   */
   logger.info("开始创建空白场景...");
 
   // 1.1 创建 scene 对象
@@ -69,14 +61,6 @@ export function createBlankScene(): Scene {
 }
 
 export function createNode(type: SceneNodeType, x: number, y: number): SceneNode {
-  /*
-   * ========================================================================
-   * 步骤1：创建编辑节点
-   * ========================================================================
-   * 目标：
-   *   1) 根据工具类型生成默认节点
-   *   2) 初始化可编辑样式
-   */
   logger.info("开始创建编辑节点...", { type, x, y });
 
   // 1.1 创建节点基础字段
@@ -116,14 +100,6 @@ export function createNode(type: SceneNodeType, x: number, y: number): SceneNode
 }
 
 export function updateNode(scene: Scene, nodeId: string, patch: Partial<SceneNode>): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：更新节点
-   * ========================================================================
-   * 目标：
-   *   1) 找到目标节点
-   *   2) 合并局部修改并返回新 scene
-   */
   logger.info("开始更新节点...", { nodeId });
 
   // 1.1 替换目标节点
@@ -136,14 +112,6 @@ export function updateNode(scene: Scene, nodeId: string, patch: Partial<SceneNod
 }
 
 export function updateNodeStyle(scene: Scene, nodeId: string, patch: SceneNode["style"]): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：更新节点样式
-   * ========================================================================
-   * 目标：
-   *   1) 保留节点原有样式
-   *   2) 覆盖用户修改字段
-   */
   logger.info("开始更新节点样式...", { nodeId });
 
   // 1.1 合并样式
@@ -158,14 +126,6 @@ export function updateNodeStyle(scene: Scene, nodeId: string, patch: SceneNode["
 }
 
 export function moveNodes(scene: Scene, nodeIds: string[], dx: number, dy: number): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：批量移动节点
-   * ========================================================================
-   * 目标：
-   *   1) 支持多选节点一起移动
-   *   2) 跳过锁定节点并同步移动 points
-   */
   logger.info("开始批量移动节点...", { count: nodeIds.length, dx, dy });
 
   // 1.1 准备待移动节点集合
@@ -192,14 +152,6 @@ export function moveNodes(scene: Scene, nodeIds: string[], dx: number, dy: numbe
 }
 
 export function resizeNode(scene: Scene, nodeId: string, nextBox: SceneBox): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：调整节点尺寸
-   * ========================================================================
-   * 目标：
-   *   1) 归一化拖拽产生的反向盒子
-   *   2) 限制最小宽高，避免节点不可见
-   */
   logger.info("开始调整节点尺寸...", { nodeId });
 
   // 1.1 归一化目标盒子
@@ -224,14 +176,6 @@ export function resizeNode(scene: Scene, nodeId: string, nextBox: SceneBox): Sce
 }
 
 export function resizeNodeFromHandle(scene: Scene, nodeId: string, handle: ResizeHandle, startBox: SceneBox, dx: number, dy: number): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：按手柄调整节点
-   * ========================================================================
-   * 目标：
-   *   1) 把手柄拖拽转换成目标盒子或端点坐标
-   *   2) 支持形状节点和线条节点共用入口
-   */
   logger.info("开始按手柄调整节点...", { nodeId, handle, dx, dy });
 
   // 1.1 查找目标节点
@@ -258,14 +202,6 @@ export function resizeNodeFromHandle(scene: Scene, nodeId: string, handle: Resiz
 }
 
 export function selectNodesInRect(scene: Scene, rect: SceneBox): string[] {
-  /*
-   * ========================================================================
-   * 步骤1：框选节点
-   * ========================================================================
-   * 目标：
-   *   1) 选出与选择框相交的可编辑节点
-   *   2) 默认忽略锁定底图等不可编辑对象
-   */
   logger.info("开始框选节点...");
 
   // 1.1 归一化选择区域
@@ -281,14 +217,6 @@ export function selectNodesInRect(scene: Scene, rect: SceneBox): string[] {
 }
 
 export function createEdgeBetweenNodes(scene: Scene, fromNodeId: string, toNodeId: string): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：创建语义连线
-   * ========================================================================
-   * 目标：
-   *   1) 在两个节点之间创建 arrow edge
-   *   2) 使用节点端点引用，保证移动节点后连线跟随
-   */
   logger.info("开始创建语义连线...", { fromNodeId, toNodeId });
 
   // 1.1 校验起止节点
@@ -317,14 +245,6 @@ export function createEdgeBetweenNodes(scene: Scene, fromNodeId: string, toNodeI
 }
 
 export function normalizeBox(box: SceneBox): SceneBox {
-  /*
-   * ========================================================================
-   * 步骤1：归一化矩形盒子
-   * ========================================================================
-   * 目标：
-   *   1) 把负向拖拽转换为正向坐标
-   *   2) 供框选和尺寸调整共用
-   */
   logger.info("开始归一化矩形盒子...", box);
 
   // 1.1 计算正向坐标
@@ -342,14 +262,6 @@ export function normalizeBox(box: SceneBox): SceneBox {
 }
 
 export function removeNode(scene: Scene, nodeId: string): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：删除节点
-   * ========================================================================
-   * 目标：
-   *   1) 移除指定节点
-   *   2) 保留其他节点顺序
-   */
   logger.info("开始删除节点...", { nodeId });
 
   // 1.1 过滤节点
@@ -365,14 +277,6 @@ export function removeNode(scene: Scene, nodeId: string): Scene {
 }
 
 export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {
-  /*
-   * ========================================================================
-   * 步骤1：复制节点
-   * ========================================================================
-   * 目标：
-   *   1) 找到源节点
-   *   2) 生成带偏移的新节点
-   */
   logger.info("开始复制节点...", { nodeId });
 
   // 1.1 查找源节点
@@ -404,14 +308,6 @@ export function duplicateNode(scene: Scene, nodeId: string): SceneNode | null {
 }
 
 export function setNodeHidden(scene: Scene, nodeId: string, hidden: boolean): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：设置节点可见性
-   * ========================================================================
-   * 目标：
-   *   1) 支持图层面板隐藏或显示节点
-   *   2) 保留节点其他字段
-   */
   logger.info("开始设置节点可见性...", { nodeId, hidden });
 
   // 1.1 更新节点 hidden 字段
@@ -424,14 +320,6 @@ export function setNodeHidden(scene: Scene, nodeId: string, hidden: boolean): Sc
 }
 
 export function setNodeLocked(scene: Scene, nodeId: string, locked: boolean): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：设置节点锁定状态
-   * ========================================================================
-   * 目标：
-   *   1) 支持图层面板锁定或解锁节点
-   *   2) 保留节点其他字段
-   */
   logger.info("开始设置节点锁定状态...", { nodeId, locked });
 
   // 1.1 更新节点 locked 字段
@@ -444,14 +332,6 @@ export function setNodeLocked(scene: Scene, nodeId: string, locked: boolean): Sc
 }
 
 export function moveNodeLayer(scene: Scene, nodeId: string, direction: LayerMoveDirection): Scene {
-  /*
-   * ========================================================================
-   * 步骤1：调整节点图层顺序
-   * ========================================================================
-   * 目标：
-   *   1) 支持上移、下移、置顶和置底
-   *   2) 保持节点对象内容不变
-   */
   logger.info("开始调整节点图层顺序...", { nodeId, direction });
 
   // 1.1 查找节点位置
@@ -483,14 +363,6 @@ export function moveNodeLayer(scene: Scene, nodeId: string, direction: LayerMove
 }
 
 function targetLayerIndex(index: number, length: number, direction: LayerMoveDirection, minIndex = 0) {
-  /*
-   * ========================================================================
-   * 步骤1：计算目标图层位置
-   * ========================================================================
-   * 目标：
-   *   1) 把图层动作转换成数组索引
-   *   2) 限制索引不越界
-   */
   logger.info("开始计算目标图层位置...", { index, length, direction });
 
   // 1.1 根据方向计算索引
@@ -518,14 +390,6 @@ function isLockedImageLayer(node: SceneNode) {
 }
 
 function nodeBox(node: SceneNode): SceneBox {
-  /*
-   * ========================================================================
-   * 步骤1：读取节点包围盒
-   * ========================================================================
-   * 目标：
-   *   1) 优先从 points 计算线条包围盒
-   *   2) 普通节点使用 x/y/w/h
-   */
   logger.info("开始读取节点包围盒...", { nodeId: node.id });
 
   // 1.1 处理线条点数组
@@ -548,14 +412,6 @@ function nodeBox(node: SceneNode): SceneBox {
 }
 
 function boxFromHandle(box: SceneBox, handle: ResizeHandle, dx: number, dy: number): SceneBox {
-  /*
-   * ========================================================================
-   * 步骤1：按方向手柄生成盒子
-   * ========================================================================
-   * 目标：
-   *   1) 把八方向拖拽转换成 x/y/w/h
-   *   2) 保留原始盒子作为拖拽快照
-   */
   logger.info("开始按方向手柄生成盒子...", { handle, dx, dy });
 
   // 1.1 初始化目标盒子
@@ -582,14 +438,6 @@ function boxFromHandle(box: SceneBox, handle: ResizeHandle, dx: number, dy: numb
 }
 
 function resizeLinePoints(node: SceneNode, handle: ResizeHandle, dx: number, dy: number) {
-  /*
-   * ========================================================================
-   * 步骤1：调整线条端点
-   * ========================================================================
-   * 目标：
-   *   1) 移动起点或终点
-   *   2) 保留中间折线点
-   */
   logger.info("开始调整线条端点...", { nodeId: node.id, handle });
 
   // 1.1 读取线条点数组
@@ -604,14 +452,6 @@ function resizeLinePoints(node: SceneNode, handle: ResizeHandle, dx: number, dy:
 }
 
 function boxFromPoints(points: Array<{ x: number; y: number }>): SceneBox {
-  /*
-   * ========================================================================
-   * 步骤1：从点数组计算包围盒
-   * ========================================================================
-   * 目标：
-   *   1) 同步线条节点 x/y/w/h
-   *   2) 保持 points 为真实端点坐标
-   */
   logger.info("开始从点数组计算包围盒...", { count: points.length });
 
   // 1.1 计算坐标边界
@@ -629,14 +469,6 @@ function boxFromPoints(points: Array<{ x: number; y: number }>): SceneBox {
 }
 
 function boxesIntersect(a: SceneBox, b: SceneBox) {
-  /*
-   * ========================================================================
-   * 步骤1：判断矩形相交
-   * ========================================================================
-   * 目标：
-   *   1) 支持框选命中节点
-   *   2) 允许边界接触视为选中
-   */
   logger.info("开始判断矩形相交...");
 
   // 1.1 计算相交结果
@@ -647,14 +479,6 @@ function boxesIntersect(a: SceneBox, b: SceneBox) {
 }
 
 function sanitizeNode(node: SceneNode): SceneNode {
-  /*
-   * ========================================================================
-   * 步骤1：收敛编辑器写入的节点
-   * ========================================================================
-   * 目标：
-   *   1) 防止属性面板、排列、拖拽和复制写出 validateScene 拒绝的几何/文本
-   *   2) 保持编辑入口和共享 scene schema 的边界一致
-   */
   const next: SceneNode = {
     ...node,
     x: coordinate(node.x),

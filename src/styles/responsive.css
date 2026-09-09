@@ -1,0 +1,44 @@
+/* ====================================================================
+ * Responsive (narrow widths)
+ * ==================================================================== */
+
+@media (max-width: 1100px) {
+  .top-bar {
+    gap: var(--space-2);
+  }
+
+  .top-bar .title {
+    flex: 1 1 auto;
+  }
+
+  .top-bar .save-indicator {
+    padding: 0;
+  }
+
+  .region-confirm {
+    right: var(--space-4);
+    max-width: calc(100vw - 32px);
+  }
+
+  .app-shell {
+    grid-template-columns: var(--sidenav-w) minmax(0, 1fr);
+    grid-template-areas:
+      "topbar topbar"
+      "sidenav canvas"
+      "sidenav bottom"
+      "rightpanel rightpanel";
+    grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto minmax(180px, 40vh);
+  }
+
+  .right-panel {
+    border-top: 1px solid var(--color-border);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 800px) {
+  .top-bar .save-indicator span:last-child,
+  .top-bar .title {
+    display: none;
+  }
+}

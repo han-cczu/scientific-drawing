@@ -1,0 +1,18 @@
+/* ====================================================================
+ * SelectionFloatingBar (画布底部居中操作条)
+ * ==================================================================== */
+
+.selection-floating-bar {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  z-index: 9;
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  transform: translateX(-50%);
+}
