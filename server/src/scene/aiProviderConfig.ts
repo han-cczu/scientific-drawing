@@ -1,22 +1,13 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, chmodSync, renameSync } from "node:fs";
-import path from "node:path";
 import { logger } from "../logger";
 import { configPath } from "../paths";
 
-export type ConfigSource = "env" | "file" | "none";
-
-export type SafeAiProviderConfig = {
-  aiReconstructionAvailable: boolean;
-  provider: "openai-compatible";
-  baseUrl: string;
-  reconstructModel: string;
-  reconstructModels: string[];
-  modelListAvailable: boolean;
-  modelListError: string | null;
-  hasApiKey: boolean;
-  source: ConfigSource;
-  maskedTail: string | null;
-};
+import type { ConfigSource, SafeAiProviderConfig } from "@shared/apiContracts";
+export type { ConfigSource, SafeAiProviderConfig, WritableAiConfigInput } from "@shared/apiContracts";
+import { readPersistedConfig } from "../storage/aiConfigStore";
+export { readPersistedConfig, writePersistedConfig, deletePersistedConfig } from "../storage/aiConfigStore";
+export type { PersistedAiConfig } from "../storage/aiConfigStore";
+import { AI_CONFIG_LIMITS, validateWritableConfig } from "../storage/configValidation";
+export { AI_CONFIG_LIMITS, ConfigValidationError, validateWritableConfig } from "../storage/configValidation";
 
 export type AiRuntimeConfig = {
   apiKey: string;
@@ -24,26 +15,6 @@ export type AiRuntimeConfig = {
   defaultModel: string;
   source: ConfigSource;
 };
-
-export type PersistedAiConfig = {
-  provider: "openai-compatible";
-  apiKey: string;
-  baseUrl: string;
-  reconstructModel: string;
-  updatedAt: string;
-};
-
-export type WritableAiConfigInput = {
-  apiKey: string;
-  baseUrl: string;
-  reconstructModel: string;
-};
-
-export const AI_CONFIG_LIMITS = {
-  apiKey: 512,
-  baseUrl: 256,
-  reconstructModel: 120
-} as const;
 
 export const MAX_RECONSTRUCT_MODELS = 256;
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -132,115 +103,6 @@ export function resolveOpenAiCompatibleUrls(baseUrl = "https://api.openai.com/v1
 
   logger.info("解析 OpenAI 兼容接口地址完成", urls);
   return urls;
-}
-
-export function readPersistedConfig(filePath: string = configPath): PersistedAiConfig | null {
-  /*
-   * ========================================================================
-   * 步骤1：读取持久化 AI 配置
-   * ========================================================================
-   * 目标：
-   *   1) 从 data/config.json 读取用户通过 UI 写入的配置
-   *   2) 文件不存在或损坏时返回 null 并 warn，绝不抛出
-   */
-  logger.info("开始读取持久化 AI 配置...", { filePath });
-
-  // 1.1 文件不存在直接返回
-  if (!existsSync(filePath)) {
-    logger.info("读取持久化 AI 配置完成", { exists: false });
-    return null;
-  }
-
-  // 1.2 解析 JSON，损坏时安全 fallback
-  try {
-    const raw = readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as unknown;
-    const normalized = normalizePersistedConfig(parsed);
-    if (!normalized) {
-      logger.warn("读取持久化 AI 配置失败，字段非法，安全 fallback env");
-      return null;
-    }
-    logger.info("读取持久化 AI 配置完成", {
-      hasApiKey: Boolean(normalized.apiKey),
-      baseUrl: normalized.baseUrl
-    });
-    return normalized;
-  } catch (error) {
-    logger.warn("读取持久化 AI 配置失败，文件损坏，安全 fallback env", { error: String(error) });
-    return null;
-  }
-}
-
-export function writePersistedConfig(input: WritableAiConfigInput, filePath: string = configPath) {
-  /*
-   * ========================================================================
-   * 步骤1：写入持久化 AI 配置
-   * ========================================================================
-   * 目标：
-   *   1) 校验字段长度上限和 baseUrl scheme
-   *   2) 把白名单字段写入 data/config.json，文件权限 0o600
-   */
-  logger.info("开始写入持久化 AI 配置...");
-
-  // 1.1 校验字段
-  const validation = validateWritableConfig(input);
-  if (!validation.ok) {
-    logger.warn("写入持久化 AI 配置失败，字段非法", { error: validation.error });
-    throw new ConfigValidationError(validation.error);
-  }
-
-  // 1.2 确保目标文件所在目录存在
-  mkdirSync(path.dirname(filePath), { recursive: true });
-
-  // 1.3 构造持久化对象并写入
-  const persisted: PersistedAiConfig = {
-    provider: "openai-compatible",
-    apiKey: validation.value.apiKey,
-    baseUrl: validation.value.baseUrl,
-    reconstructModel: validation.value.reconstructModel,
-    updatedAt: new Date().toISOString()
-  };
-  // 1.4 原子写：先写同目录临时文件（0o600），再 rename 覆盖目标（同卷 rename 原子），
-  //   避免并发写或写中途崩溃留下截断/交错的 config.json。
-  const tmpPath = `${filePath}.tmp`;
-  writeFileSync(tmpPath, JSON.stringify(persisted, null, 2), { encoding: "utf-8", mode: 0o600 });
-  try {
-    // 临时文件已存在时 mode 参数被忽略，显式 chmod 确保 0o600（Windows 上为 no-op）
-    chmodSync(tmpPath, 0o600);
-  } catch {
-    /* Windows 等平台不支持 chmod，忽略 */
-  }
-  renameSync(tmpPath, filePath);
-
-  logger.info("写入持久化 AI 配置完成", {
-    filePath,
-    baseUrl: persisted.baseUrl,
-    reconstructModel: persisted.reconstructModel
-  });
-  return persisted;
-}
-
-export function deletePersistedConfig(filePath: string = configPath) {
-  /*
-   * ========================================================================
-   * 步骤1：删除持久化 AI 配置
-   * ========================================================================
-   * 目标：
-   *   1) 让 readAiRuntimeConfig 回退到 env
-   *   2) 文件不存在视为已删除
-   */
-  logger.info("开始删除持久化 AI 配置...", { filePath });
-
-  // 1.1 不存在直接 noop
-  if (!existsSync(filePath)) {
-    logger.info("删除持久化 AI 配置完成，文件不存在");
-    return false;
-  }
-
-  // 1.2 删除文件
-  unlinkSync(filePath);
-  logger.info("删除持久化 AI 配置完成", { filePath });
-  return true;
 }
 
 export function readAiRuntimeConfig(
@@ -503,125 +365,6 @@ export function maskApiKeyTail(apiKey: string) {
   return `****${apiKey.slice(-4)}`;
 }
 
-export class ConfigValidationError extends Error {
-  /*
-   * ========================================================================
-   * 步骤1：定义配置字段校验异常
-   * ========================================================================
-   * 目标：
-   *   1) 让路由层把字段错误映射为 400
-   *   2) 与其它内部异常区分
-   */
-  constructor(message: string) {
-    super(message);
-    this.name = "ConfigValidationError";
-  }
-}
-
-export function validateWritableConfig(
-  input: unknown,
-  options?: { allowEmptyKey?: boolean }
-):
-  | { ok: true; value: WritableAiConfigInput }
-  | { ok: false; error: string } {
-  /*
-   * ========================================================================
-   * 步骤1：校验 POST /api/config 请求体
-   * ========================================================================
-   * 目标：
-   *   1) 白名单 apiKey/baseUrl/reconstructModel
-   *   2) 字段长度上限和 baseUrl scheme 限制
-   *   3) allowEmptyKey=true 时允许 apiKey 留空（路由层用 saved-key fallback）
-   */
-  if (!isRecord(input)) {
-    return { ok: false, error: "Request body must be an object." };
-  }
-
-  // 1.1 apiKey
-  const allowEmptyKey = options?.allowEmptyKey === true;
-  if (typeof input.apiKey !== "string") {
-    return { ok: false, error: "apiKey is required." };
-  }
-  if (!allowEmptyKey && input.apiKey.trim().length === 0) {
-    return { ok: false, error: "apiKey is required." };
-  }
-  if (input.apiKey.length > AI_CONFIG_LIMITS.apiKey) {
-    return { ok: false, error: `apiKey exceeds ${AI_CONFIG_LIMITS.apiKey} characters.` };
-  }
-
-  // 1.2 baseUrl
-  if (typeof input.baseUrl !== "string" || input.baseUrl.trim().length === 0) {
-    return { ok: false, error: "baseUrl is required." };
-  }
-  if (input.baseUrl.length > AI_CONFIG_LIMITS.baseUrl) {
-    return { ok: false, error: `baseUrl exceeds ${AI_CONFIG_LIMITS.baseUrl} characters.` };
-  }
-  const baseUrl = input.baseUrl.trim();
-  if (!isHttpUrl(baseUrl)) {
-    return { ok: false, error: "baseUrl must start with http:// or https://." };
-  }
-
-  // 1.3 reconstructModel
-  if (typeof input.reconstructModel !== "string" || input.reconstructModel.trim().length === 0) {
-    return { ok: false, error: "reconstructModel is required." };
-  }
-  if (input.reconstructModel.length > AI_CONFIG_LIMITS.reconstructModel) {
-    return { ok: false, error: `reconstructModel exceeds ${AI_CONFIG_LIMITS.reconstructModel} characters.` };
-  }
-
-  return {
-    ok: true,
-    value: {
-      apiKey: input.apiKey.trim(),
-      baseUrl,
-      reconstructModel: input.reconstructModel.trim()
-    }
-  };
-}
-
-function normalizePersistedConfig(value: unknown): PersistedAiConfig | null {
-  /*
-   * ========================================================================
-   * 步骤1：归一化磁盘上的 config.json
-   * ========================================================================
-   * 目标：
-   *   1) 容忍 schema 字段缺失（向后兼容未来 multi-provider）
-   *   2) 拒绝完全不合法的对象
-   */
-  if (!isRecord(value)) {
-    return null;
-  }
-  const apiKey = typeof value.apiKey === "string" ? value.apiKey : "";
-  const baseUrl = typeof value.baseUrl === "string" ? value.baseUrl : "";
-  const reconstructModel = typeof value.reconstructModel === "string" ? value.reconstructModel : "";
-  // 任一关键字段缺失视为损坏
-  if (!apiKey || !baseUrl || !reconstructModel) {
-    return null;
-  }
-  const validation = validateWritableConfig({ apiKey, baseUrl, reconstructModel });
-  if (!validation.ok) {
-    return null;
-  }
-  return {
-    provider: "openai-compatible",
-    apiKey: validation.value.apiKey,
-    baseUrl: validation.value.baseUrl,
-    reconstructModel: validation.value.reconstructModel,
-    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : ""
-  };
-}
-
-function isHttpUrl(value: string) {
-  if (/[\s\u0000-\u001f\u007f]/.test(value)) {
-    return false;
-  }
-  try {
-    const url = new URL(value);
-    return (url.protocol === "http:" || url.protocol === "https:") && Boolean(url.hostname);
-  } catch {
-    return false;
-  }
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

@@ -1,0 +1,75 @@
+/* ====================================================================
+ * Layers panel (used inside SideNav)
+ * ==================================================================== */
+
+.layers-panel {
+  min-height: 0;
+}
+
+.layers-list {
+  display: grid;
+  gap: var(--space-1);
+  overflow-y: auto;
+}
+
+.layer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.layer-row.selected {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.layer-main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.layer-type {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.layer-name {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-actions {
+  display: flex;
+  gap: 3px;
+}
+
+.layer-actions button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.layer-actions button:hover:not(:disabled) {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}

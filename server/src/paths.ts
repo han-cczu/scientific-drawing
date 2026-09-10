@@ -9,22 +9,28 @@ import path from "node:path";
  *   1) 统一上传文件、导出文件和 scene 文件的位置
  *   2) 保证服务启动前目录已经存在
  */
-export const rootDir = process.cwd();
-export const dataDir = path.join(rootDir, "data");
-export const uploadDir = path.join(dataDir, "uploads");
-export const exportDir = path.join(dataDir, "exports");
-export const sceneDir = path.join(dataDir, "scenes");
-export const evalSuiteDir = path.join(dataDir, "eval-suite");
-export const configPath = path.join(dataDir, "config.json");
+export function createDataPaths(root = process.cwd()) {
+  const rootDir = path.resolve(root);
+  const dataDir = path.join(rootDir, "data");
+  return {
+    rootDir,
+    dataDir,
+    uploadDir: path.join(dataDir, "uploads"),
+    exportDir: path.join(dataDir, "exports"),
+    sceneDir: path.join(dataDir, "scenes"),
+    evalSuiteDir: path.join(dataDir, "eval-suite"),
+    configPath: path.join(dataDir, "config.json")
+  };
+}
+
+export type DataPaths = ReturnType<typeof createDataPaths>;
+export const defaultDataPaths = createDataPaths();
+export const { rootDir, dataDir, uploadDir, exportDir, sceneDir, evalSuiteDir, configPath } = defaultDataPaths;
 
 // 允许被 scene 引用并由服务端读盘内嵌的本地资源目录白名单。
-const LOCAL_ASSET_DIRS: ReadonlyArray<readonly [string, string]> = [
-  ["uploads", uploadDir],
-  ["eval-suite", evalSuiteDir]
-];
 const LOCAL_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
-export function resolveUploadedAssetPath(source: unknown): string | null {
+export function resolveUploadedAssetPath(source: unknown, paths = defaultDataPaths): string | null {
   /*
    * ========================================================================
    * 步骤1：严格解析上传资源 URL
@@ -33,10 +39,10 @@ export function resolveUploadedAssetPath(source: unknown): string | null {
    *   1) 只接受项目生成的 /uploads/... 相对 URL
    *   2) 拒绝外部 URL 中夹带的 /uploads/ 片段
    */
-  return resolveLocalAssetPathInBucket(source, "uploads", uploadDir);
+  return resolveLocalAssetPathInBucket(source, "uploads", paths.uploadDir);
 }
 
-export function resolveLocalAssetPath(source: unknown): string | null {
+export function resolveLocalAssetPath(source: unknown, paths = defaultDataPaths): string | null {
   /*
    * ========================================================================
    * 步骤1：把 scene 里的本地资源 URL 安全解析为受控目录内的绝对路径
@@ -55,7 +61,7 @@ export function resolveLocalAssetPath(source: unknown): string | null {
   // 1.2 逐个白名单目录匹配前缀并做包含校验。必须是以 /uploads/ 或 /eval-suite/
   //     开头的项目相对 URL；不能用 indexOf 匹配任意位置，否则外部 URL
   //     https://evil.test/uploads/x.png 会被误当成本地文件。
-  for (const [name, baseDir] of LOCAL_ASSET_DIRS) {
+  for (const [name, baseDir] of [["uploads", paths.uploadDir], ["eval-suite", paths.evalSuiteDir]]) {
     const resolved = resolveLocalAssetPathInBucket(source, name, baseDir);
     if (resolved) {
       return resolved;
@@ -91,7 +97,7 @@ function resolveLocalAssetPathInBucket(source: unknown, name: string, baseDir: s
   return resolved;
 }
 
-export function ensureDataDirs(logger: { info: (message: string, meta?: Record<string, unknown>) => void }) {
+export function ensureDataDirs(logger: { info: (message: string, meta?: Record<string, unknown>) => void }, paths = defaultDataPaths) {
   /*
    * ========================================================================
    * 步骤1：创建运行目录
@@ -101,6 +107,7 @@ export function ensureDataDirs(logger: { info: (message: string, meta?: Record<s
    *   2) 创建 data/exports
    *   3) 创建 data/scenes
    */
+  const { dataDir, uploadDir, exportDir, sceneDir } = paths;
   logger.info("开始创建运行目录...", { dataDir });
 
   // 1.1 创建上传目录

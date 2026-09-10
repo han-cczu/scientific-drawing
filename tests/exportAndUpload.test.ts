@@ -1,11 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ensureReplicaBaseLayer, exportKindConfig, isAllowedImageMime, sanitizeFileBase, sanitizeUnicodeFileBase, validateSceneForExport } from "../server/src/routes/api";
+import { ensureReplicaBaseLayer, validateSceneForExport } from "../server/src/services/sceneValidation";
+import { exportKindConfig } from "../server/src/services/exportService";
+import { isAllowedImageMime } from "../server/src/storage/imageTypes";
+import { sanitizeFileBase, sanitizeUnicodeFileBase } from "../server/src/storage/fileNames";
 import { dashToPptx, sceneToPptx } from "../server/src/scene/pptx";
 import { sceneToSvg } from "../server/src/scene/svg";
 import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
 import { shadeColor } from "../src/shared/geometry";
 import type { Scene } from "../src/shared/scene";
+import { createNode } from "../src/editor/sceneOps";
 import {
   MAX_GEOMETRY_COORDINATE,
   MAX_GRID_CELLS,
@@ -272,6 +276,20 @@ describe("upload helpers", () => {
 });
 
 describe("scene export", () => {
+  it("paints default editor text with its text color and retains fill-only text compatibility", async () => {
+    const scene = sampleScene();
+    const node = createNode("text", 10, 10);
+    node.text = "Default text 默认文字";
+    scene.nodes = [node];
+    const defaultSvg = await sceneToSvg(scene);
+    assert.match(defaultSvg, /<text\b[^>]*fill="#111111"[^>]*>Default text 默认文字<\/text>/);
+    node.style = { fill: "#FF0000", color: "#2563EB" };
+    assert.match(await sceneToSvg(scene), /<text\b[^>]*fill="#2563EB"/);
+    node.style = { fill: "#7C3AED" };
+    assert.match(await sceneToSvg(scene), /<text\b[^>]*fill="#7C3AED"/);
+    node.style = {};
+    assert.match(await sceneToSvg(scene), /<text\b[^>]*fill="#111111"/);
+  });
   it("escapes SVG text and exports advanced nodes", async () => {
     /*
      * ========================================================================
@@ -463,7 +481,7 @@ describe("scene export", () => {
     });
 
     // 1.2 导出不应因为图片缺失而失败
-    let output = Buffer.alloc(0);
+    let output: Buffer = Buffer.alloc(0);
     await assert.doesNotReject(async () => {
       output = await sceneToPptx(scene);
     });

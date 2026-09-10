@@ -1,36 +1,46 @@
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import path from "node:path";
-import express from "express";
 import sharp from "sharp";
-import { apiRouter } from "../server/src/routes/api";
-import { httpErrorHandler } from "../server/src/httpErrorHandler";
-import { sceneDir, uploadDir } from "../server/src/paths";
+import { createApp } from "../server/src/app";
+import { createDataPaths, ensureDataDirs, type DataPaths } from "../server/src/paths";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import type { Scene } from "../src/shared/scene";
 
 let server: Server | undefined;
+let paths: DataPaths;
+let uploadDir: string;
+let sceneDir: string;
+
+beforeEach(async () => {
+  paths = createDataPaths(await mkdtemp(path.join(os.tmpdir(), "scientific-drawing-http-")));
+  ({ uploadDir, sceneDir } = paths);
+  ensureDataDirs({ info: () => undefined }, paths);
+});
 
 afterEach(async () => {
-  if (!server) {
-    return;
-  }
   const current = server;
   server = undefined;
   await new Promise<void>((resolve, reject) => {
-    current.close((error) => error ? reject(error) : resolve());
+    if (current) current.close((error) => error ? reject(error) : resolve());
+    else resolve();
   });
+  assert.equal(path.dirname(paths.rootDir), path.resolve(os.tmpdir()));
+  assert.match(path.basename(paths.rootDir), /^scientific-drawing-http-/);
+  await rm(paths.rootDir, { recursive: true, force: true });
 });
 
 async function startTestServer() {
-  await mkdir(uploadDir, { recursive: true });
-  await mkdir(sceneDir, { recursive: true });
-  const app = express();
-  app.use("/api", apiRouter);
-  app.use(httpErrorHandler);
+  const app = createApp({
+    paths, env: {}, distDir: false,
+    reconstruct: async () => { throw new Error("Unexpected model call in an input-validation test."); },
+    fetchModels: async () => ({ models: [], error: null, status: 200 })
+  });
   server = app.listen(0);
   await new Promise<void>((resolve) => server?.once("listening", resolve));
   const address = server.address() as AddressInfo;

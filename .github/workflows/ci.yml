@@ -14,7 +14,21 @@ jobs:
           node-version: 20.19.0
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run evaluate
+        env:
+          EVALUATE_AI: "0"
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: verification-reports
+          path: |
+            data/evaluation/summary.json
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

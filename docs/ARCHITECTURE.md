@@ -30,7 +30,7 @@ $$
 \text{Image} \xrightarrow{\text{analyze} / \text{reconstruct}} \mathcal{S} \xrightarrow{\text{edit}} \mathcal{S}' \xrightarrow{\text{export}} \{\text{SVG}, \text{PPTX}, \text{JSON}\}
 $$
 
-其中 $\mathcal{S}$ 是 scene 协议，所有渲染器（Canvas / SVG / PPTX）共享同一套几何与颜色规则（`src/shared/geometry.ts`），保证三个出口的视觉一致性。
+其中 $\mathcal{S}$ 是 scene 协议，所有渲染器（Canvas / SVG / PPTX）共享同一套几何与颜色规则（`src/shared/geometry.ts`），减少三个出口的几何与颜色差异；字体与文本布局仍由各渲染引擎处理。
 
 ### 1.2 两条重建支路
 
@@ -41,51 +41,42 @@ $$
 
 两条路径**最终都落到同一个 scene 协议**，并经过同一条修复链路 (`repairScene`) 收敛：补 metadata、去重 id、规范颜色、夹紧尺寸、丢掉悬空连线、自动插入锁定原图底图。
 
-### 1.3 硬化分支（`scientific-drawing-hardening`）
+### 1.3 当前模块边界
 
-当前分支把原型升级到稳定工具，覆盖六条线：
+2026-09-09 重构保留 React、Express、TypeScript 和 scene 0.1 协议。历史硬化方案见 `docs/superpowers/plans/`，此次实施证据见 [实施记录](plans/2026-09-09-refactoring-results.md)。
 
-| 方向 | 实现位置 |
-| --- | --- |
-| 协议深校验 | `src/shared/sceneValidation.ts` |
-| 渲染一致性 | `src/shared/geometry.ts`（Canvas / SVG / PPTX 共享） |
-| AI 输出修复 | `server/src/scene/repairScene.ts` |
-| 编辑交互 | Canvas 多选 / 缩放 / 平移 / 手柄 / 语义连线 |
-| 文件治理 | `server/src/files/retention.ts` |
-| 评估指标 | `server/src/evaluate.ts`（像素差 + 结构） |
-
-### 1.4 模块分层
-
-```text
-┌─────────────────────────────────────────────────────┐
-│ 前端 (React 19 + Vite 7)                            │
-│  Toolbar  ──▶  App (状态/动作) ──▶  Canvas / Inspector│
-│                     │                                │
-│                     ▼                                │
-│           src/lib/api.ts  ◀──┐                      │
-└──────────────────────────────┼──────────────────────┘
-                               │ HTTP
-┌──────────────────────────────┼──────────────────────┐
-│ 后端 (Express 5)             ▼                       │
-│  routes/api.ts                                       │
-│    ├─ analyze   ─▶ scene/analysis/{mask,components,  │
-│    │                            elements}.ts        │
-│    ├─ reconstruct ─▶ scene/reconstructWithOpenAI.ts │
-│    ├─ export    ─▶ scene/{svg,pptx}.ts              │
-│    └─ scenes    ─▶ data/scenes/<id>.scene.json      │
-│                                                      │
-│  共享: scene/repairScene.ts, files/retention.ts     │
-└──────────────────────────────────────────────────────┘
-            │
-            ▼
-┌─────────────────────────────────────────────────────┐
-│ shared (前后端同源)                                 │
-│  scene.ts             // 协议类型                   │
-│  sceneValidation.ts   // 运行时校验                 │
-│  geometry.ts          // resolveEndpoint/shadeColor │
-│  reconstructionPrompt.ts // AI 重建提示词共享片段   │
-└─────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    UI[App 页面组合 / Canvas / 面板] --> Hooks[编辑动作与副作用 hooks]
+    Hooks --> Model[session / reducer / commands]
+    Hooks --> Client[lib/api 功能接口与传输]
+    Hooks --> Draft[sceneStore 本地草稿]
+    Client --> Routes[HTTP routes]
+    App[createApp 依赖装配] --> Routes
+    Routes --> Services[services 业务流程]
+    Services --> Storage[storage 文件与配置]
+    Services --> Algorithms[scene 算法 / 模型客户端 / 渲染器]
+    Model --> Shared[shared 协议 / 导入 / 校验 / 几何]
+    Algorithms --> Shared
 ```
+
+`shared` 不依赖 React、浏览器存储、Node 或服务端。编辑模型不执行 HTTP 或存储副作用；服务与存储不反向依赖路由。`npm run check:boundaries` 使用 TypeScript 实际解析结果检查这些约束，支持相对路径与别名。
+
+### 1.4 编辑会话与任务生命周期
+
+`model/session.ts` 持有纯 reducer 状态，React 用 `useSyncExternalStore` 订阅。同步命令入口使同一事件内的两次任务申请也遵守互斥。文档历史、选择、工具、视口、交互预览与当前任务由同一状态机转换。
+
+- 一次批量操作提交一个撤销点。拖拽/resize 的预览保留交互前快照，结束时提交，取消时恢复；无变化不创建历史。
+- 分析、导入、整图/局部重建和导出期间暂停内容修改，保留视图、平移缩放与取消。组件禁用与命令层守卫共同执行规则。
+- 任务携带 `id`、`documentId`、`revision`；只有仍有效的任务结果可提交。AbortController 传递取消信号，任务 runner 同时阻止无法取消的迟到回调更新状态。
+- `useScenePersistence` 负责 800ms 去抖与离页保护；仅存储返回 `ok` 才记为已保存，内存回退和清理失败仍提示未保存。
+- `useWorkspaceSettings` 负责能力配置和弹窗顺序；保存/清空共享同步写锁，避免重叠请求颠倒最终配置。
+
+### 1.5 服务装配与存储
+
+`createApp(options)` 只装配 Express 和路由，不监听端口、不运行保留策略，也不因为 Multer 初始化而创建上传目录。`index.ts` 负责生产目录初始化、清理、监听及关闭。测试注入临时 `paths`、模型调用、文件操作与配置环境。
+
+路由处理 HTTP 参数、上传限制、Origin 和错误响应；services 处理修复校验、裁剪合并和导出流程；storage 处理路径、场景与配置读写。场景保存采用同目录唯一临时文件再 rename，失败清理临时文件并保留此前有效版本。请求断开会将取消信号传入模型调用，并阻止迟到结果持久化。
 
 ---
 
@@ -197,19 +188,15 @@ $$
 
 ### 2.5 校验与修复
 
-导入、AI 重建和导出都会过同一条链路：
+导入规则集中在 `src/shared/sceneImport.ts`。前后端 `visiomasterAdapter.ts` 只注入 ID、时间、标题、engine 和 notes 等来源默认值。识别使用整体节点词汇和显式元数据，兼容约定的旧草稿，拒绝未知版本及混合格式，错误包含可定位字段路径。
 
 ```text
-raw ──▶ normalizeImportedScene ──▶ repairScene ──▶ validateScene ──▶ ok
-                                          │
-                                          ├─ 缺失 metadata → 补默认
-                                          ├─ 重复 id → 加 -2/-3 后缀
-                                          ├─ 非法颜色 → 回退默认
-                                          ├─ 异常尺寸 → 取绝对值并夹紧
-                                          └─ 悬空连线 → 丢弃
+导入 / 模型输出 → 格式识别与转换 → repairScene → assertScene
+待服务端持久化 → repairScene → 固定 id/sourceImage → 补锁定底图 → validateScene
+导出请求 → validateScene → SVG / PPTX / JSON
 ```
 
-`validateScene` 失败时 API 返回 `400 { error, issues }`；前端导入失败时**不会污染当前 scene**。
+导出保持严格校验，不先静默修复非法输入。失败场景不会替换当前画布。错误响应按入口保留原有字符串或结构化格式，客户端统一兼容解析；静态类型不能代替运行时校验。
 
 ---
 
@@ -245,10 +232,10 @@ raw ──▶ normalizeImportedScene ──▶ repairScene ──▶ validateSce
 | 线条端点 | 拖动折线 / 箭头两个端点 |
 | 语义连线 | 选连线工具，点起止节点 |
 | 局部 AI 重建 | 选局部重建工具，框选区域后选择替换或叠加 |
-| 图层面板 | 右侧面板选择对象，切换显示/锁定，上移或下移 |
+| 图层面板 | 左侧图层页选择对象，切换显示/锁定，上移或下移 |
 | 视图缩放 | `Ctrl` + 滚轮（0.25× ~ 4×） |
 | 视图平移 | 中键拖拽，或 `空格` + 左键拖拽 |
-| 重置视图 | 工具栏重置按钮 |
+| 重置视图 | 顶栏「更多操作」中的重置视图 |
 | 删除 | `Delete` / `Backspace` |
 | 复制 | `Ctrl+D` / `Cmd+D` |
 | 撤销 | `Ctrl+Z` / `Cmd+Z` |
@@ -276,6 +263,10 @@ raw ──▶ normalizeImportedScene ──▶ repairScene ──▶ validateSce
   "modelListError": null
 }
 ```
+
+### 配置写入与连通性检查
+
+`POST /api/config` 接收 `WritableAppConfig`，成功返回不含原始密钥的 `AppConfig`；`DELETE /api/config` 清除 UI 文件并返回环境变量回退后的能力配置。`POST /api/config/test` 使用表单配置测试模型列表，返回 `TestConfigResult`，不保存配置。具体字段与错误码集中在 `src/shared/apiContracts.ts`；`AppConfig` 还包含 `hasApiKey`、`source` 和 `maskedTail`。
 
 ### `POST /api/analyze`
 
@@ -341,7 +332,7 @@ AI 局部重建。请求体为 JSON：
 请求体：`{ "scene": Scene }`（最大 20 MB）。响应：文件字节流，`Content-Disposition: attachment`（文件名取 `metadata.title`，中文走 RFC 5987 `filename*`）。导出不再写 `data/exports`，前端以 blob 触发浏览器下载。
 
 - **JSON**：原样持久化经过校验的 scene。
-- **SVG**：尽可能把 `/uploads/...` 图片内嵌为 data URL，便于单文件迁移；非本地源或文件不存在时保留原始引用。
+- **SVG**：受控 `/uploads/...` 或 `/eval-suite/...` 图片内嵌为 data URL，便于单文件迁移；非受控来源或文件不存在时跳过图片，不读取任意本地路径或保留外部链接。
 - **PPTX** 支持：`text`、`rect`、`rounded_rect`、`ellipse`、`operator`、`line`、`arrow`、`grid`、`feature_grid`、`bracket`、`image`、`edges`。多段折线被拆成多条线段，仅最后一段保留箭头。
 
 ### 导出文件名安全
@@ -378,18 +369,20 @@ AI 局部重建。请求体为 JSON：
 
 ## 6. 评估体系
 
-`npm run evaluate` 优先读取 `data/eval-suite/manifest.json` 中登记的固定样本。清单为空时，回退扫描 `data/uploads` 中的 PNG/JPEG/WebP。评估会调用**普通分析**重新生成 scene 与 SVG，再把原图与导出 SVG 渲染到相同尺寸做像素差对比，同时统计 scene 的结构质量。
+`npm run evaluate` 读取 `data/eval-suite/manifest.json` 中登记的固定样本。非 CI 模式可在清单不可用时扫描 uploads 以收集诊断，但报告仍记录清单错误；CI 不允许用该回退通过门禁。评估会调用**普通分析**重新生成 scene 与 SVG，再把原图与导出 SVG 渲染到相同尺寸做像素差对比，同时统计 scene 的结构质量。
+
+`evaluation/` 拆分样本读取、计算、基线判定、报告和 CLI。`validateEvaluationBaseline` 返回全部问题，`assertEvaluationBaseline` 抛普通错误，只有 CLI 设置退出码。报告包括环境、expectedFiles、failures 和 validation；空集、漏项、重复项、执行失败、缺失基线、非有限指标均不能在 CI 通过。原阈值维持 `normalizedMeanDiffDelta <= 0.005`、`ssimDelta >= -0.005`。
 
 固定样本目录：
 
 ```text
 data/eval-suite/
 ├─ manifest.json   # 固定样本清单
-├─ baseline.json   # 可选基线指标
+├─ baseline.json   # CI 要求覆盖所有预期样本的基线指标
 └─ README.md       # 样本字段说明
 ```
 
-输出写入 `data/evaluation/summary.json`：
+输出写入 `data/evaluation/summary.json`；下表是 `results[]` 中每个样本的字段：
 
 | 字段 | 含义 |
 | --- | --- |
@@ -417,9 +410,9 @@ $$
 
 值越小越接近原图。当前数据集（`data/evaluation/summary.json`）上典型 `meanDiff` 在 0.1 ~ 7 之间，说明启发式分析在视觉上接近原图，但 `edges` 通常为 0（启发式尚未稳定输出箭头语义）。
 
-评估同时输出 `normalizedMeanDiff`、`psnr` 和 `ssim`。`normalizedMeanDiff` 用于把 0 到 255 的通道差值压到 0 到 1；`psnr` 更适合观察像素级退化；`ssim` 用全图亮度、方差和协方差做近似结构相似度。
+评估同时输出 `normalizedMeanDiff`、`psnr` 和 `ssim`。`normalizedMeanDiff` 用于把 0 到 255 的通道差值压到 0 到 1；`psnr` 更适合观察像素级退化；`ssim` 对全图 RGB 通道值直接计算均值、方差和协方差，未先转为亮度，也不是滑窗 SSIM。
 
-如果存在 `data/eval-suite/baseline.json`，评估会按文件名匹配历史结果，并输出 `normalizedMeanDiffDelta` 与 `ssimDelta`。正的 `normalizedMeanDiffDelta` 表示像素误差变大；正的 `ssimDelta` 表示结构相似度提高。
+评估按 `data/eval-suite/baseline.json` 的文件名匹配历史结果，并输出 `normalizedMeanDiffDelta` 与 `ssimDelta`。正的 `normalizedMeanDiffDelta` 表示像素误差变大；正的 `ssimDelta` 表示结构相似度提高。
 
 默认只评估**普通分析**链路。需要评估 AI 重建链路时设置：
 
@@ -428,7 +421,7 @@ $env:EVALUATE_AI = "1"
 npm run evaluate
 ```
 
-AI 链路结果会写入每个样本的 `modeResults`，记录 `latencyMs`、`success`、`error` 和 `estimatedCostUsd`。未配置 `OPENAI_API_KEY` 时不会中断评估，只记录 AI 链路失败。
+AI 链路结果会写入每个样本的 `modeResults`，记录 `latencyMs`、`success`、`error` 和 `estimatedCostUsd`。当前成本字段固定为 `null`，并未实现费用估算；AI 分支检查执行与场景有效性，尚未计算 AI 专属结构/视觉分数。启用后缺少凭据或模型执行失败会被写入报告并使 CI 验收失败；默认离线评估不调用真实模型。
 
 ---
 
@@ -437,29 +430,30 @@ AI 链路结果会写入每个样本的 `modeResults`，记录 `latencyMs`、`su
 ### 7.1 命令
 
 ```powershell
-npm run dev          # 同启前后端
-npm run typecheck    # tsc --noEmit
-npm test             # tsx --test tests/**/*.test.ts
-npm run build        # tsc -b && vite build
-npm run evaluate     # 批量评估脚本
+npm run dev            # 同启前后端
+npm run typecheck      # client / server / tests 三套检查
+npm run lint           # Hooks 规则 + 依赖边界
+npm test               # 递归运行 .test.ts，含子目录
+npm run build          # client/server 类型检查 + vite build
+npm run evaluate       # 普通分析固定样本评估
+npx playwright install chromium   # 首次安装浏览器
+npm run test:browser    # 编辑器浏览器交互，使用模拟 API
 ```
 
-需要 Node.js ^20.19.0 或 >=22.12.0。GitHub Actions 会在 push 和 pull request 上运行 `npm ci`、`npm run typecheck`、`npm test` 和 `npm run build`。
+需要 Node.js ^20.19.0 或 ^22.13.0 或 >=24。GitHub Actions 在 push 和 pull request 上执行安装、类型、lint、单元/HTTP 测试、构建、离线评估和 Chromium 交互测试。浏览器测试自行启动 Vite，不读写生产场景目录。
 
 ### 7.2 测试覆盖
 
-```text
-- 上传 MIME 白名单 / 导出文件名清洗 / SVG 文本转义
-- scene 校验与修复（geometry / sceneValidation / repairScene）
-- 共享几何与颜色规则
-- grid / bracket / 多段折线 SVG 导出
-- Visiomaster 适配
-- AI 重建自动复刻底图 (ensureReplicaBaseLayer)
-- 文件保留策略 (fileRetention)
-- 编辑器多选 / 缩放 / 手柄 / 连线 (editorOps / viewport)
-- 评估结构指标 (evaluateMetrics)
-- PPTX 文件生成
-```
+现有协议、几何、编辑、文件治理和渲染测试继续保留。重构增加以下行为保护：
+
+- 原生每类首节点、空场景、旧草稿、混合格式和前后端导入一致性。
+- 批量事务、多选主对象、稳定层级顺序、预览取消、异步互斥和迟到结果。
+- 浏览器导入、拖拽、resize、属性/样式/排列、撤销、自动保存和恢复、配额失败、慢响应取消。
+- 无启动副作用的应用工厂、临时目录隔离、模型/文件操作失败、请求断开和上传清理。
+- 空/缺失/重复评估样本、无效指标、AI 失败和 CLI 非零退出。
+- TypeScript 模块解析边界与嵌套测试发现。
+
+完整命令、计数与未执行检查见 [实施记录](plans/2026-09-09-refactoring-results.md)。
 
 ### 7.3 技术栈
 
@@ -470,69 +464,70 @@ npm run evaluate     # 批量评估脚本
 | 图像处理 | sharp |
 | PPTX 导出 | pptxgenjs |
 | 图标 | lucide-react |
-| 测试 | node:test + tsx |
+| 测试 | node:test + tsx + Playwright |
+| 静态检查 | TypeScript + ESLint Hooks + 依赖边界脚本 |
 
 ### 7.4 目录
 
 ```text
-scientific-drawing/
-├─ src/                              前端
-│  ├─ App.tsx                        主状态与业务动作
-│  ├─ editor/
-│  │  ├─ Canvas.tsx                  SVG 画布渲染、拖拽、手柄
-│  │  ├─ Inspector.tsx               右侧属性面板
-│  │  ├─ Toolbar.tsx                 左侧工具栏
-│  │  ├─ sceneOps.ts                 节点 CRUD / 多选 / resize / edge
-│  │  ├─ viewport.ts                 视口缩放与平移
-│  │  ├─ reconstructionPrompt.ts     给外部模型用的提示词
-│  │  └─ visiomasterAdapter.ts       前端 JSON 导入适配器
-│  ├─ lib/                           api / id / logger
-│  └─ shared/                        前后端共享
-│     ├─ scene.ts                    scene 类型
-│     ├─ sceneValidation.ts          运行时校验
-│     ├─ geometry.ts                 端点解析 / 颜色工具
-│     └─ reconstructionPrompt.ts     AI 提示词 schema / 词表 / 规则
-├─ server/src/                       后端
-│  ├─ index.ts                       Express 入口 + 启动清理
-│  ├─ routes/api.ts                  /analyze /reconstruct /export
-│  ├─ evaluate.ts                    批量评估脚本
-│  ├─ paths.ts / logger.ts
-│  ├─ files/retention.ts             文件保留策略
-│  └─ scene/
-│     ├─ analyzeImage.ts             启发式分析入口
-│     ├─ analysis/                   mask / components / elements
-│     ├─ reconstructWithOpenAI.ts    AI 多模态重建
-│     ├─ reconstructionPrompt.ts     服务端 AI 提示词包装
-│     ├─ repairScene.ts              统一修复层
-│     ├─ visiomasterAdapter.ts       服务端 Visiomaster 适配
-│     ├─ svg.ts / pptx.ts            两种导出器
-│     └─ types.ts                    复用共享 scene 类型
-├─ tests/                            10+ 个回归测试
-├─ docs/superpowers/plans/           实施计划与决策记录
-└─ data/
-   ├─ uploads/        上传图片
-   ├─ scenes/         每次分析或重建的 scene.json
-   ├─ exports/        导出的 JSON / SVG / PPTX
-   └─ evaluation/     评估脚本产物
+src/
+  App.tsx                 页面组合与功能接线
+  editor/
+    model/                reducer / commands / session / taskRunner / selection
+    hooks/                编辑动作、任务、保存与快捷键
+    Canvas.tsx            SVG 图元与指针手势
+    SideNav.tsx            工具与图层
+    RightPanel.tsx         属性、样式、排列面板
+    SceneStatus.tsx        状态栏
+    RegionConfirm.tsx      局部重建确认
+    history.ts / sceneOps.ts / viewport.ts   复用的纯操作
+  features/settings/      配置读取、互斥写入、弹窗流程
+  lib/api/                transport / responses / errors / config / scenes / exports
+  lib/api.ts              现有调用者的兼容导出
+  lib/sceneStore.ts        草稿存储
+  shared/                 scene / apiContracts / sceneImport / 校验 / 几何 / 提示词
+  styles.css              样式入口
+  styles/                 按原顺序拆分的变量、布局和组件样式
+server/src/
+  index.ts                生产启动、清理与关闭
+  app.ts                  createApp 依赖装配
+  routes/                 HTTP 接口及中间件；api.ts 为兼容入口
+  services/               分析、重建、配置、导出、输入与持久化校验
+  storage/                场景与配置读写、文件名与图片类型约束
+  scene/                  分析算法、模型客户端、SVG/PPTX 渲染器
+  files/retention.ts      受管文件清理
+  evaluation/             samples / metrics / baseline / report / sample / run / cli
+  evaluate.ts             兼容导出及评估 CLI 入口
+scripts/                  测试发现与依赖边界检查
+tests/                    单元与 HTTP 回归
+  browser/                Playwright 交互
+  tooling/                工程脚本回归
+docs/plans/              此次重构计划、验收与实施记录
+data/
+  uploads/                上传图片
+  scenes/                 持久化 scene.json
+  exports/                保留兼容的静态资源目录；当前下载走响应流
+  eval-suite/             版本控制内的清单与基线
+  evaluation/             本地产物与评估报告
 ```
 
-`data/uploads`、`data/scenes`、`data/exports`、`data/evaluation` 和日志默认在 `.gitignore` 中。
+`data/uploads`、`data/scenes`、`data/exports`、`data/evaluation`、浏览器测试产物和日志默认被 Git 忽略。
 
 ---
 
 ## 8. 常见问题
 
-**AI 重建按钮不可用？** 后端启动时未读取到 `OPENAI_API_KEY`。重新设置环境变量后再启动。
+**AI 重建按钮不可用？** 查看右上角 AI 设置中的能力配置。可以保存 UI 配置立即生效，或设置 `OPENAI_API_KEY` 后重启后端。
 
 **上传失败？** 检查 MIME（PNG / JPEG / WebP）与体积（≤ 20 MB）。
 
 **导入 scene.json 失败？** 协议校验不通过会拒绝导入，不污染当前画布。打开浏览器控制台查看 `issues` 字段。
 
-**SVG 打开后看不到原图？** 正常情况会内嵌 data URL；如果源不是 `/uploads/...` 或文件已被删除，会保留原始引用，迁移时可能丢图。
+**SVG 打开后看不到原图？** 有效的受控图片会内嵌为 data URL；不受控来源或已清理的文件被跳过。检查 `/uploads/...` 或 `/eval-suite/...` 对应资源是否仍存在。
 
 **PPTX 不是像素一致？** PPTX 优先可编辑性；字体、箭头端点、透明度在 PowerPoint 里会有差异。
 
-**评估里 `edges` 一直是 0？** `npm run evaluate` 走的是普通分析，目前还没有稳定的箭头语义识别；AI 重建可以生成 edges，但不在评估脚本当前范围内。
+**评估里 `edges` 一直是 0？** `npm run evaluate` 走的是普通分析，目前还没有稳定的箭头语义识别；AI 重建可以生成 edges，但 `EVALUATE_AI=1` 当前只检查执行与场景有效性，尚未统计 AI edges 或视觉分数。
 
 **`data/` 里的文件被清掉了？** 后端启动时按 `DATA_RETENTION_DAYS`（默认 14 天）清理 `uploads/exports/scenes` 中过期的受管文件。需要长期保留可调大该值或迁出 `data/`。
 
@@ -540,7 +535,7 @@ scientific-drawing/
 
 | 问题 | 说明 |
 | --- | --- |
-| OCR | 普通分析只标记文本区域，不识别真实文字 |
+| OCR | 普通分析保留空的可编辑文字区域，不识别真实文字，也不绘制固定占位词 |
 | 箭头检测 | 普通分析暂不稳定输出 `arrow` edges |
 | AI 稳定性 | 取决于模型能力、提示词和框选区域质量 |
 | 数学公式 | 以普通文本保存，不渲染 LaTeX |

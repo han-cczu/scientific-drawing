@@ -2,12 +2,13 @@ import { Copy, Lock, Trash2 } from "lucide-react";
 
 type SelectionFloatingBarProps = {
   visible: boolean;
+  disabled?: boolean;
   onDuplicate: () => void;
   onToggleLock: () => void;
   onDelete: () => void;
 };
 
-export function SelectionFloatingBar({ visible, onDuplicate, onToggleLock, onDelete }: SelectionFloatingBarProps) {
+export function SelectionFloatingBar({ visible, disabled = false, onDuplicate, onToggleLock, onDelete }: SelectionFloatingBarProps) {
   /*
    * ========================================================================
    * 步骤1：渲染选中浮动操作条
@@ -28,7 +29,7 @@ export function SelectionFloatingBar({ visible, onDuplicate, onToggleLock, onDel
         className="icon-btn"
         title="复制"
         aria-label="复制"
-        onClick={onDuplicate}
+        disabled={disabled} onClick={onDuplicate}
       >
         <Copy size={16} />
       </button>
@@ -37,7 +38,7 @@ export function SelectionFloatingBar({ visible, onDuplicate, onToggleLock, onDel
         className="icon-btn"
         title="锁定 / 解锁"
         aria-label="锁定"
-        onClick={onToggleLock}
+        disabled={disabled} onClick={onToggleLock}
       >
         <Lock size={16} />
       </button>
@@ -46,7 +47,7 @@ export function SelectionFloatingBar({ visible, onDuplicate, onToggleLock, onDel
         className="icon-btn danger"
         title="删除"
         aria-label="删除"
-        onClick={onDelete}
+        disabled={disabled} onClick={onDelete}
       >
         <Trash2 size={16} />
       </button>

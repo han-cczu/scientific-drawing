@@ -88,6 +88,8 @@ export function saveStoredScene(scene: Scene): SceneSaveResult {
   }
   try {
     globalThis.localStorage.setItem(SCENE_STORE_KEY, JSON.stringify(payload));
+    memoryScene = null;
+    memoryFallbackActive = false;
     return "ok";
   } catch (err) {
     memoryScene = scene;
@@ -173,15 +175,18 @@ function isRecoverableSceneDraft(value: unknown) {
   return hasPage && hasMetadata && hasNodes && hasEdges && (nodes.length > 0 || edges.length > 0 || Boolean(scene.metadata?.sourceImage));
 }
 
-export function clearStoredScene(): void {
+export function clearStoredScene(): SceneSaveResult {
   memoryScene = null;
   memoryFallbackActive = false;
   if (!isStorageAvailable()) {
-    return;
+    memoryFallbackActive = true;
+    return "memory";
   }
   try {
     globalThis.localStorage.removeItem(SCENE_STORE_KEY);
+    return "ok";
   } catch {
-    // 清理失败不影响主流程
+    memoryFallbackActive = true;
+    return "failed";
   }
 }

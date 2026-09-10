@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { repairAndValidateSceneForPersistence } from "../server/src/routes/api";
+import { repairAndValidateSceneForPersistence } from "../server/src/services/sceneValidation";
 import type { Scene } from "../src/shared/scene";
 
 function invalidButRepairableScene(): Scene {

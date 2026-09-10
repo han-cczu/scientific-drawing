@@ -10,14 +10,6 @@ export type HistoryState<T> = {
 const DEFAULT_HISTORY_LIMIT = 80;
 
 export function createHistoryState<T>(present: T, limit = DEFAULT_HISTORY_LIMIT): HistoryState<T> {
-  /*
-   * ========================================================================
-   * 步骤1：创建历史状态
-   * ========================================================================
-   * 目标：
-   *   1) 保存当前快照
-   *   2) 初始化撤销和重做栈
-   */
   logger.info("开始创建历史状态...");
 
   // 1.1 创建空历史栈
@@ -33,14 +25,6 @@ export function createHistoryState<T>(present: T, limit = DEFAULT_HISTORY_LIMIT)
 }
 
 export function pushHistory<T>(state: HistoryState<T>, nextPresent: T): HistoryState<T> {
-  /*
-   * ========================================================================
-   * 步骤1：推入历史快照
-   * ========================================================================
-   * 目标：
-   *   1) 把当前快照压入 past
-   *   2) 新编辑后清空 redo 栈
-   */
   logger.info("开始推入历史快照...", { past: state.past.length, future: state.future.length });
 
   // 1.1 跳过相同引用
@@ -62,14 +46,6 @@ export function pushHistory<T>(state: HistoryState<T>, nextPresent: T): HistoryS
 }
 
 export function replaceHistoryPresent<T>(state: HistoryState<T>, nextPresent: T): HistoryState<T> {
-  /*
-   * ========================================================================
-   * 步骤1：替换当前快照
-   * ========================================================================
-   * 目标：
-   *   1) 支持拖拽中的连续预览
-   *   2) 不产生逐像素撤销记录
-   */
   logger.info("开始替换当前历史快照...");
 
   // 1.1 跳过相同引用
@@ -85,14 +61,6 @@ export function replaceHistoryPresent<T>(state: HistoryState<T>, nextPresent: T)
 }
 
 export function commitHistoryPresent<T>(state: HistoryState<T>, baseline: T | null): HistoryState<T> {
-  /*
-   * ========================================================================
-   * 步骤1：提交连续编辑
-   * ========================================================================
-   * 目标：
-   *   1) 把拖拽前快照作为一个撤销点
-   *   2) 保留拖拽结束后的当前快照
-   */
   logger.info("开始提交连续编辑历史...");
 
   // 1.1 跳过空基线或未变化编辑
@@ -113,14 +81,6 @@ export function commitHistoryPresent<T>(state: HistoryState<T>, baseline: T | nu
 }
 
 export function undoHistory<T>(state: HistoryState<T>): HistoryState<T> {
-  /*
-   * ========================================================================
-   * 步骤1：撤销历史快照
-   * ========================================================================
-   * 目标：
-   *   1) 从 past 取出最近快照
-   *   2) 把当前快照压入 future
-   */
   logger.info("开始撤销历史快照...", { past: state.past.length });
 
   // 1.1 无历史时保持不变
@@ -143,14 +103,6 @@ export function undoHistory<T>(state: HistoryState<T>): HistoryState<T> {
 }
 
 export function redoHistory<T>(state: HistoryState<T>): HistoryState<T> {
-  /*
-   * ========================================================================
-   * 步骤1：重做历史快照
-   * ========================================================================
-   * 目标：
-   *   1) 从 future 取出最近快照
-   *   2) 把当前快照压回 past
-   */
   logger.info("开始重做历史快照...", { future: state.future.length });
 
   // 1.1 无 future 时保持不变
@@ -173,14 +125,6 @@ export function redoHistory<T>(state: HistoryState<T>): HistoryState<T> {
 }
 
 export function canUndoHistory<T>(state: HistoryState<T>) {
-  /*
-   * ========================================================================
-   * 步骤1：判断是否可撤销
-   * ========================================================================
-   * 目标：
-   *   1) 给工具栏控制按钮状态
-   *   2) 避免无效操作
-   */
   logger.info("开始判断是否可撤销...");
 
   // 1.1 读取 past 长度
@@ -191,14 +135,6 @@ export function canUndoHistory<T>(state: HistoryState<T>) {
 }
 
 export function canRedoHistory<T>(state: HistoryState<T>) {
-  /*
-   * ========================================================================
-   * 步骤1：判断是否可重做
-   * ========================================================================
-   * 目标：
-   *   1) 给工具栏控制按钮状态
-   *   2) 避免无效操作
-   */
   logger.info("开始判断是否可重做...");
 
   // 1.1 读取 future 长度
@@ -209,14 +145,6 @@ export function canRedoHistory<T>(state: HistoryState<T>) {
 }
 
 function trimPast<T>(past: T[], limit: number) {
-  /*
-   * ========================================================================
-   * 步骤1：裁剪历史容量
-   * ========================================================================
-   * 目标：
-   *   1) 限制内存增长
-   *   2) 保留最近快照
-   */
   logger.info("开始裁剪历史容量...", { count: past.length, limit });
 
   // 1.1 返回最近快照

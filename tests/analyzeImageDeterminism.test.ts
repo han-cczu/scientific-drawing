@@ -3,8 +3,29 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { analyzeImage } from "../server/src/scene/analyzeImage";
 import { stripVolatileFields } from "../server/src/evaluate";
+import { sceneToSvg } from "../server/src/scene/svg";
+import { normalizeImportedScene } from "../server/src/scene/visiomasterAdapter";
 
 describe("analyzeImage determinism", () => {
+  it("keeps detected text regions editable without inventing OCR text over the source image", async () => {
+    const scene = await analyzeImage({
+      id: "text-regions",
+      imagePath: path.join(process.cwd(), "data", "eval-suite", "module-small-2rect.png"),
+      sourceUrl: "/eval-suite/module-small-2rect.png",
+      title: "Detected regions"
+    });
+    const textRegions = scene.nodes.filter(node => node.type === "text");
+    assert.ok(textRegions.length > 0, "the detected regions must remain available to edit");
+    assert.ok(textRegions.every(node => node.text === ""));
+    assert.ok(textRegions.every(node => node.w > 0 && node.h > 0 && !node.locked && !node.hidden && (node.style.opacity ?? 1) > 0));
+    const region = textRegions[0];
+    // 'Text' remains a legitimate user/imported value, not a global rendering filter.
+    region.text = "Text";
+    const imported = normalizeImportedScene(scene as unknown as Record<string, unknown>);
+    assert.equal(imported.nodes.find(node => node.id === region.id)?.text, "Text");
+    const svg = await sceneToSvg(imported);
+    assert.match(svg, new RegExp(`<text\\b[^>]*id="${region.id}"[^>]*fill="#111111"[^>]*>Text<\\/text>`));
+  });
   it("produces byte-stable scene structure for the same image across runs", async () => {
     /*
      * ========================================================================

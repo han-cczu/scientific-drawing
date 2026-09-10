@@ -145,7 +145,9 @@ export async function analyzeImage(input: AnalyzeInput): Promise<Scene> {
       y,
       w,
       h,
-      text: element.text,
+      // Detection locates text boxes but does not run OCR. Keep the box editable
+      // without painting a fabricated "Text" label over the original lettering.
+      text: element.type === "text" && element.text === "Text" ? "" : element.text,
       points: element.points?.map((point) => ({ x: round(point.x), y: round(point.y) })),
       style: element.style
     });
@@ -169,7 +171,7 @@ export async function analyzeImage(input: AnalyzeInput): Promise<Scene> {
       notes: [
         "Replica-first mode: the source image is kept as a locked full-opacity base layer.",
         "Detected regions are low-opacity editable helper nodes.",
-        "Text detection marks editable text regions only; OCR content is still an extension point.",
+        "Text detection provides empty editable regions; OCR content is still an extension point.",
         `Detected ${structuredElements.length} structured elements, ${colorElements.length} color elements, ${textElements.length} text regions, and ${componentElements.length} helper regions.`
       ]
     },

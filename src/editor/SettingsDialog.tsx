@@ -118,6 +118,8 @@ export function SettingsDialog({
   const firstFieldRef = useRef<HTMLInputElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   useEffect(() => {
     if (!open) {
       return;
@@ -125,7 +127,7 @@ export function SettingsDialog({
     const restoreTarget = document.activeElement;
     firstFieldRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !busyRef.current) {
         onCloseRef.current();
       }
     };

@@ -4,16 +4,22 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || ^22.13.0 || >=24"
   },
   "scripts": {
     "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
     "client:dev": "vite --host 0.0.0.0 --port 5173",
     "server:dev": "tsx watch server/src/index.ts",
-    "build": "tsc -b && vite build",
+    "build": "tsc -p tsconfig.client.json && tsc -p tsconfig.server.json && vite build",
     "server:start": "tsx server/src/index.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "npm run typecheck:client && npm run typecheck:server && npm run typecheck:tests",
+    "typecheck:client": "tsc -p tsconfig.client.json",
+    "typecheck:server": "tsc -p tsconfig.server.json",
+    "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "lint": "eslint src --max-warnings=0 && npm run check:boundaries",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "test:browser": "playwright test",
     "evaluate": "tsx server/src/evaluate.ts"
   },
   "dependencies": {
@@ -27,15 +33,20 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "concurrently": "^9.2.1",
+    "eslint": "^10.10.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.0",
     "vite": "^7.2.4"
   },
   "overrides": {

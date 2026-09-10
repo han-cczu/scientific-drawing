@@ -5,7 +5,8 @@ import {
   buildReconstructionVocabularyText
 } from "@shared/reconstructionPrompt";
 
-export type ReconstructionMode = "color" | "mono";
+import type { ReconstructionMode } from "@shared/apiContracts";
+export type { ReconstructionMode } from "@shared/apiContracts";
 
 export function buildServerReconstructionPrompt(width: number, height: number, mode: ReconstructionMode) {
   /*

@@ -15,10 +15,11 @@ import {
 } from "lucide-react";
 import { LayersPanel } from "./LayersPanel";
 import { Logo } from "./Logo";
-import type { Tool } from "./Toolbar";
+import type { Tool } from "./model/types";
 import type { SceneNode } from "../shared/scene";
 
 type SideNavProps = {
+  disabled?: boolean;
   isSelectMode: boolean;
   isRegionMode: boolean;
   aiReconstructionAvailable: boolean;
@@ -47,6 +48,7 @@ type ToolEntry = {
 };
 
 export function SideNav({
+  disabled = false,
   isSelectMode,
   isRegionMode,
   aiReconstructionAvailable,
@@ -61,15 +63,6 @@ export function SideNav({
   onToggleLocked,
   onMoveLayer
 }: SideNavProps) {
-  /*
-   * ========================================================================
-   * 步骤1：渲染左侧导航栏
-   * ========================================================================
-   * 目标：
-   *   1) 展示 Logo、工具列表、图层区
-   *   2) 创作工具（文本/矩形/椭圆/线条/箭头/连线）路由到 onActivateTool，
-   *      点击画布即创建对应节点；图片/公式/表格暂未实装，诚实禁用
-   */
 
   // 1.1 创作工具映射：SideNav 条目 → Tool 值（与 createNode/连线流程一一对应）
   const authoringTools: Array<{ id: string; label: string; icon: React.ComponentType<{ size?: number }>; tool: Tool; title: string }> = [
@@ -131,7 +124,7 @@ export function SideNav({
               type="button"
               className={className}
               onClick={tool.onClick}
-              disabled={!tool.enabled}
+              disabled={disabled || !tool.enabled}
               title={tool.title ?? tool.label}
             >
               <Icon size={16} />
@@ -143,7 +136,7 @@ export function SideNav({
 
       <div className="layers-group">
         <div className="side-section-title">图层</div>
-        <LayersPanel
+        <LayersPanel disabled={disabled}
           nodes={nodes}
           selectedIds={selectedIds}
           onSelect={onSelectNodes}

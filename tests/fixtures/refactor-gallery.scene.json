@@ -1,0 +1,549 @@
+{
+  "version": "0.1",
+  "page": {
+    "width": 1280,
+    "height": 850,
+    "background": "#FFFFFF",
+    "units": "px"
+  },
+  "metadata": {
+    "id": "refactor-gallery",
+    "title": "全图元验收 Refactor Gallery",
+    "createdAt": "2026-09-09T00:00:00.000Z",
+    "engine": "refactor-acceptance-fixture",
+    "notes": [
+      "Deterministic self-authored scene for Canvas/SVG/PPTX acceptance.",
+      "The controlled /uploads image is supplied by scripts/render-refactor-gallery.ts."
+    ]
+  },
+  "nodes": [
+    {
+      "id": "title",
+      "type": "text",
+      "x": 40,
+      "y": 25,
+      "w": 1200,
+      "h": 44.8,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 32,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "Scientific Drawing · 全图元重构验收"
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "x": 40,
+      "y": 82,
+      "w": 1200,
+      "h": 25.2,
+      "style": {
+        "fill": "#475569",
+        "color": "#475569",
+        "fontSize": 18,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "11 native node types / editable shapes / semantic connectors / 中文 English"
+    },
+    {
+      "id": "rect",
+      "type": "rect",
+      "x": 60,
+      "y": 160,
+      "w": 220,
+      "h": 82,
+      "style": {
+        "fill": "#DBEAFE",
+        "stroke": "#2563EB",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "rounded",
+      "type": "rounded_rect",
+      "x": 345,
+      "y": 160,
+      "w": 220,
+      "h": 82,
+      "style": {
+        "fill": "#DCFCE7",
+        "stroke": "#16A34A",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "ellipse",
+      "type": "ellipse",
+      "x": 630,
+      "y": 160,
+      "w": 220,
+      "h": 82,
+      "style": {
+        "fill": "#FEF3C7",
+        "stroke": "#D97706",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "operator",
+      "type": "operator",
+      "x": 935,
+      "y": 172,
+      "w": 58,
+      "h": 58,
+      "style": {
+        "fill": "#EDE9FE",
+        "stroke": "#7C3AED",
+        "strokeWidth": 2,
+        "color": "#5B21B6",
+        "fontSize": 30,
+        "fontFamily": "Arial"
+      },
+      "symbol": "+"
+    },
+    {
+      "id": "rect-label",
+      "type": "text",
+      "x": 81,
+      "y": 183,
+      "w": 178,
+      "h": 32.199999999999996,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 23,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "输入 Input"
+    },
+    {
+      "id": "rounded-label",
+      "type": "text",
+      "x": 365,
+      "y": 183,
+      "w": 185,
+      "h": 32.199999999999996,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 23,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "编码 Encode"
+    },
+    {
+      "id": "ellipse-label",
+      "type": "text",
+      "x": 652,
+      "y": 183,
+      "w": 180,
+      "h": 32.199999999999996,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 23,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "输出 Output"
+    },
+    {
+      "id": "operator-label",
+      "type": "text",
+      "x": 908,
+      "y": 251,
+      "w": 230,
+      "h": 23.799999999999997,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 17,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "operator (+)"
+    },
+    {
+      "id": "grid-caption",
+      "type": "text",
+      "x": 60,
+      "y": 291,
+      "w": 340,
+      "h": 29.4,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 21,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "grid · 可编辑表格"
+    },
+    {
+      "id": "grid",
+      "type": "grid",
+      "x": 60,
+      "y": 336,
+      "w": 340,
+      "h": 180,
+      "style": {
+        "fill": "#FFFFFF",
+        "stroke": "#64748B",
+        "strokeWidth": 1,
+        "fontSize": 18,
+        "fontFamily": "Microsoft YaHei",
+        "color": "#172554"
+      },
+      "rows": 4,
+      "cols": 3,
+      "rowColors": [
+        "#BFDBFE",
+        "#EFF6FF",
+        "#DBEAFE",
+        "#EFF6FF"
+      ],
+      "columnShades": [
+        0,
+        0.04,
+        0.08
+      ],
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "text": "阶段"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "text": "Score"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "text": "状态"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "text": "输入"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "text": "0.92"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "text": "完成"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "text": "编码"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "text": "0.87"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "text": "完成"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "text": "输出"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "text": "0.95"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "text": "通过"
+        }
+      ]
+    },
+    {
+      "id": "feature-caption",
+      "type": "text",
+      "x": 470,
+      "y": 291,
+      "w": 300,
+      "h": 29.4,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 21,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "feature_grid + bracket"
+    },
+    {
+      "id": "features",
+      "type": "feature_grid",
+      "x": 470,
+      "y": 346,
+      "w": 200,
+      "h": 160,
+      "style": {
+        "fill": "#FFFFFF",
+        "stroke": "#64748B",
+        "strokeWidth": 1,
+        "fontSize": 18,
+        "fontFamily": "Arial",
+        "color": "#172554"
+      },
+      "rows": 4,
+      "cols": 5,
+      "rowColors": [
+        "#BBF7D0",
+        "#BAE6FD",
+        "#DDD6FE",
+        "#FBCFE8"
+      ],
+      "columnShades": [
+        0,
+        0.06,
+        0.12,
+        0.18,
+        0.24
+      ],
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "text": "1"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "text": "2"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "text": "3"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "text": "4"
+        }
+      ]
+    },
+    {
+      "id": "bracket",
+      "type": "bracket",
+      "x": 687,
+      "y": 346,
+      "w": 22,
+      "h": 160,
+      "style": {
+        "stroke": "#475569",
+        "strokeWidth": 2
+      },
+      "orientation": "right",
+      "tickPositions": [
+        0,
+        0.5,
+        1
+      ]
+    },
+    {
+      "id": "image-caption",
+      "type": "text",
+      "x": 840,
+      "y": 291,
+      "w": 360,
+      "h": 29.4,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 21,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "image · 受控本地图片"
+    },
+    {
+      "id": "image",
+      "type": "image",
+      "x": 840,
+      "y": 336,
+      "w": 300,
+      "h": 180,
+      "style": {
+        "opacity": 1
+      },
+      "source": "/uploads/refactor-gallery-source.png"
+    },
+    {
+      "id": "line-caption",
+      "type": "text",
+      "x": 60,
+      "y": 582,
+      "w": 360,
+      "h": 29.4,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 21,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "line · dashed polyline"
+    },
+    {
+      "id": "line",
+      "type": "line",
+      "x": 60,
+      "y": 650,
+      "w": 300,
+      "h": 30,
+      "style": {
+        "stroke": "#2563EB",
+        "strokeWidth": 3,
+        "dash": "8 4"
+      },
+      "points": [
+        {
+          "x": 60,
+          "y": 650
+        },
+        {
+          "x": 190,
+          "y": 650
+        },
+        {
+          "x": 230,
+          "y": 680
+        },
+        {
+          "x": 360,
+          "y": 680
+        }
+      ]
+    },
+    {
+      "id": "arrow-caption",
+      "type": "text",
+      "x": 470,
+      "y": 582,
+      "w": 350,
+      "h": 29.4,
+      "style": {
+        "fill": "#172554",
+        "color": "#172554",
+        "fontSize": 21,
+        "fontFamily": "Microsoft YaHei",
+        "fontWeight": "400"
+      },
+      "text": "arrow · routed arrowhead"
+    },
+    {
+      "id": "arrow",
+      "type": "arrow",
+      "x": 470,
+      "y": 650,
+      "w": 300,
+      "h": 30,
+      "style": {
+        "stroke": "#9333EA",
+        "strokeWidth": 3
+      },
+      "points": [
+        {
+          "x": 470,
+          "y": 650
+        },
+        {
+          "x": 600,
+          "y": 650
+        },
+        {
+          "x": 640,
+          "y": 680
+        },
+        {
+          "x": 770,
+          "y": 680
+        }
+      ]
+    },
+    {
+      "id": "footer",
+      "type": "text",
+      "x": 60,
+      "y": 762,
+      "w": 1130,
+      "h": 34,
+      "style": {
+        "fill": "none",
+        "stroke": "none",
+        "strokeWidth": 1.4,
+        "color": "#111111",
+        "fontFamily": "Times New Roman",
+        "fontSize": 16,
+        "opacity": 1
+      },
+      "text": "固定夹具：文字、图形、表格与线条分别可编辑；图片仅作为一个受控素材对象。"
+    }
+  ],
+  "edges": [
+    {
+      "id": "encode-link",
+      "type": "arrow",
+      "from": "rect:right@0.5",
+      "to": "rounded:left@0.5",
+      "style": {
+        "stroke": "#475569",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "output-link",
+      "type": "arrow",
+      "from": "rounded:right@0.5",
+      "to": "ellipse:left@0.5",
+      "style": {
+        "stroke": "#475569",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "sum-link",
+      "type": "arrow",
+      "from": "ellipse:right@0.5",
+      "to": "operator:left@0.5",
+      "style": {
+        "stroke": "#475569",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "table-features-link",
+      "type": "line",
+      "from": "grid:right@0.5",
+      "to": "features:left@0.5",
+      "style": {
+        "stroke": "#94A3B8",
+        "strokeWidth": 2,
+        "dash": "4 4"
+      }
+    }
+  ]
+}

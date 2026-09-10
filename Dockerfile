@@ -24,7 +24,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 # 拷源码（与 .dockerignore 协作过滤无关文件）
-COPY tsconfig.json ./
+COPY tsconfig*.json ./
 COPY vite.config.ts ./
 COPY index.html ./
 COPY src ./src

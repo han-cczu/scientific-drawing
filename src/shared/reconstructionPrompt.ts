@@ -1,4 +1,3 @@
-import { logger } from "../lib/logger";
 
 export type ReconstructionPromptDimension = number | string;
 
@@ -11,7 +10,6 @@ export function buildReconstructionSchemaText(width: ReconstructionPromptDimensi
    *   1) 前端提示词导出和服务端 AI 调用共用同一份协议说明
    *   2) 避免两份 prompt schema 分叉
    */
-  logger.info("开始构建共享 scene schema 文本...", { width, height });
 
   // 1.1 生成 schema 文本
   const schema = `Output schema:
@@ -34,8 +32,6 @@ export function buildReconstructionSchemaText(width: ReconstructionPromptDimensi
   "nodes": [],
   "edges": []
 }`;
-
-  logger.info("构建共享 scene schema 文本完成", { chars: schema.length });
   return schema;
 }
 
@@ -48,7 +44,6 @@ export function buildReconstructionVocabularyText() {
    *   1) 统一前后端提示词允许的 Visiomaster 类型
    *   2) 降低新类型补充时的分叉风险
    */
-  logger.info("开始构建共享节点和边词表...");
 
   // 1.1 生成词表文本
   const vocabulary = `Allowed node types:
@@ -70,8 +65,6 @@ Allowed edge types:
 - join_connector
 - fork_connector
 - boundary_arrow`;
-
-  logger.info("构建共享节点和边词表完成", { chars: vocabulary.length });
   return vocabulary;
 }
 
@@ -84,7 +77,6 @@ export function buildReconstructionRulesText() {
    *   1) 统一视觉还原、文字保留和连线约束
    *   2) 让前端导出提示词和服务端调用提示词保持一致
    */
-  logger.info("开始构建共享重建规则...");
 
   // 1.1 生成规则文本
   const rules = `Rules:
@@ -98,7 +90,5 @@ export function buildReconstructionRulesText() {
 8. Preserve the visual layout and follow the selected color mode exactly.
 9. Prefer fewer semantic composite nodes over hundreds of tiny unrelated boxes.
 10. JSON must be parseable.`;
-
-  logger.info("构建共享重建规则完成", { chars: rules.length });
   return rules;
 }

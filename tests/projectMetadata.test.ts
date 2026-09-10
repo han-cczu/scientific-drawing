@@ -20,9 +20,9 @@ describe("project metadata", () => {
     const readme = await readFile("README.md", "utf-8");
     const architecture = await readFile("docs/ARCHITECTURE.md", "utf-8");
 
-    assert.equal(packageJson.engines?.node, "^20.19.0 || >=22.12.0");
+    assert.equal(packageJson.engines?.node, "^20.19.0 || ^22.13.0 || >=24");
     assert.match(ciWorkflow, /node-version: 20\.19\.0/);
-    assert.match(readme, /Node\.js \^20\.19\.0 或 >=22\.12\.0/);
-    assert.match(architecture, /Node\.js \^20\.19\.0 或 >=22\.12\.0/);
+    assert.match(readme, /Node\.js \^20\.19\.0 或 \^22\.13\.0 或 >=24/);
+    assert.match(architecture, /Node\.js \^20\.19\.0 或 \^22\.13\.0 或 >=24/);
   });
 });

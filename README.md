@@ -6,7 +6,7 @@
 
 主流绘图工具要么追求像素还原（截图、贴图），要么追求纯语义结构（mermaid、graphviz），两者很难兼得：一次性的纯语义重建在论文图上极不稳定，而纯位图又彻底失去可编辑性。
 
-本项目的取舍是**复刻优先 + 协议中介**：先把原图作为锁定底图，保证视觉不跑偏；再用启发式或 AI 在上方叠加可编辑节点层，让用户逐步修正或替换。中间的 `scene.json` 是唯一事实源，Canvas、SVG、PPTX 共享同一套几何与颜色规则，三个出口视觉一致。
+本项目的取舍是**复刻优先 + 协议中介**：先把原图作为锁定底图，保证视觉不跑偏；再用启发式或 AI 在上方叠加可编辑节点层，让用户逐步修正或替换。中间的 `scene.json` 是唯一事实源，Canvas、SVG、PPTX 共享几何与颜色规则，减少不同出口的语义和绘制差异。
 
 ## Quick start
 
@@ -36,13 +36,15 @@ npm run dev
 
 常用脚本：
 
-- `npm run typecheck`：`tsc --noEmit`，全仓 TypeScript 检查
-- `npm test`：`tsx --test tests/**/*.test.ts`，跑回归用例
+- `npm run typecheck`：分别检查浏览器、服务端和测试的 TypeScript
+- `npm run lint`：React Hooks 规则与模块依赖边界检查
+- `npm test`：递归运行 `tests/**/*.test.ts` 中的单元及 HTTP 回归用例
+- `npm run test:browser`：Playwright 编辑器交互；首次运行先执行 `npx playwright install chromium`
 - `npm run evaluate`：`tsx server/src/evaluate.ts`，跑 `data/eval-suite/manifest.json` 中的固定样本评估
-- `npm run build`：`tsc -b && vite build`，前端生产构建
+- `npm run build`：前后端类型检查与 Vite 生产构建
 - `npm run server:start` / `npm run client:dev`：单独拉起后端或前端
 
-需要 Node.js ^20.19.0 或 >=22.12.0。CI（`.github/workflows/ci.yml`）会跑 `npm ci`、`typecheck`、`test`、`build` 与 `evaluate`，并对评估指标做严格 delta 门禁。
+需要 Node.js ^20.19.0 或 ^22.13.0 或 >=24。CI（`.github/workflows/ci.yml`）会跑 `npm ci`、`typecheck`、`lint`、`test`、`build`、`evaluate` 与 `test:browser`。离线评估同时检查清单完整性、执行失败和视觉指标 delta，不能用空结果或漏样本通过门禁。
 
 ## Docker 部署
 
@@ -69,7 +71,7 @@ flowchart LR
     G -.-> D
 ```
 
-流水线只有四步：图像进入后端走启发式或 AI 两条支路，统一落到 `scene.json`；前端在画布上编辑同一份协议；导出器与评估脚本都基于这份协议工作，保证三处视觉一致并可量化对比。`shared/` 目录里的类型、运行时校验与几何工具是前后端共同依赖，避免双份实现漂移。
+流水线只有四步：图像进入后端走启发式或 AI 两条支路，统一落到 `scene.json`；前端在画布上编辑同一份协议；导出器与评估脚本都基于这份协议工作，使不同出口能够以统一场景进行对照；PPTX 的文字布局仍可能与浏览器不同。`shared/` 目录里的类型、运行时校验与几何工具是前后端共同依赖，避免双份实现漂移。
 
 典型迭代节奏：上传论文图 → 优先走启发式分析得到锁定底图 + 辅助框 → 局部不准的区域走 AI 重建覆盖 → 在画布手工微调 → 导出 SVG / PPTX / JSON → 用 `npm run evaluate` 对比基线，看像素差和结构指标是否回退。
 
@@ -84,17 +86,17 @@ flowchart LR
 
 ## Roadmap
 
-- OCR：识别真实文字以替换启发式生成的默认 Text 占位
+- OCR：识别真实文字并填入普通分析检测出的空文字区域
 - 箭头检测：让普通分析稳定输出 `arrow` edges
 - AI 链路评估：补 AI 重建路径的结构与视觉双指标
 - 差异闭环：导出 SVG 后反渲染，与原图自动对比定位差异
 - 视觉回归阈值化：把 `normalizedMeanDiff` / `ssimDelta` 接入更细粒度的测试断言
-- 撤销粒度细化：拆开拖拽、缩放、批量操作各自的历史栈
+- 编辑能力扩展：在统一历史事务基础上完善更多图元操作
 - 阴影协议接入：scene.style 加 shadow 字段并接通 svg/pptx 渲染（当前 StyleTab 占位）
 
 ## Status
 
-仓库处于 `scientific-drawing-hardening` 分支，已完成的硬化方向：协议深校验、渲染一致性、AI 输出修复、文件治理、评估指标自动回归（CI 跑 evaluate + 严格 delta 门禁）、`analyzeImage` 确定性输出、`docker-compose` 单机部署、AI 配置可视化与持久化、编辑器界面全面重做（详见 Highlights）。`private: true`，未发布到 npm，也未配置远端，可通过 Docker 单机自部署到 VPS / 内网。
+项目保留协议深校验、AI 输出修复、文件治理、确定性普通分析和 Docker 单机部署能力。2026-09-09 重构在 `codex/refactor-scientific-drawing` 分支实施：统一场景导入与 API 契约；用编辑会话集中历史事务、任务取消和版本校验；将 Express 装配、路由、服务、存储及评估模块分开。具体检查结果与剩余验收项见[实施记录](./docs/plans/2026-09-09-refactoring-results.md)。
 
 ## License
 
@@ -103,3 +105,5 @@ MIT，详见 [LICENSE](./LICENSE)。
 ## More
 
 技术细节、scene.json 协议表、HTTP API 全表、评估公式、目录树与 FAQ 见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
+
+问题依据、分阶段任务及状态见[重构实施计划](./docs/plans/2026-09-09-refactoring.md)，行为矩阵见[验证与验收清单](./docs/plans/2026-09-09-refactoring-validation.md)，实际产物和验证证据见[实施记录](./docs/plans/2026-09-09-refactoring-results.md)。

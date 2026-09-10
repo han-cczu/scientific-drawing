@@ -25,6 +25,7 @@ import {
 const backing = new Map<string, string>();
 let failSceneStoreWrites = false;
 let failBackupWrites = false;
+let failSceneStoreClear = false;
 const localStorageStub = {
   getItem: (key: string) => (backing.has(key) ? backing.get(key)! : null),
   setItem: (key: string, value: string) => {
@@ -37,6 +38,7 @@ const localStorageStub = {
     backing.set(key, String(value));
   },
   removeItem: (key: string) => {
+    if (failSceneStoreClear && key === "sciDraw.scene") throw new Error("Storage clear failed");
     backing.delete(key);
   },
   clear: () => backing.clear(),
@@ -66,6 +68,31 @@ function validScene(): Scene {
 }
 
 describe("scene store", () => {
+  it("reports a failed clear instead of restoring the stale persisted scene in this session", () => {
+    const scene = validScene();
+    store.saveStoredScene(scene);
+    failSceneStoreClear = true;
+    try {
+      assert.equal(store.clearStoredScene(), "failed");
+      assert.equal(store.loadStoredScene(), null);
+      assert.equal(backing.has(store.SCENE_STORE_KEY), true);
+    } finally {
+      failSceneStoreClear = false;
+      assert.equal(store.clearStoredScene(), "ok");
+    }
+  });
+
+  it("leaves the memory fallback after a subsequent successful save", () => {
+    store.clearStoredScene();
+    const first = validScene();
+    failSceneStoreWrites = true;
+    try { assert.equal(store.saveStoredScene(first), "failed"); }
+    finally { failSceneStoreWrites = false; }
+    const next = { ...first, metadata: { ...first.metadata, id: "newest" } };
+    assert.equal(store.saveStoredScene(next), "ok");
+    assert.deepEqual(store.loadStoredScene(), next);
+    store.clearStoredScene();
+  });
   it("round-trips a valid scene through localStorage", () => {
     /*
      * ========================================================================
